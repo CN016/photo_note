@@ -81,6 +81,7 @@ photo_nini/
 ### 后端 V1 技术栈与数据库规则
 
 - 后端 V1 使用 Go、Gin、GORM、PostgreSQL 和 Redis；PostgreSQL 是业务数据主存储，Redis 用于需要实时校验和过期控制的 token 状态。
+- 除 PostgreSQL 和 Redis 自身的连接配置外，后端其他需要配置的值统一存储在 `config` 表中；通过统一配置服务按 key 获取配置值，业务模块不得直接查询 `config` 表，也不得将这类配置散落在独立配置文件、环境变量或硬编码常量中。
 - 每张项目自建业务表都必须包含 `id`、`business_id`、`created_at`、`updated_at`：`id` 使用 PostgreSQL `integer` 自增主键；`business_id` 使用 UUID 并建立唯一索引；两个时间字段使用带时区时间类型。新增业务表不得省略这些字段。
 - `id` 仅供数据库内部使用，不得出现在前端 API 响应中。表间关系统一保存对方的 `business_id`，例如 `user_id` 字段保存用户业务 UUID；不得使用自增 `id` 作为接口标识或关系字段。
 - 项目自建表一律不得创建数据库外键约束，包括 GORM 关联迁移隐式创建的外键。跨表存在性、所属用户和删除清理由服务层负责校验与事务处理；GORM 迁移必须设置 `DisableForeignKeyConstraintWhenMigrating: true`，模型不得声明会生成外键的 `constraint` 标签，SQL 不得包含 `REFERENCES` 外键声明。
