@@ -187,6 +187,6 @@ GORM 关联迁移默认可能创建外键；配置 `DisableForeignKeyConstraintW
 
 ### 当前不包含
 
-- 未创建 Go 模块、Gin 服务、GORM 模型、SQL 迁移文件或 Redis 实例配置。
+- 已生成初始建表脚本 `backend/migrations/000001_create_v1_schema.sql`，但尚未在 PostgreSQL 执行；未创建 Go 模块、Gin 服务、GORM 模型、迁移执行器或 Redis 实例配置。
 - 未定义 OSS 签名/上传 API、短信验证码、管理员配置 API、部署环境和生产容量参数。
 - 未执行 PostgreSQL/Redis 集成验证、构建或应用测试；这些需要在后续实施时按 `AGENTS.md` 要求记录。
