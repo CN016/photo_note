@@ -2,11 +2,11 @@
 
 ## 1. 目标与边界
 
-首版后端为跨平台图片与文本编辑器提供账户、标签和灵感图数据接口。技术栈采用 Go、Gin、GORM、PostgreSQL 和 Redis。仓库已包含 PostgreSQL 17 的 Docker Compose 配置和首启建表 SQL；当前仍不包含服务代码、数据库迁移执行器或对象存储上传协议。
+首版后端为跨平台图片与文本编辑器提供账户、标签和灵感图数据接口。技术栈采用 Go、Gin、GORM、PostgreSQL 和 Redis。`backend/` 已包含服务代码、版本化建表 SQL、PostgreSQL 17、Redis 和 API 的 Docker Compose 配置；数据库迁移由 PostgreSQL 空数据卷首次启动时执行初始化 SQL，服务本身不自动运行 GORM AutoMigrate。
 
-PostgreSQL 保存配置、用户、标签和灵感图；Redis 保存访问令牌、刷新令牌及其会话索引。`backend/docker-compose.yml` 提供 PostgreSQL 17 单实例，数据库初始化 SQL 在空数据卷首次启动时创建 schema 和应用运行账号。Redis 尚未加入 Compose。配置表只保存非秘密业务配置，密钥和部署凭证由服务运行环境提供。
+PostgreSQL 保存配置、用户、标签和灵感图；Redis 保存访问令牌、刷新令牌及其会话索引。`backend/docker-compose.yml` 同时启动 PostgreSQL 17、Redis 7 和 Gin API；数据库初始化 SQL 在空数据卷首次启动时创建 schema 并写入服务默认配置。`app_configs` 只保存非秘密配置；PostgreSQL/Redis 连接参数和连接凭证由服务运行环境提供，HTTP 与认证运行参数由统一配置服务从表中读取。
 
-从仓库根目录启动 PostgreSQL：`docker compose -f backend/docker-compose.yml up -d`。Compose 从 `backend/.env` 读取本机数据库凭证；仓库提供 `backend/.env.example` 供其他环境复制并替换密码。宿主机连接地址为 `127.0.0.1:5432`，应用运行账号为 `photo_nini_app`；管理员账号只用于数据库管理和迁移。命名卷会保留数据库数据，容器重启或执行普通 `docker compose down` 不会删除数据。初始化 SQL 仅在空数据卷首次启动时执行。
+从仓库根目录复制 `backend/.env.example` 为 `backend/.env` 并替换两组随机密码，然后运行 `docker compose -f backend/docker-compose.yml up -d --build`。Compose 和 API 默认使用 `POSTGRES_USER` 作为数据库账号；这是 PostgreSQL 初始化管理员账号，便于本地快速部署。生产环境可预先创建权限受限账号，并通过 `DB_USER`、`DB_PASSWORD` 覆盖。宿主机 PostgreSQL 和 API 分别绑定到 `127.0.0.1:5432`、`127.0.0.1:8080`；Redis 仅在 Compose 内部网络开放。命名卷会保留数据库和 Redis 数据，普通 `docker compose down` 不会删除数据。初始化 SQL 仅在空数据卷首次启动时执行；后续结构变更需按版本手动应用迁移文件。
 
 建议代码职责按 HTTP handler、service、repository 分层：Gin handler 处理协议与参数，service 承担鉴权、用户归属和业务校验，GORM repository 访问 PostgreSQL，Redis repository 管理 token 状态。平台壳只消费版本化 HTTP API，不直接访问数据库或 Redis。
 
@@ -39,7 +39,7 @@ GORM 迁移设置 `DisableForeignKeyConstraintWhenMigrating: true`，模型避�
 | `config_value` | `text` | 非空，保存非秘密配置值 |
 | `description` | `text` | 配置说明 |
 
-配置表仅供服务端管理，V1 不提供面向客户端的配置读写接口。
+配置表仅供服务端管理，V1 不提供面向客户端的配置读写接口。服务通过统一配置服务按 key 加载 `app.mode`、`http.listen_addr`、HTTP 请求体上限和超时、Access/Refresh Token 时长；连接 PostgreSQL 和 Redis 所需的地址、账号及密码保留在运行环境中。`000002_seed_runtime_config.sql` 为新环境提供这些非秘密参数的初始值；缺少必需配置项时服务拒绝启动。
 
 ### 3.2 `users` 用户表
 
@@ -100,7 +100,7 @@ GORM 关联迁移默认可能创建外键；配置 `DisableForeignKeyConstraintW
 
 ## 5. V1 HTTP API
 
-统一前缀 `/api/v1`。除注册、登录、刷新以外，所有路由需要有效 Access Token。资源归属一律从 token 中的用户业务 UUID 得出，服务端不接受客户端传入的 `user_id` 覆盖归属。
+统一前缀 `/api/v1`。注册、登录和刷新是无需 Access Token 的认证入口；退出登录、用户资料、标签和灵感图接口都需要有效 Access Token。每次受保护请求都通过 Redis 校验 token。额外的 `/healthz` readiness 接口也要求 Access Token。资源归属一律从 token 中的用户业务 UUID 得出，服务端不接受客户端传入的 `user_id` 覆盖归属。
 
 ### 5.1 响应与错误
 
@@ -112,11 +112,13 @@ GORM 关联迁移默认可能创建外键；配置 `DisableForeignKeyConstraintW
 | `201` | 注册或创建资源成功 |
 | `204` | 退出或删除成功，无响应体 |
 | `400` | JSON、UUID 或查询参数格式错误 |
+| `405` | 请求路径存在，但 HTTP 方法不受支持 |
 | `401` | 缺少、无效、过期或已使用的 token |
 | `404` | 资源不存在或不属于当前用户 |
 | `409` | 手机号或配置 key 等唯一值冲突 |
 | `422` | 字段校验失败 |
 | `503` | Redis 等必需依赖暂不可用 |
+| `413` | 请求体超过服务配置的大小限制 |
 | `500` | 未预期的服务端错误 |
 
 列表接口使用 `page`、`page_size`，默认 1 和 20，`page_size` 最大 100；返回 `items`、`page`、`page_size`、`total`。结果按 `created_at DESC, business_id DESC` 稳定排序。
@@ -180,15 +182,18 @@ GORM 关联迁移默认可能创建外键；配置 `DisableForeignKeyConstraintW
 
 ## 6. 验收与未覆盖内容
 
-### 文档验收
+### 实施验收
 
 - 检查所有四张表均包含通用字段，业务 UUID 均唯一，内部 `id` 不出现在 API 契约中。
 - 检查标签和灵感图均有 `user_id` 索引；标签数组保存标签业务 UUID 并配置 GIN 索引。
 - 检查文档与 `AGENTS.md` 对无外键、GORM 配置和 SQL 脚本归档规则一致。
 - 检查所有受保护 API、刷新轮换、会话退出和 Redis 故障语义都要求 Redis 校验。
+- Go 服务通过 `go build ./...`；Compose 文件通过 `docker compose config --quiet`。
+- 本轮在 PostgreSQL 16 和 Redis 7.4 的隔离容器上执行迁移，并对 V1 路由完成 70 项 smoke checks；另验证同一个 Refresh Token 并发使用时恰好一项请求成功。schema 外键/索引检查也全部通过。确切的 PostgreSQL 17 镜像未能拉取，因此 PostgreSQL 17 容器和 Compose API 镜像仍待验证。
 
 ### 当前不包含
 
-- 已生成初始建表脚本 `backend/migrations/000001_create_v1_schema.sql` 和应用运行账号初始化脚本 `backend/migrations/000002_create_app_role.sql`，并提供 PostgreSQL 17 Compose 配置；尚未在 PostgreSQL 执行。未创建 Go 模块、Gin 服务、GORM 模型、迁移执行器或 Redis 实例配置。
+- 当前包含 `backend/cmd/api/` 服务入口、Gin HTTP 路由、service、GORM repository、PostgreSQL schema 检查和 Redis token 存储；初始建表脚本为 `backend/migrations/000001_create_v1_schema.sql`。服务启动时拒绝缺表或存在外键的 schema，不会自动建表。
+- HTTP 监听参数、请求体上限、超时和 token 生命周期从配置表统一加载；PostgreSQL/Redis 连接参数由环境变量提供。
 - 未定义 OSS 签名/上传 API、短信验证码、管理员配置 API、完整应用部署编排、备份/高可用方案和生产容量参数。
-- 未执行 PostgreSQL/Redis 集成验证、构建或应用测试；这些需要在后续实施时按 `AGENTS.md` 要求记录。
+- 本地联调启动的专用 PostgreSQL/Redis 测试容器仅供本轮验证；未验证 PostgreSQL 17 镜像启动、Docker Compose 构建和生产网络部署。本机共享 Go 模块缓存及校验数据库缓存存在损坏，本次通过隔离缓存完成依赖整理和 Go 编译；模块 checksum 数据库校验未覆盖新依赖。
