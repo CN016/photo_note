@@ -2,9 +2,11 @@
 
 ## 1. 目标与边界
 
-首版后端为跨平台图片与文本编辑器提供账户、标签和灵感图数据接口。技术栈采用 Go、Gin、GORM、PostgreSQL 和 Redis。当前交付仅锁定设计，不包含服务代码、数据库迁移执行器、对象存储上传协议或部署配置。
+首版后端为跨平台图片与文本编辑器提供账户、标签和灵感图数据接口。技术栈采用 Go、Gin、GORM、PostgreSQL 和 Redis。仓库已包含 PostgreSQL 17 的 Docker Compose 配置和首启建表 SQL；当前仍不包含服务代码、数据库迁移执行器或对象存储上传协议。
 
-PostgreSQL 保存配置、用户、标签和灵感图；Redis 保存访问令牌、刷新令牌及其会话索引。配置表只保存非秘密业务配置，密钥和部署凭证由服务运行环境提供。
+PostgreSQL 保存配置、用户、标签和灵感图；Redis 保存访问令牌、刷新令牌及其会话索引。`backend/docker-compose.yml` 提供 PostgreSQL 17 单实例，数据库初始化 SQL 在空数据卷首次启动时创建 schema 和应用运行账号。Redis 尚未加入 Compose。配置表只保存非秘密业务配置，密钥和部署凭证由服务运行环境提供。
+
+从仓库根目录启动 PostgreSQL：`docker compose -f backend/docker-compose.yml up -d`。Compose 从 `backend/.env` 读取本机数据库凭证；仓库提供 `backend/.env.example` 供其他环境复制并替换密码。宿主机连接地址为 `127.0.0.1:5432`，应用运行账号为 `photo_nini_app`；管理员账号只用于数据库管理和迁移。命名卷会保留数据库数据，容器重启或执行普通 `docker compose down` 不会删除数据。初始化 SQL 仅在空数据卷首次启动时执行。
 
 建议代码职责按 HTTP handler、service、repository 分层：Gin handler 处理协议与参数，service 承担鉴权、用户归属和业务校验，GORM repository 访问 PostgreSQL，Redis repository 管理 token 状态。平台壳只消费版本化 HTTP API，不直接访问数据库或 Redis。
 
@@ -187,6 +189,6 @@ GORM 关联迁移默认可能创建外键；配置 `DisableForeignKeyConstraintW
 
 ### 当前不包含
 
-- 已生成初始建表脚本 `backend/migrations/000001_create_v1_schema.sql`，但尚未在 PostgreSQL 执行；未创建 Go 模块、Gin 服务、GORM 模型、迁移执行器或 Redis 实例配置。
-- 未定义 OSS 签名/上传 API、短信验证码、管理员配置 API、部署环境和生产容量参数。
+- 已生成初始建表脚本 `backend/migrations/000001_create_v1_schema.sql` 和应用运行账号初始化脚本 `backend/migrations/000002_create_app_role.sql`，并提供 PostgreSQL 17 Compose 配置；尚未在 PostgreSQL 执行。未创建 Go 模块、Gin 服务、GORM 模型、迁移执行器或 Redis 实例配置。
+- 未定义 OSS 签名/上传 API、短信验证码、管理员配置 API、完整应用部署编排、备份/高可用方案和生产容量参数。
 - 未执行 PostgreSQL/Redis 集成验证、构建或应用测试；这些需要在后续实施时按 `AGENTS.md` 要求记录。
