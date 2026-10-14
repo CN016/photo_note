@@ -1,0 +1,15 @@
+Photo Nini Web includes the following third-party image decoder at runtime:
+
+libheif-js 1.23.5 (LGPL-3.0)
+https://github.com/catdad-experiments/libheif-js
+The package is loaded through the optional, dynamically imported WASM fallback
+of @su-engineering/heic. The exact dependency version and package integrity are
+recorded in pnpm-lock.yaml. The corresponding npm source package is available at:
+https://registry.npmjs.org/libheif-js/-/libheif-js-1.23.5.tgz
+The LGPL license text is included in this directory. The fallback remains a
+separate lazy-loaded chunk so recipients can replace the decoder and rebuild
+the web application from the published source.
+
+The core @su-engineering/heic package (0.1.1 in the current lockfile) is MIT licensed;
+its license text is included in this directory:
+https://github.com/su-engineering/heic-web

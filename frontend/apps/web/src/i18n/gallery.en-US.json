@@ -1,0 +1,19 @@
+{
+  "title": "Inspiration",
+  "subtitle": "Keep the images you love, all in one thoughtful place.",
+  "newImage": "Add inspiration",
+  "searchPlaceholder": "Find an inspiration image",
+  "emptyTitle": "A fresh start",
+  "emptyText": "Add your first image and give the things you love a place to live.",
+  "uploadFirst": "Add your first image",
+  "loadError": "Your inspiration images couldn't be loaded.",
+  "retry": "Try again",
+  "loadMore": "Load more",
+  "count": "{count} images",
+  "untitled": "Untitled inspiration",
+  "openImage": "Open inspiration: {name}",
+  "created": "Saved {date}",
+  "editCopySize": "Edit copy {size}",
+  "loadingImage": "Loading image",
+  "imageUnavailable": "Image unavailable"
+}

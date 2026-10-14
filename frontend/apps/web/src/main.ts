@@ -1,0 +1,20 @@
+import { createApp } from 'vue'
+import { createPinia } from 'pinia'
+import App from './App.vue'
+import { i18n, setLocale } from './i18n'
+import { router } from './router'
+import './style.css'
+import { initializeTheme } from './theme'
+import { installBackendHealthMonitor } from './backendHealth'
+
+/** SPA 启动时同步根节点语言状态，再挂载共享 Web 应用。 */
+document.documentElement.lang = i18n.global.locale.value
+document.title = i18n.global.t('common.brand')
+initializeTheme()
+const app = createApp(App)
+app.use(createPinia())
+app.use(i18n)
+app.use(router)
+app.provide('setLocale', setLocale)
+installBackendHealthMonitor(router)
+app.mount('#app')

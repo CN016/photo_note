@@ -1,0 +1,12 @@
+{
+  "eyebrow": "Photo Nini service status",
+  "title": "We're tidying up the studio.",
+  "message": "The app can't reach its service right now. It may be under maintenance, or your network connection may be interrupted. Please try again in a moment.",
+  "status": "Service unavailable",
+  "lastKnownVersion": "Last detected backend version: {version}",
+  "retry": "Check again",
+  "checking": "Checking service…",
+  "lastChecked": "Last checked: {time}",
+  "help": "Your inspiration images aren't changed by this connection interruption.",
+  "backToLogin": "Back to sign in"
+}

@@ -1,0 +1,19 @@
+{
+  "title": "灵感图",
+  "subtitle": "把喜欢的画面，慢慢收进自己的收藏。",
+  "newImage": "添加灵感图",
+  "searchPlaceholder": "寻找一张灵感图",
+  "emptyTitle": "这里还空着",
+  "emptyText": "上传第一张灵感图，让喜欢的事物有处可寻。",
+  "uploadFirst": "上传第一张",
+  "loadError": "灵感图暂时没有加载出来。",
+  "retry": "重试",
+  "loadMore": "加载更多",
+  "count": "{count} 张灵感图",
+  "untitled": "未命名灵感图",
+  "openImage": "打开灵感图：{name}",
+  "created": "收藏于 {date}",
+  "editCopySize": "编辑副本 {size}",
+  "loadingImage": "图片加载中",
+  "imageUnavailable": "图片暂不可用"
+}

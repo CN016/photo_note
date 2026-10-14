@@ -1,0 +1,23 @@
+{
+  "eyebrow": "A little space for big ideas",
+  "artCaption": "MAKE SPACE FOR THE THINGS YOU LOVE",
+  "moodOne": "01 — slow mornings",
+  "moodTwo": "02 — found in nature",
+  "moodThree": "collect what moves you",
+  "title": "Good ideas deserve a place to stay.",
+  "subtitle": "Collect the things that move you, and make them your own.",
+  "formTitle": "Welcome back",
+  "formHint": "Sign in to continue creating",
+  "phone": "Phone number",
+  "phonePlaceholder": "+1 415 555 0134",
+  "password": "Password",
+  "passwordPlaceholder": "Enter your password",
+  "showPassword": "Show password",
+  "hidePassword": "Hide password",
+  "submit": "Sign in",
+  "submitting": "Signing in…",
+  "newHere": "New to Photo Nini?",
+  "createAccount": "Create an account",
+  "phoneInvalid": "Enter a valid E.164 phone number, such as +14155550134.",
+  "loginFailed": "Sign in failed. Check your phone number and password."
+}

@@ -1,0 +1,23 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "useDefineForClassFields": true,
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "strict": true,
+    "jsx": "preserve",
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "esModuleInterop": true,
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "types": ["vite/client", "vitest/globals"],
+    "paths": {
+      "@su-engineering/heic": ["./node_modules/@su-engineering/heic/dist/index.d.ts"],
+      "@su-engineering/heic/wasm": ["./node_modules/@su-engineering/heic/dist/wasm.d.ts"],
+      "vitest": ["./node_modules/vitest/dist/index.d.ts"]
+    },
+    "skipLibCheck": true,
+    "noEmit": true
+  },
+  "include": ["src/**/*.ts", "src/**/*.vue", "../../packages/**/*.ts", "vite.config.ts"]
+}

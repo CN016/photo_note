@@ -1,0 +1,23 @@
+{
+  "eyebrow": "你的创意，从这里开始",
+  "artCaption": "为喜欢的事物留一处空间",
+  "moodOne": "慢下来的早晨",
+  "moodTwo": "在自然里发现",
+  "moodThree": "收藏让你心动的东西",
+  "title": "灵感，值得好好收藏。",
+  "subtitle": "把每一次心动，整理成自己的灵感图册。",
+  "formTitle": "欢迎回来",
+  "formHint": "登录以继续你的创作",
+  "phone": "手机号",
+  "phonePlaceholder": "+86 138 0000 0000",
+  "password": "密码",
+  "passwordPlaceholder": "请输入密码",
+  "showPassword": "显示密码",
+  "hidePassword": "隐藏密码",
+  "submit": "登录",
+  "submitting": "登录中…",
+  "newHere": "还没有账号？",
+  "createAccount": "创建账号",
+  "phoneInvalid": "请输入有效的 E.164 手机号，例如 +8613800000000。",
+  "loginFailed": "登录失败，请检查手机号和密码。"
+}

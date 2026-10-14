@@ -1,0 +1,12 @@
+{
+  "eyebrow": "Photo Nini 服务状态",
+  "title": "我们正在整理工作室。",
+  "message": "应用暂时无法连接服务。可能正在维护，或网络连接暂时中断。请稍后重试。",
+  "status": "服务暂不可用",
+  "lastKnownVersion": "上次检测到的后端版本：{version}",
+  "retry": "重新检查",
+  "checking": "正在检查服务…",
+  "lastChecked": "最近检查时间：{time}",
+  "help": "你的灵感图不会因这次连接中断而被修改。",
+  "backToLogin": "返回登录页"
+}
