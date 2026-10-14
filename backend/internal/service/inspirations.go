@@ -98,6 +98,14 @@ type InspirationInput struct {
 	Data     json.RawMessage
 }
 
+// inspirationFileMetadata 描述 storekey 文件压缩完成后按最终实际字节计算的元数据。
+type inspirationFileMetadata struct {
+	// fileHash 是最终落盘字节的 SHA-256 摘要。
+	fileHash *string
+	// fileSize 是最终落盘字节数，单位为字节。
+	fileSize *int64
+}
+
 // List 在数据库中按当前用户及 any/all 标签条件分页查询。
 func (service *InspirationService) List(ctx context.Context, userID uuid.UUID, tagIDs []uuid.UUID, match string, page PageRequest) (Page[model.Inspiration], error) {
 	if match == "" {
@@ -132,7 +140,7 @@ func (service *InspirationService) Create(ctx context.Context, userID uuid.UUID,
 	// 同一服务进程中的并发保存按 storekey 串行，防止同时改写同一文件造成哈希错配。
 	unlockFile := service.fileLocks.acquire(input.ImageKey)
 	defer unlockFile()
-	fileHash, err := service.compressStoreKeyContent(ctx, input.ImageKey)
+	fileMetadata, err := service.compressStoreKeyContent(ctx, input.ImageKey)
 	if err != nil {
 		return model.Inspiration{}, err
 	}
@@ -142,7 +150,8 @@ func (service *InspirationService) Create(ctx context.Context, userID uuid.UUID,
 		TagIDs:    uuidStrings(input.TagIDs),
 		ImageKey:  input.ImageKey,
 		FileName:  fileName,
-		FileHash:  fileHash,
+		FileHash:  fileMetadataHash(fileMetadata),
+		FileSize:  fileMetadataSize(fileMetadata),
 		Data:      model.JSONB(append([]byte(nil), input.Data...)),
 	}
 	if err := service.inspirations.CreateInspiration(ctx, &inspiration); err != nil {
@@ -193,12 +202,13 @@ func (service *InspirationService) Update(ctx context.Context, userID, inspirati
 		// 锁覆盖图片写入和灵感图更新，保持共享 storekey 的文件字节与哈希顺序一致。
 		unlockFile := service.fileLocks.acquire(input.ImageKey)
 		defer unlockFile()
-		fileHash, err := service.compressStoreKeyContent(ctx, input.ImageKey)
+		fileMetadata, err := service.compressStoreKeyContent(ctx, input.ImageKey)
 		if err != nil {
 			return model.Inspiration{}, err
 		}
 		updates["image_key"] = input.ImageKey
-		updates["file_hash"] = fileHash
+		updates["file_hash"] = fileMetadataHash(fileMetadata)
+		updates["file_size"] = fileMetadataSize(fileMetadata)
 	}
 	if len(updates) == 0 {
 		return model.Inspiration{}, fault.InvalidRequest("至少提供 tag_ids、image_key、file_name 或 data 中的一个字段")
@@ -206,8 +216,8 @@ func (service *InspirationService) Update(ctx context.Context, userID, inspirati
 	return service.inspirations.UpdateInspiration(ctx, userID, inspirationID, updates)
 }
 
-// compressStoreKeyContent 对有效 storekey 读取并压缩图片，原位覆盖后再对实际存储字节计算 SHA-256。
-func (service *InspirationService) compressStoreKeyContent(ctx context.Context, imageKey string) (*string, error) {
+// compressStoreKeyContent 对有效 storekey 读取并压缩图片，原位覆盖后记录最终字节的哈希和大小。
+func (service *InspirationService) compressStoreKeyContent(ctx context.Context, imageKey string) (*inspirationFileMetadata, error) {
 	if _, err := filestore.ParseKey(imageKey); err != nil {
 		// 已声明 local/oss 类型前缀却格式错误时拒绝保存，防止坏 storekey 被当作普通图片 key 绕过哈希校验。
 		if strings.HasPrefix(imageKey, "local_") || strings.HasPrefix(imageKey, "oss_") {
@@ -263,7 +273,24 @@ func (service *InspirationService) compressStoreKeyContent(ctx context.Context, 
 	}
 	hashBytes := sha256.Sum256(compressed)
 	hash := hex.EncodeToString(hashBytes[:])
-	return &hash, nil
+	finalSize := int64(len(compressed))
+	return &inspirationFileMetadata{fileHash: &hash, fileSize: &finalSize}, nil
+}
+
+// fileMetadataHash 返回 storekey 图片哈希；非 storekey 图片没有可由服务端验证的文件内容，返回 nil。
+func fileMetadataHash(metadata *inspirationFileMetadata) *string {
+	if metadata == nil {
+		return nil
+	}
+	return metadata.fileHash
+}
+
+// fileMetadataSize 返回压缩后 storekey 文件的字节数；非 storekey 图片和历史记录保持为空。
+func fileMetadataSize(metadata *inspirationFileMetadata) *int64 {
+	if metadata == nil {
+		return nil
+	}
+	return metadata.fileSize
 }
 
 // mapInspirationFileError 将文件后端错误转为稳定 API 语义，不向客户端泄露本地路径。

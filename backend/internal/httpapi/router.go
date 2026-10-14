@@ -634,6 +634,7 @@ type inspirationResponse struct {
 	ImageKey   string          `json:"image_key"`
 	FileName   string          `json:"file_name"`
 	FileHash   *string         `json:"file_hash"`
+	FileSize   *int64          `json:"file_size"`
 	Data       json.RawMessage `json:"data"`
 	CreatedAt  time.Time       `json:"created_at"`
 	UpdatedAt  time.Time       `json:"updated_at"`
@@ -647,7 +648,7 @@ func inspirationDTO(inspiration model.Inspiration) inspirationResponse {
 	}
 	data := json.RawMessage(append([]byte(nil), inspiration.Data...))
 	return inspirationResponse{BusinessID: inspiration.BusinessID, TagIDs: tagIDs, ImageKey: inspiration.ImageKey,
-		FileName: inspiration.FileName, FileHash: inspiration.FileHash,
+		FileName: inspiration.FileName, FileHash: inspiration.FileHash, FileSize: inspiration.FileSize,
 		Data: data, CreatedAt: inspiration.CreatedAt, UpdatedAt: inspiration.UpdatedAt}
 }
 
