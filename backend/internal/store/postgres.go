@@ -36,6 +36,25 @@ func (store *PostgresStore) ReadConfigValues(ctx context.Context, keys []string)
 	return values, nil
 }
 
+// ReadPublicConfigValues 只读取显式开放的配置值；即使调用者指定私有 key，也不会返回对应记录。
+func (store *PostgresStore) ReadPublicConfigValues(ctx context.Context, keys []string) (map[string]string, error) {
+	var rows []model.AppConfig
+	query := store.db.WithContext(ctx).
+		Select("config_key", "config_value").
+		Where("is_public = ?", true)
+	if len(keys) > 0 {
+		query = query.Where("config_key IN ?", keys)
+	}
+	if err := query.Order("config_key ASC").Find(&rows).Error; err != nil {
+		return nil, persistenceError(err)
+	}
+	values := make(map[string]string, len(rows))
+	for _, row := range rows {
+		values[row.ConfigKey] = row.ConfigValue
+	}
+	return values, nil
+}
+
 // FindUserByPhone 按唯一手机号读取认证所需字段；找不到时统一映射为资源不存在。
 func (store *PostgresStore) FindUserByPhone(ctx context.Context, phone string) (model.User, error) {
 	var user model.User

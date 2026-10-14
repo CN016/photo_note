@@ -75,6 +75,10 @@ func checkSchema(ctx context.Context, connection *gorm.DB) error {
 		if !connection.WithContext(ctx).Migrator().HasTable(table) {
 			return fmt.Errorf("PostgreSQL schema 缺少表 %s，请先执行 backend/migrations 中的版本化 SQL", name)
 		}
+		// 新 API 启动前检查公开标记列已由增量迁移创建，避免服务运行后才在公开读取请求中暴露迁移遗漏。
+		if name == "app_configs" && !connection.WithContext(ctx).Migrator().HasColumn(table, "IsPublic") {
+			return fmt.Errorf("PostgreSQL schema 缺少 app_configs.is_public，请先执行 backend/migrations/000004_add_config_public_flag.sql")
+		}
 	}
 	var foreignKeyCount int64
 	err := connection.WithContext(ctx).Raw(`

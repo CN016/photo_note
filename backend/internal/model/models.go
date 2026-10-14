@@ -21,6 +21,8 @@ type AppConfig struct {
 	ConfigKey   string `gorm:"column:config_key;type:text;not null;uniqueIndex"`
 	ConfigValue string `gorm:"column:config_value;type:text;not null"`
 	Description string `gorm:"column:description;type:text;not null"`
+	// IsPublic 默认关闭；只有显式开放的配置值才能通过无需鉴权的客户端接口读取。
+	IsPublic bool `gorm:"column:is_public;type:boolean;not null;default:false" json:"-"`
 }
 
 // TableName 固定配置模型使用与版本化建表 SQL 相同的表名。
