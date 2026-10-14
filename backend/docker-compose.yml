@@ -10,7 +10,7 @@ services:
     ports:
       - "127.0.0.1:5432:5432"
     volumes:
-      - postgres17_data:/var/lib/postgresql/data
+      - ./postgres17_data:/var/lib/postgresql/data
       - ./migrations:/docker-entrypoint-initdb.d:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U \"$$POSTGRES_USER\" -d \"$$POSTGRES_DB\""]
@@ -52,8 +52,7 @@ services:
       redis:
         condition: service_healthy
     ports:
-      - "127.0.0.1:8080:8080"
+      - "127.0.0.1:8089:8080"
 
 volumes:
-  postgres17_data:
   redis7_data:
