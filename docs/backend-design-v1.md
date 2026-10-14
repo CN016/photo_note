@@ -6,7 +6,9 @@
 
 PostgreSQL 保存配置、用户、标签和灵感图；Redis 保存访问令牌、刷新令牌及其会话索引。`backend/docker-compose.yml` 同时启动 PostgreSQL 17、Redis 7 和 Gin API；数据库初始化 SQL 在空数据卷首次启动时创建 schema 并写入服务默认配置。`app_configs` 只保存非秘密配置；PostgreSQL/Redis 连接参数和连接凭证由服务运行环境提供，HTTP 与认证运行参数由统一配置服务从表中读取。
 
-从仓库根目录复制 `backend/.env.example` 为 `backend/.env` 并替换两组随机密码，然后运行 `docker compose -f backend/docker-compose.yml up -d --build`。Compose 和 API 默认使用 `POSTGRES_USER` 作为数据库账号；这是 PostgreSQL 初始化管理员账号，便于本地快速部署。生产环境可预先创建权限受限账号，并通过 `DB_USER`、`DB_PASSWORD` 覆盖。宿主机 PostgreSQL 和 API 分别绑定到 `127.0.0.1:5432`、`127.0.0.1:8080`；Redis 仅在 Compose 内部网络开放。命名卷会保留数据库和 Redis 数据，普通 `docker compose down` 不会删除数据。初始化 SQL 仅在空数据卷首次启动时执行；后续结构变更需按版本手动应用迁移文件。
+从仓库根目录复制 `backend/.env.example` 为 `backend/.env` 并替换两组随机密码，然后运行 `docker compose -f backend/docker-compose.yml up -d --build`。Compose 和 API 默认使用 `POSTGRES_USER` 作为数据库账号；这是 PostgreSQL 初始化管理员账号，便于本地快速部署。生产环境可预先创建权限受限账号，并通过 `DB_USER`、`DB_PASSWORD` 覆盖。宿主机 PostgreSQL 和 API 分别绑定到 `127.0.0.1:5432`、`127.0.0.1:8089`；Redis 仅在 Compose 内部网络开放。PostgreSQL 数据保存在 `backend/postgres17_data/`，Redis 数据保存在 Compose 命名卷中；普通 `docker compose down` 不会删除数据。初始化 SQL 仅在空数据目录首次启动时执行；后续结构变更需按版本手动应用迁移文件。
+
+Compose 默认使用 DaoCloud Docker Hub 代理拉取 Go 与 Alpine 基础镜像，并使用 `goproxy.cn` 下载 Go 模块。可通过 `GO_BASE_IMAGE`、`RUNTIME_BASE_IMAGE`、`GOPROXY` 三个 shell 环境变量覆盖构建源；这些值作为 Docker build args 传入，不是服务运行配置，也不得在其中放置秘密。Dockerfile 先复制 `go.mod` 和 `go.sum` 并下载依赖，使依赖清单不变时可以复用该构建层。镜像代理与模块代理分别影响容器镜像拉取和 Go 依赖下载，实际收益取决于部署网络。
 
 建议代码职责按 HTTP handler、service、repository 分层：Gin handler 处理协议与参数，service 承担鉴权、用户归属和业务校验，GORM repository 访问 PostgreSQL，Redis repository 管理 token 状态。平台壳只消费版本化 HTTP API，不直接访问数据库或 Redis。
 

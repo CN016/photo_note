@@ -1,12 +1,20 @@
-FROM golang:1.24-alpine AS build
+# 可通过 Docker Compose 构建参数切换到就近的 Go 基础镜像仓库。
+ARG GO_BASE_IMAGE=golang:1.24-alpine
+# 运行镜像较小，构建参数允许部署环境使用相同的镜像代理。
+ARG RUNTIME_BASE_IMAGE=alpine:3.22
+
+FROM ${GO_BASE_IMAGE} AS build
 
 WORKDIR /src
+# Go 模块代理只影响构建阶段；默认使用 Go 官方代理，也可由 Compose 构建参数覆盖。
+ARG GOPROXY=https://proxy.golang.org,direct
+ENV GOPROXY=${GOPROXY}
 COPY go.mod go.sum ./
 RUN go mod download
 COPY . .
 RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /out/photo-nini-api ./cmd/api
 
-FROM alpine:3.22
+FROM ${RUNTIME_BASE_IMAGE}
 RUN apk add --no-cache ca-certificates tzdata \
     && addgroup -S -g 10001 app \
     && adduser -S -D -H -u 10001 -G app app

@@ -35,9 +35,16 @@ services:
       start_period: 5s
 
   api:
+    image: photo-nini-api:local
     build:
       context: .
       dockerfile: Dockerfile
+      args:
+        # 默认通过 DaoCloud 代理拉取 Docker Hub 镜像；可由启动 Compose 的 shell 环境变量覆盖。
+        GO_BASE_IMAGE: "${GO_BASE_IMAGE:-m.daocloud.io/docker.io/library/golang:1.24-alpine}"
+        RUNTIME_BASE_IMAGE: "${RUNTIME_BASE_IMAGE:-m.daocloud.io/docker.io/library/alpine:3.22}"
+        # Go 模块代理独立于 Docker 镜像代理；默认使用 goproxy.cn 并保留 direct 回退。
+        GOPROXY: "${GOPROXY:-https://goproxy.cn,direct}"
     restart: unless-stopped
     env_file:
       - .env
