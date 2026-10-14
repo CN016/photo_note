@@ -40,8 +40,9 @@ GORM 迁移设置 `DisableForeignKeyConstraintWhenMigrating: true`，模型避�
 | `config_key` | `text` | 非空、唯一 |
 | `config_value` | `text` | 非空，保存非秘密配置值 |
 | `description` | `text` | 配置说明 |
+| `is_public` | `boolean` | 非空，默认 `false`；仅为 `true` 时公开配置值 |
 
-配置表仅供服务端管理，V1 不提供面向客户端的配置读写接口。服务通过统一配置服务按 key 加载 `app.mode`、`http.listen_addr`、HTTP 请求体上限和超时、Access/Refresh Token 时长、文件存储根目录和单文件大小上限；`files.active_store_type` 在每次上传时重新读取，使存储类型切换对下一次写入生效。连接 PostgreSQL 和 Redis 所需的地址、账号及密码保留在运行环境中。`000002_seed_runtime_config.sql` 和 `000003_seed_file_storage_config.sql` 为新环境提供非秘密初始值；缺少必需配置项时服务拒绝启动。
+只有 `is_public=true` 的配置值可以通过无需鉴权的 `GET /api/v1/configs/public` 读取；响应仅包含 key 和 value，私有项及不存在项均不会返回。可不传参数读取全部开放项，也可重复传入 `keys` 参数筛选，例如 `?keys=frontend.theme&keys=frontend.upload_limit`。公开配置不得包含密码、密钥、令牌等秘密。服务通过统一配置服务按 key 加载 `app.mode`、`http.listen_addr`、HTTP 请求体上限和超时、Access/Refresh Token 时长、文件存储根目录和单文件大小上限；`files.active_store_type` 在每次上传时重新读取，使存储类型切换对下一次写入生效。连接 PostgreSQL 和 Redis 所需的地址、账号及密码保留在运行环境中。`000002_seed_runtime_config.sql` 和 `000003_seed_file_storage_config.sql` 为新环境提供非秘密初始值；缺少必需配置项时服务拒绝启动。
 
 ### 3.2 `users` 用户表
 
@@ -110,7 +111,7 @@ GORM 关联迁移默认可能创建外键；配置 `DisableForeignKeyConstraintW
 
 ## 5. V1 HTTP API
 
-统一前缀 `/api/v1`。注册、登录和刷新是无需 Access Token 的认证入口；退出登录、用户资料、标签、灵感图和文件接口都需要有效 Access Token。每次受保护请求都通过 Redis 校验 token。`/healthz` readiness 接口公开访问。业务数据归属从 token 中的用户业务 UUID 得出；文件 V1 不记录用户归属，任何已通过鉴权且持有有效 `storekey` 的用户都可读取对应文件。
+统一前缀 `/api/v1`。注册、登录和刷新是无需 Access Token 的认证入口；退出登录、用户资料、标签、灵感图和文件接口都需要有效 Access Token。每次受保护请求都通过 Redis 校验 token。`/healthz` readiness 接口和 `GET /api/v1/configs/public` 公开访问；公开配置接口只返回 `is_public=true` 的 key/value。业务数据归属从 token 中的用户业务 UUID 得出；文件 V1 不记录用户归属，任何已通过鉴权且持有有效 `storekey` 的用户都可读取对应文件。
 
 ### 5.1 响应与错误
 
@@ -142,6 +143,7 @@ GORM 关联迁移默认可能创建外键；配置 `DisableForeignKeyConstraintW
 | `POST /auth/refresh` | 否（请求体带 RT） | `refresh_token`；原子轮换 | 新 token pair |
 | `POST /auth/logout` | AT | 撤销当前会话 | `204` |
 | `GET /healthz` | 否 | 检查 PostgreSQL 和 Redis 连通性 | readiness 状态 |
+| `GET /configs/public` | 否 | 可重复传 `keys` 筛选；只查询 `is_public=true` | `items` 中仅包含 `key`、`value` |
 | `GET /users/me` | AT | 无 | 当前用户 `business_id`、昵称、手机号、头像 key 和时间字段 |
 | `PATCH /users/me` | AT | 可选 `nickname`, `avatar_key` | 更新后的当前用户资料 |
 | `GET /tags` | AT | 分页参数 | 当前用户标签列表 |
@@ -204,11 +206,11 @@ JSON 请求和响应使用 UTF-8；日期时间以 RFC 3339 格式返回。创�
 - 检查文档与 `AGENTS.md` 对无外键、GORM 配置和 SQL 脚本归档规则一致。
 - 检查所有受保护 API、刷新轮换、会话退出和 Redis 故障语义都要求 Redis 校验。
 - Go 服务通过 `go build ./...`；Compose 文件通过 `docker compose config --quiet`。
-- 本轮在 PostgreSQL 16 和 Redis 7.4 的隔离容器上执行迁移，并对 V1 路由完成 70 项 smoke checks；另验证同一个 Refresh Token 并发使用时恰好一项请求成功。schema 外键/索引检查也全部通过。确切的 PostgreSQL 17 镜像未能拉取，因此 PostgreSQL 17 容器和 Compose API 镜像仍待验证。
+- 后端 V1 初始实现曾在 PostgreSQL 16 和 Redis 7.4 的隔离容器上完成 70 项 smoke checks，并验证同一个 Refresh Token 并发使用时恰好一项请求成功。2026-10-14 已在 Compose 配置的 PostgreSQL 17.11 容器上应用新增公开配置迁移，验证公开接口和健康检查，并成功构建 Compose API 镜像；完整 70 项用例未在 PostgreSQL 17.11 重跑，生产网络部署仍未验证。
 
 ### 当前不包含
 
 - 当前包含 `backend/cmd/api/` 服务入口、Gin HTTP 路由、service、GORM repository、PostgreSQL schema 检查和 Redis token 存储；初始建表脚本为 `backend/migrations/000001_create_v1_schema.sql`。服务启动时拒绝缺表或存在外键的 schema，不会自动建表。
 - HTTP 监听参数、请求体上限、超时和 token 生命周期从配置表统一加载；PostgreSQL/Redis 连接参数由环境变量提供。
-- 未定义 OSS 签名/上传 API、短信验证码、管理员配置 API、完整应用部署编排、备份/高可用方案和生产容量参数。
-- 本地联调启动的专用 PostgreSQL/Redis 测试容器仅供本轮验证；未验证 PostgreSQL 17 镜像启动、Docker Compose 构建和生产网络部署。本机共享 Go 模块缓存及校验数据库缓存存在损坏，本次通过隔离缓存完成依赖整理和 Go 编译；模块 checksum 数据库校验未覆盖新依赖。
+- 未定义 OSS 签名/上传 API、短信验证码、管理员配置管理 API、完整应用部署编排、备份/高可用方案和生产容量参数。
+- Compose PostgreSQL 17.11、Redis 7.4 和 API 镜像已在本机启动并用于公开配置接口联调；生产网络部署仍未验证。本机共享 Go 模块缓存存在校验和不匹配，本次通过隔离缓存完成 Go 构建；模块 checksum 数据库校验未覆盖新依赖。

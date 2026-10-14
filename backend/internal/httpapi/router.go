@@ -28,6 +28,11 @@ type accessTokenValidator interface {
 	ValidateAccess(context.Context, string) (store.TokenClaims, error)
 }
 
+// publicConfigReader 提供无需鉴权的只读配置能力，具体实现仍由统一配置服务负责。
+type publicConfigReader interface {
+	ListPublicConfigValues(context.Context, []string) ([]service.PublicConfigValue, error)
+}
+
 // Dependencies 汇总 HTTP 层使用的业务服务和健康检查依赖，路由不直接创建数据库连接。
 type Dependencies struct {
 	Auth                 *service.AuthService
@@ -41,6 +46,7 @@ type Dependencies struct {
 	Files                fileStorage
 	MaxUploadBytes       int64
 	CurrentFileStoreType func(context.Context) (string, error)
+	PublicConfigs        publicConfigReader
 }
 
 // fileStorage 是 HTTP 上传和读取使用的文件存储能力，不包含用户归属或文件元数据管理。
@@ -65,6 +71,7 @@ func Router(dependencies Dependencies) *gin.Engine {
 	api.POST("/auth/register", registerHandler(dependencies.Auth))
 	api.POST("/auth/login", loginHandler(dependencies.Auth))
 	api.POST("/auth/refresh", refreshHandler(dependencies.Auth))
+	api.GET("/configs/public", publicConfigsHandler(dependencies.PublicConfigs))
 
 	// readiness 只探测服务依赖，不访问用户数据，因此允许部署平台在无 token 时调用。
 	router.GET("/healthz", healthHandler(dependencies.PostgresPing, dependencies.RedisPing))
@@ -162,6 +169,49 @@ func healthHandler(postgresPing, redisPing func(context.Context) error) gin.Hand
 		}
 		writeData(c, http.StatusOK, gin.H{"status": "ok"})
 	}
+}
+
+// publicConfigsHandler 允许客户端读取 is_public=true 的配置值；未开放或不存在的 key 一律不返回。
+func publicConfigsHandler(configs publicConfigReader) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		if configs == nil {
+			writeError(c, fault.Unavailable(errors.New("公开配置服务未配置")))
+			return
+		}
+		keys, err := requestedPublicConfigKeys(c)
+		if err != nil {
+			writeError(c, err)
+			return
+		}
+		items, err := configs.ListPublicConfigValues(c.Request.Context(), keys)
+		if err != nil {
+			writeError(c, err)
+			return
+		}
+		writeData(c, http.StatusOK, gin.H{"items": items})
+	}
+}
+
+// requestedPublicConfigKeys 解析可重复传入的 keys 参数并限制批量查询数量，避免无界查询参数。
+func requestedPublicConfigKeys(c *gin.Context) ([]string, error) {
+	queryValues := c.QueryArray("keys")
+	if len(queryValues) > 100 {
+		return nil, fault.InvalidRequest("keys 参数最多允许指定 100 个配置 key")
+	}
+	keys := make([]string, 0, len(queryValues))
+	seen := make(map[string]struct{}, len(queryValues))
+	for _, value := range queryValues {
+		key := strings.TrimSpace(value)
+		if key == "" {
+			return nil, fault.InvalidRequest("keys 参数中的配置 key 不能为空")
+		}
+		if _, exists := seen[key]; exists {
+			continue
+		}
+		seen[key] = struct{}{}
+		keys = append(keys, key)
+	}
+	return keys, nil
 }
 
 // authContext 返回认证中间件写入上下文的用户和会话标识；缺失时按未认证处理。

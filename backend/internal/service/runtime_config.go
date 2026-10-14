@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -15,6 +16,15 @@ import (
 // RuntimeConfigReader 是唯一配置表读取入口；业务服务不得自行查询 app_configs。
 type RuntimeConfigReader interface {
 	ReadConfigValues(context.Context, []string) (map[string]string, error)
+	ReadPublicConfigValues(context.Context, []string) (map[string]string, error)
+}
+
+// PublicConfigValue 是公开配置读取接口可返回的最小字段集合，不包含配置描述或数据库内部标识。
+type PublicConfigValue struct {
+	// Key 是客户端配置项 key，不包含数据库业务 UUID 或自增主键。
+	Key string `json:"key"`
+	// Value 是仅在配置项显式开放后才允许客户端读取的文本值。
+	Value string `json:"value"`
 }
 
 // RuntimeConfigService 将配置表中的运行设置解析为强类型值，供 HTTP 和认证组件统一使用。
@@ -112,6 +122,25 @@ func (service *RuntimeConfigService) CurrentFileStoreType(ctx context.Context) (
 		return "", errors.New("配置项 files.active_store_type 只允许 local 或 oss")
 	}
 	return storeType, nil
+}
+
+// ListPublicConfigValues 从统一配置 repository 读取已开放配置，并按 key 排序以提供稳定响应顺序。
+// keys 为空时返回全部开放项；指定 key 时，私有项和不存在项都会被 repository 过滤掉。
+func (service *RuntimeConfigService) ListPublicConfigValues(ctx context.Context, keys []string) ([]PublicConfigValue, error) {
+	values, err := service.reader.ReadPublicConfigValues(ctx, keys)
+	if err != nil {
+		return nil, fmt.Errorf("读取公开配置失败: %w", err)
+	}
+	orderedKeys := make([]string, 0, len(values))
+	for key := range values {
+		orderedKeys = append(orderedKeys, key)
+	}
+	sort.Strings(orderedKeys)
+	items := make([]PublicConfigValue, 0, len(orderedKeys))
+	for _, key := range orderedKeys {
+		items = append(items, PublicConfigValue{Key: key, Value: values[key]})
+	}
+	return items, nil
 }
 
 // supportedFileStoreType 限定配置表中的存储类型为接口 key 已定义的值。

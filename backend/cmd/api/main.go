@@ -85,6 +85,7 @@ func run() error {
 		Files:                fileManager,
 		MaxUploadBytes:       runtimeConfig.MaxUploadBytes,
 		CurrentFileStoreType: runtimeConfigService.CurrentFileStoreType,
+		PublicConfigs:        runtimeConfigService,
 	}
 	router := httpapi.Router(dependencies)
 	server := &http.Server{
