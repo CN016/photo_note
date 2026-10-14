@@ -56,7 +56,11 @@ type Inspiration struct {
 	UserID   uuid.UUID      `gorm:"column:user_id;type:uuid;not null;index"`
 	TagIDs   pq.StringArray `gorm:"column:tag_ids;type:uuid[];not null;default:ARRAY[]::uuid[]"`
 	ImageKey string         `gorm:"column:image_key;type:text;not null"`
-	Data     JSONB          `gorm:"column:data;type:jsonb;not null"`
+	// FileName 保存客户端提供的原始文件名，只作为展示信息，不用于拼接磁盘路径。
+	FileName string `gorm:"column:file_name;type:text;not null;default:''"`
+	// FileHash 保存有效 storekey 指向文件的 SHA-256 小写十六进制值；非 storekey 图片为空。
+	FileHash *string `gorm:"column:file_hash;type:varchar(64);index:ix_inspirations_file_hash" json:"-"`
+	Data     JSONB   `gorm:"column:data;type:jsonb;not null"`
 }
 
 // TableName 固定灵感图模型使用与版本化建表 SQL 相同的表名。
