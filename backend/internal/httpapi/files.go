@@ -119,7 +119,7 @@ func downloadFileHandler(files fileStorage) gin.HandlerFunc {
 		defer reader.Close()
 
 		// 统一以附件返回并禁用缓存，避免上传内容被浏览器当作本站可执行页面处理。
-		filename := parsedKey.UUID.String() + "." + parsedKey.Extension
+		filename := parsedKey.UUID.String() + "." + downloadExtension(contentType, parsedKey.Extension)
 		c.DataFromReader(http.StatusOK, size, contentType, reader, map[string]string{
 			"Content-Disposition":     fmt.Sprintf("attachment; filename=%q", filename),
 			"Cache-Control":           "private, no-store",
@@ -127,5 +127,25 @@ func downloadFileHandler(files fileStorage) gin.HandlerFunc {
 			"Content-Security-Policy": "sandbox",
 			"Referrer-Policy":         "no-referrer",
 		})
+	}
+}
+
+// downloadExtension 在文件编码曾被压缩转换时按真实 Content-Type 设置下载文件后缀。
+func downloadExtension(contentType, fallback string) string {
+	mediaType, _, err := mime.ParseMediaType(contentType)
+	if err != nil {
+		return fallback
+	}
+	switch mediaType {
+	case "image/jpeg":
+		return "jpg"
+	case "image/png":
+		return "png"
+	case "image/gif":
+		return "gif"
+	case "image/webp":
+		return "webp"
+	default:
+		return fallback
 	}
 }

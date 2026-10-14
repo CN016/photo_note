@@ -2,11 +2,13 @@
 package filestore
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
 	"io"
 	"mime"
+	"net/http"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -151,11 +153,98 @@ func (manager *Manager) Open(storekey string) (io.ReadCloser, int64, string, err
 		_ = file.Close()
 		return nil, 0, "", ErrFileNotFound
 	}
-	contentType := mime.TypeByExtension("." + key.Extension)
-	if contentType == "" {
-		contentType = "application/octet-stream"
+	// 图片可能在保留原 storekey 的情况下转换了编码格式，因此下载类型优先依据文件实际内容判断。
+	contentType, err := detectContentType(file, key.Extension)
+	if err != nil {
+		_ = file.Close()
+		return nil, 0, "", fmt.Errorf("读取本地文件类型失败: %w", err)
 	}
 	return file, info.Size(), contentType, nil
+}
+
+// Replace 原子覆盖已有本地 storekey 对应的文件，不创建新 key 或数据库元数据。
+func (manager *Manager) Replace(ctx context.Context, storekey string, content []byte) error {
+	if manager == nil || len(content) == 0 {
+		return errors.New("文件覆盖参数无效")
+	}
+	key, err := ParseKey(storekey)
+	if err != nil {
+		return err
+	}
+	if key.Type == ossType {
+		return ErrBackendUnavailable
+	}
+	targetPath := manager.localPath(key)
+	info, err := os.Lstat(targetPath)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return ErrFileNotFound
+		}
+		return fmt.Errorf("检查待覆盖本地文件失败: %w", err)
+	}
+	if !info.Mode().IsRegular() {
+		return ErrFileNotFound
+	}
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	default:
+	}
+	// 临时文件和目标文件位于同一目录，完成写入后通过 rename 切换，避免读取到半截内容。
+	temporary, err := os.CreateTemp(filepath.Dir(targetPath), ".photo-nini-replace-*")
+	if err != nil {
+		return fmt.Errorf("创建文件覆盖临时文件失败: %w", err)
+	}
+	temporaryPath := temporary.Name()
+	complete := false
+	defer func() {
+		if !complete {
+			_ = temporary.Close()
+			_ = os.Remove(temporaryPath)
+		}
+	}()
+	if err := temporary.Chmod(0o640); err != nil {
+		return fmt.Errorf("设置文件覆盖权限失败: %w", err)
+	}
+	limited := &contextReader{ctx: ctx, reader: bytes.NewReader(content)}
+	if _, err := io.Copy(temporary, limited); err != nil {
+		return fmt.Errorf("写入文件覆盖临时文件失败: %w", err)
+	}
+	if err := temporary.Sync(); err != nil {
+		return fmt.Errorf("同步文件覆盖临时文件失败: %w", err)
+	}
+	if err := temporary.Close(); err != nil {
+		return fmt.Errorf("关闭文件覆盖临时文件失败: %w", err)
+	}
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	default:
+	}
+	if err := os.Rename(temporaryPath, targetPath); err != nil {
+		return fmt.Errorf("原子替换本地文件失败: %w", err)
+	}
+	complete = true
+	return nil
+}
+
+// detectContentType 读取文件头识别实际编码，无法识别时回退到 storekey 扩展名映射。
+func detectContentType(file *os.File, extension string) (string, error) {
+	header := make([]byte, 512)
+	count, err := file.Read(header)
+	if err != nil && !errors.Is(err, io.EOF) {
+		return "", err
+	}
+	if _, err := file.Seek(0, io.SeekStart); err != nil {
+		return "", err
+	}
+	contentType := http.DetectContentType(header[:count])
+	if contentType == "application/octet-stream" || contentType == "text/plain; charset=utf-8" {
+		if extensionType := mime.TypeByExtension("." + extension); extensionType != "" {
+			return extensionType, nil
+		}
+	}
+	return contentType, nil
 }
 
 // ParseKey 解析并严格校验 key 的类型、日期、UUID 和扩展名，禁止路径分隔符和非规范 UUID。

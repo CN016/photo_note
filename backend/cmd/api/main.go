@@ -77,7 +77,7 @@ func run() error {
 		Auth:                 service.NewAuthService(repository, tokens, passwords),
 		Users:                service.NewUserService(repository),
 		Tags:                 service.NewTagService(repository),
-		Inspirations:         service.NewInspirationService(repository),
+		Inspirations:         service.NewInspirationService(repository, fileManager, runtimeConfig.MaxUploadBytes),
 		Tokens:               tokens,
 		PostgresPing:         func(ctx context.Context) error { return database.Ping(ctx, databaseConnection) },
 		RedisPing:            func(ctx context.Context) error { return tokens.Client().Ping(ctx).Err() },

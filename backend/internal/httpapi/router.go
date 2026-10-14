@@ -632,6 +632,8 @@ type inspirationResponse struct {
 	BusinessID uuid.UUID       `json:"business_id"`
 	TagIDs     []string        `json:"tag_ids"`
 	ImageKey   string          `json:"image_key"`
+	FileName   string          `json:"file_name"`
+	FileHash   *string         `json:"file_hash"`
 	Data       json.RawMessage `json:"data"`
 	CreatedAt  time.Time       `json:"created_at"`
 	UpdatedAt  time.Time       `json:"updated_at"`
@@ -645,6 +647,7 @@ func inspirationDTO(inspiration model.Inspiration) inspirationResponse {
 	}
 	data := json.RawMessage(append([]byte(nil), inspiration.Data...))
 	return inspirationResponse{BusinessID: inspiration.BusinessID, TagIDs: tagIDs, ImageKey: inspiration.ImageKey,
+		FileName: inspiration.FileName, FileHash: inspiration.FileHash,
 		Data: data, CreatedAt: inspiration.CreatedAt, UpdatedAt: inspiration.UpdatedAt}
 }
 
@@ -684,6 +687,7 @@ func listInspirationsHandler(inspirations *service.InspirationService) gin.Handl
 type inspirationRequest struct {
 	TagIDs   []uuid.UUID     `json:"tag_ids"`
 	ImageKey string          `json:"image_key"`
+	FileName string          `json:"file_name"`
 	Data     json.RawMessage `json:"data"`
 }
 
@@ -701,7 +705,7 @@ func createInspirationHandler(inspirations *service.InspirationService) gin.Hand
 			return
 		}
 		inspiration, err := inspirations.Create(c.Request.Context(), claims.UserBusinessID, service.InspirationInput{
-			TagIDs: request.TagIDs, ImageKey: request.ImageKey, Data: request.Data,
+			TagIDs: request.TagIDs, ImageKey: request.ImageKey, FileName: request.FileName, Data: request.Data,
 		})
 		if err != nil {
 			writeError(c, err)
@@ -751,13 +755,14 @@ func patchInspirationHandler(inspirations *service.InspirationService) gin.Handl
 			writeError(c, err)
 			return
 		}
-		if err := allowFields(fields, "tag_ids", "image_key", "data"); err != nil {
+		if err := allowFields(fields, "tag_ids", "image_key", "file_name", "data"); err != nil {
 			writeError(c, err)
 			return
 		}
 		var input service.InspirationInput
 		_, tagIDsSet := fields["tag_ids"]
 		_, imageKeySet := fields["image_key"]
+		_, fileNameSet := fields["file_name"]
 		_, dataSet := fields["data"]
 		if raw, exists := fields["tag_ids"]; exists {
 			if bytes.Equal(bytes.TrimSpace(raw), []byte("null")) {
@@ -775,11 +780,17 @@ func patchInspirationHandler(inspirations *service.InspirationService) gin.Handl
 				return
 			}
 		}
+		if raw, exists := fields["file_name"]; exists {
+			if err := json.Unmarshal(raw, &input.FileName); err != nil {
+				writeError(c, fault.InvalidRequest("file_name 必须是字符串"))
+				return
+			}
+		}
 		if raw, exists := fields["data"]; exists {
 			input.Data = append(json.RawMessage(nil), raw...)
 		}
 		inspiration, err := inspirations.Update(c.Request.Context(), claims.UserBusinessID, inspirationID,
-			input, tagIDsSet, imageKeySet, dataSet)
+			input, tagIDsSet, imageKeySet, fileNameSet, dataSet)
 		if err != nil {
 			writeError(c, err)
 			return
