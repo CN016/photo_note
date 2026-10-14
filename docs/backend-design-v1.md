@@ -69,9 +69,11 @@ GORM 迁移设置 `DisableForeignKeyConstraintWhenMigrating: true`，模型避�
 | `user_id` | `uuid` | 保存所属用户的 `business_id`，非空，建立 B-tree 索引 |
 | `tag_ids` | `uuid[]` | 保存标签 `business_id`，非空，默认空数组；建立 GIN 索引 |
 | `image_key` | `text` | 非空，保存 OSS key 或由服务管理的文件标识 |
+| `file_name` | `text` | 非空，保存原始文件名；历史记录默认空字符串，最多 255 个字符 |
+| `file_hash` | `varchar(64)` | 可空，保存图片内容 SHA-256 小写十六进制摘要；建立部分 B-tree 索引 |
 | `data` | `jsonb` | 非空，保存灵感图复杂数据；作为对象使用并包含 `schema_version` |
 
-创建或更新灵感图时，服务端一次性检查所有 `tag_ids` 是否存在且属于当前用户；任一标签不合法则整次请求失败。删除标签时，在同一 PostgreSQL 事务中从该用户的灵感图 `tag_ids` 中移除对应业务 UUID，再删除标签记录。删除灵感图采用物理删除；V1 不引入软删除字段。
+创建或更新灵感图时，服务端一次性检查所有 `tag_ids` 是否存在且属于当前用户；任一标签不合法则整次请求失败。`image_key` 传入本服务格式的 `storekey` 时，服务端读取其内容；超过 1 MB 的静态图片会压缩后原位覆盖，不生成新 key，再根据最终存储字节计算 SHA-256。更新 `image_key` 时重新处理并覆盖旧摘要；非 storekey 的历史 OSS key 等标识不计算哈希，`file_hash` 为空。`file_name` 由客户端传入，服务端只保存文件名部分，不保存客户端本机目录。删除标签时，在同一 PostgreSQL 事务中从该用户的灵感图 `tag_ids` 中移除对应业务 UUID，再删除标签记录。删除灵感图采用物理删除；V1 不引入软删除字段。
 
 ### 3.5 索引清单
 
@@ -79,6 +81,7 @@ GORM 迁移设置 `DisableForeignKeyConstraintWhenMigrating: true`，模型避�
 - `app_configs.config_key` 和 `users.phone` 建唯一索引。
 - `tags.user_id`、`inspirations.user_id` 建 B-tree 索引，满足按用户隔离和查询的要求。
 - `inspirations.tag_ids` 建 GIN 索引；V1 不为 `data` 增加 JSONB 索引，后续只在明确有查询条件时通过迁移添加。
+- `inspirations.file_hash` 建部分 B-tree 索引，只索引非空 SHA-256 摘要。
 
 PostgreSQL 的 GIN 适用于索引复合值中的成员（包括数组元素），供标签数组检索使用：[PostgreSQL GIN 索引文档](https://www.postgresql.org/docs/current/gin.html)。
 
@@ -88,7 +91,7 @@ PostgreSQL 的 GIN 适用于索引复合值中的成员（包括数组元素）�
 - `files.max_upload_bytes` 配置单文件最大字节数，默认 `52428800`（50 MiB）；`files.local_root` 配置本地存储根目录，默认 `/var/lib/photo-nini/uploads`。Compose 使用 `uploaded_files_data` 命名卷持久化该目录。
 - `files.active_store_type` 规定新上传的存储类型，每次上传时从配置表重新读取。当前接受 `local` 和 `oss` 类型；V1 仅实现本地后端，配置为 `oss` 时上传返回 501，避免静默写到本地。以后接入 OSS 后，上传按当前配置选择后端并写入对应类型前缀。
 - `storekey` 格式为 `<type>_yyyymmdd_uuid.ext`，例如 `local_20261014_550e8400-e29b-41d4-a716-446655440000.png`。下载根据 key 的 type 分派；非法 key 不会被拼接为路径，OSS key 在后端尚未接入时返回 501。
-- 本地目录为 `<root>/yyyymmdd/<uuid前三位>/<uuid>.<ext>`；日期使用 UTC，UUID 和扩展名由服务端校验或生成。上传端只接受一个 `file` multipart 字段，并按配置限制实际读取字节数；下载以附件和 `no-store` 方式返回原始二进制。
+- 本地目录为 `<root>/yyyymmdd/<uuid前三位>/<uuid>.<ext>`；日期使用 UTC，UUID 和扩展名由服务端校验或生成。上传端只接受一个 `file` multipart 字段，并按配置限制实际读取字节数。灵感图保存时，超过 1 MB 的不透明 JPEG、PNG、GIF 或 WebP 会转为 JPEG；含透明像素的图片缩小后保存为 PNG。小于或等于 1 MB 的图片保留原字节。动画 GIF 或 WebP 超过 1 MB 时拒绝保存，解码压缩的图片不得超过 4000 万像素。存储文件仍使用原 storekey，下载根据内容识别真实 MIME 类型和扩展名，并以附件和 `no-store` 方式返回。
 
 ## 4. Token 与 Redis
 
@@ -151,9 +154,9 @@ GORM 关联迁移默认可能创建外键；配置 `DisableForeignKeyConstraintW
 | `PATCH /tags/{business_id}` | AT | `content` | 更新后的标签 |
 | `DELETE /tags/{business_id}` | AT | 删除标签并清理灵感图引用 | `204` |
 | `GET /inspirations` | AT | 分页参数，可重复传 `tag_ids` 和 `tag_match=any\|all` | 当前用户灵感图列表 |
-| `POST /inspirations` | AT | `tag_ids`, `image_key`, `data` | 新建灵感图及其业务 UUID |
+| `POST /inspirations` | AT | `tag_ids`, `image_key`, 可选 `file_name`, `data` | 新建灵感图及其业务 UUID、文件元数据 |
 | `GET /inspirations/{business_id}` | AT | 路径业务 UUID | 灵感图详情 |
-| `PATCH /inspirations/{business_id}` | AT | 可选 `tag_ids`, `image_key`, `data` | 更新后的灵感图 |
+| `PATCH /inspirations/{business_id}` | AT | 可选 `tag_ids`, `image_key`, `file_name`, `data` | 更新后的灵感图及文件元数据 |
 | `DELETE /inspirations/{business_id}` | AT | 路径业务 UUID | `204` |
 | `POST /files` | AT | multipart/form-data，单个文件字段 `file` | `storekey` |
 | `GET /files/{storekey}` | AT | 根据 key 中的存储类型读取文件 | 二进制文件流 |
@@ -193,7 +196,7 @@ JSON 请求和响应使用 UTF-8；日期时间以 RFC 3339 格式返回。创�
 
 标签创建和更新请求为 `{ "content": "标签内容" }`，内容最多 64 个字符。标签响应为 `{ "business_id": "uuid", "content": "...", "created_at": "...", "updated_at": "..." }`。标签列表的 `data` 为 `{ "items": [...], "page": 1, "page_size": 20, "total": 0 }`。
 
-灵感图创建请求示例：`{ "tag_ids": ["uuid"], "image_key": "...", "data": { "schema_version": 1 } }`。`data` 必须是 JSON 对象并带正整数 `schema_version`；其他编辑数据字段由编辑器文档版本定义并原样保存。灵感图响应对象包含 `business_id`、`tag_ids`、`image_key`、`data`、`created_at`、`updated_at`。列表使用同一分页结构。
+灵感图创建请求示例：`{ "tag_ids": ["uuid"], "image_key": "local_yyyymmdd_uuid.ext", "file_name": "原始文件名.png", "data": { "schema_version": 1 } }`。`image_key` 为上传接口返回的 storekey 时，后端读取文件；大于 1 MB 的静态图片会原位覆盖压缩后的内容，不改变 storekey，并根据最终字节计算 `file_hash`。创建和显式更新 `image_key` 都会处理。压缩不透明图片会输出 JPEG，带透明像素的图片会输出 PNG；动画 GIF/WebP 大于目标大小时拒绝保存；下载以实际内容而不是 storekey 扩展名设置 MIME 类型。`file_name` 可选，缺省为空字符串，最多 255 个字符。`data` 必须是 JSON 对象并带正整数 `schema_version`；其他编辑数据字段由编辑器文档版本定义并原样保存。灵感图响应对象包含 `business_id`、`tag_ids`、`image_key`、`file_name`、`file_hash`、`data`、`created_at`、`updated_at`。列表使用同一分页结构。
 
 标签检索 `tag_match` 默认 `any`：命中任一指定标签；`all`：必须同时包含所有指定标签；不传 `tag_ids` 时不按标签过滤。`tag_ids` 以重复 query 参数传入，例如 `?tag_ids=uuid1&tag_ids=uuid2&tag_match=all`。用户归属从 token 得出；访问其他用户的资源统一返回 `404`。列表对象和详情对象都只返回业务 UUID，不返回自增 `id`。
 
