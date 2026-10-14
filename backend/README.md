@@ -8,7 +8,7 @@
 docker compose -f backend/docker-compose.yml up -d --build
 ```
 
-API 默认通过宿主机 `127.0.0.1:8089` 提供服务，监听地址、请求上限、超时、token 有效期和文件存储配置从 `app_configs` 读取；`000002_seed_runtime_config.sql` 和 `000003_seed_file_storage_config.sql` 为新数据库添加初始值。readiness 地址 `/healthz` 和公开配置地址 `GET /api/v1/configs/public` 均无需鉴权。公开配置接口只返回 `is_public=true` 的配置项 key/value；可不传参数读取全部开放项，或重复传 `keys` 查询特定 key，例如 `?keys=frontend.theme&keys=frontend.upload_limit`。现有数据库升级时需备份后单独执行新增迁移 `backend/migrations/000004_add_config_public_flag.sql`；历史迁移保持不变，新增字段默认关闭。Compose 内的服务使用 `POSTGRES_USER` 连接 PostgreSQL；该账号是 PostgreSQL 初始化管理员，适合本地快速部署。生产环境应预先创建权限受限的数据库账号，并设置 `DB_USER`、`DB_PASSWORD` 覆盖默认值。
+API 默认通过宿主机 `127.0.0.1:8089` 提供服务，监听地址、请求上限、超时、token 有效期和文件存储配置从 `app_configs` 读取；`000002_seed_runtime_config.sql` 和 `000003_seed_file_storage_config.sql` 为新数据库添加初始值。readiness 地址 `/healthz` 和公开配置地址 `GET /api/v1/configs/public` 均无需鉴权；健康检查成功响应包含 `data.version` 当前后端版本。版本号统一维护在 `internal/version/version.go`，每批后端改动都必须按仓库根目录 `AGENTS.md` 递增。公开配置接口只返回 `is_public=true` 的配置项 key/value；可不传参数读取全部开放项，或重复传 `keys` 查询特定 key，例如 `?keys=frontend.theme&keys=frontend.upload_limit`。现有数据库升级时需备份后单独执行新增迁移 `backend/migrations/000004_add_config_public_flag.sql`；历史迁移保持不变，新增字段默认关闭。Compose 内的服务使用 `POSTGRES_USER` 连接 PostgreSQL；该账号是 PostgreSQL 初始化管理员，适合本地快速部署。生产环境应预先创建权限受限的数据库账号，并设置 `DB_USER`、`DB_PASSWORD` 覆盖默认值。
 
 文件上传使用 `POST /api/v1/files`，请求为单文件 `multipart/form-data`，字段名为 `file`；上传大小由配置表中的 `files.max_upload_bytes` 控制，默认 50 MiB。当前 `files.active_store_type` 默认为 `local`，上传时每次读取该配置；文件 key 的类型前缀用于后续下载分发。下载使用 `GET /api/v1/files/{storekey}`，上传和下载均需 Bearer Access Token。V1 不建立文件元数据、不绑定用户，也不提供文件列表、删除和自动清理接口；拥有有效 storekey 的已鉴权用户都能获取对应文件。`oss` 类型已保留 key 路由分支，但当前尚未接入 OSS 后端，切换到 `oss` 后上传和读取会返回 501。
 

@@ -19,6 +19,7 @@ import (
 	"github.com/photo-nini/backend/internal/model"
 	"github.com/photo-nini/backend/internal/service"
 	"github.com/photo-nini/backend/internal/store"
+	"github.com/photo-nini/backend/internal/version"
 )
 
 const apiPrefix = "/api/v1"
@@ -146,7 +147,7 @@ func authenticationMiddleware(tokens accessTokenValidator) gin.HandlerFunc {
 	}
 }
 
-// healthHandler 同时检查 PostgreSQL 与 Redis；任何必需依赖不通时 readiness 返回 503。
+// healthHandler 检查 PostgreSQL 和 Redis，并返回当前服务版本；任一依赖不可用时 readiness 返回 503。
 func healthHandler(postgresPing, redisPing func(context.Context) error) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		ctx, cancel := context.WithTimeout(c.Request.Context(), 3*time.Second)
@@ -167,7 +168,7 @@ func healthHandler(postgresPing, redisPing func(context.Context) error) gin.Hand
 			writeError(c, fault.Unavailable(err))
 			return
 		}
-		writeData(c, http.StatusOK, gin.H{"status": "ok"})
+		writeData(c, http.StatusOK, gin.H{"status": "ok", "version": version.Current})
 	}
 }
 

@@ -146,7 +146,7 @@ GORM 关联迁移默认可能创建外键；配置 `DisableForeignKeyConstraintW
 | `POST /auth/login` | 否 | `phone`, `password` | 用户资料与 token pair |
 | `POST /auth/refresh` | 否（请求体带 RT） | `refresh_token`；原子轮换 | 新 token pair |
 | `POST /auth/logout` | AT | 撤销当前会话 | `204` |
-| `GET /healthz` | 否 | 检查 PostgreSQL 和 Redis 连通性 | readiness 状态 |
+| `GET /healthz` | 否 | 检查 PostgreSQL 和 Redis 连通性 | `data.status` 与当前服务 `data.version` |
 | `GET /configs/public` | 否 | 可重复传 `keys` 筛选；只查询 `is_public=true` | `items` 中仅包含 `key`、`value` |
 | `GET /users/me` | AT | 无 | 当前用户 `business_id`、昵称、手机号、头像 key 和时间字段 |
 | `PATCH /users/me` | AT | 可选 `nickname`, `avatar_key` | 更新后的当前用户资料 |
@@ -165,6 +165,8 @@ GORM 关联迁移默认可能创建外键；配置 `DisableForeignKeyConstraintW
 上传成功返回 `{ "data": { "storekey": "local_yyyymmdd_uuid.ext" }, "request_id": "..." }`。修改 `files.active_store_type` 后，后续上传无需重启即可采用新值；`files.max_upload_bytes` 和 `files.local_root` 在启动时加载，修改后需重启服务生效。
 
 JSON 请求和响应使用 UTF-8；日期时间以 RFC 3339 格式返回。创建请求不得传 `id`、`business_id`、`user_id` 或时间字段，这些由服务端生成或从 token 得出。更新请求只修改列出的字段，未提供字段保持原值；`tag_ids: []` 表示清空所有标签。响应对象不得包含自增 `id`、`password` 或 `password_hash`。文件下载返回原始二进制流，不使用 JSON 封套。
+
+健康检查成功时返回 `{"data":{"status":"ok","version":"1.0.0"},"request_id":"..."}`。版本号来自 `backend/internal/version/version.go`，后端代码、接口、配置、数据库迁移或构建配置的每个改动批次都需按 `AGENTS.md` 递增。
 
 注册请求示例：`{ "phone": "+8613800138000", "password": "...", "nickname": "..." }`。手机号必须是规范化 E.164 值；密码长度为 8 至 128 个字符；昵称最多 64 个字符。登录使用相同的 `phone` 和 `password` 字段；手机号不存在和密码错误使用相同的 `401` 错误语义，避免泄露账户是否存在。
 
