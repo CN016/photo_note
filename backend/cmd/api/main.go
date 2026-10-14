@@ -13,6 +13,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/photo-nini/backend/internal/config"
 	"github.com/photo-nini/backend/internal/database"
+	"github.com/photo-nini/backend/internal/filestore"
 	"github.com/photo-nini/backend/internal/httpapi"
 	"github.com/photo-nini/backend/internal/security"
 	"github.com/photo-nini/backend/internal/service"
@@ -44,7 +45,12 @@ func run() error {
 	defer sqlConnection.Close()
 
 	repository := store.NewPostgresStore(databaseConnection)
-	runtimeConfig, err := service.NewRuntimeConfigService(repository).Load(startupContext, cfg)
+	runtimeConfigService := service.NewRuntimeConfigService(repository)
+	runtimeConfig, err := runtimeConfigService.Load(startupContext, cfg)
+	if err != nil {
+		return err
+	}
+	fileManager, err := filestore.NewManager(runtimeConfig.LocalStorageRoot)
 	if err != nil {
 		return err
 	}
@@ -68,14 +74,17 @@ func run() error {
 		return err
 	}
 	dependencies := httpapi.Dependencies{
-		Auth:         service.NewAuthService(repository, tokens, passwords),
-		Users:        service.NewUserService(repository),
-		Tags:         service.NewTagService(repository),
-		Inspirations: service.NewInspirationService(repository),
-		Tokens:       tokens,
-		PostgresPing: func(ctx context.Context) error { return database.Ping(ctx, databaseConnection) },
-		RedisPing:    func(ctx context.Context) error { return tokens.Client().Ping(ctx).Err() },
-		MaxBodyBytes: runtimeConfig.MaxJSONBodyBytes,
+		Auth:                 service.NewAuthService(repository, tokens, passwords),
+		Users:                service.NewUserService(repository),
+		Tags:                 service.NewTagService(repository),
+		Inspirations:         service.NewInspirationService(repository),
+		Tokens:               tokens,
+		PostgresPing:         func(ctx context.Context) error { return database.Ping(ctx, databaseConnection) },
+		RedisPing:            func(ctx context.Context) error { return tokens.Client().Ping(ctx).Err() },
+		MaxBodyBytes:         runtimeConfig.MaxJSONBodyBytes,
+		Files:                fileManager,
+		MaxUploadBytes:       runtimeConfig.MaxUploadBytes,
+		CurrentFileStoreType: runtimeConfigService.CurrentFileStoreType,
 	}
 	router := httpapi.Router(dependencies)
 	server := &http.Server{

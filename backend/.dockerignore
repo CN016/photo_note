@@ -5,3 +5,6 @@
 **/*_test.go
 tmp/
 coverage.out
+postgres17_data/
+uploads/
+dist/

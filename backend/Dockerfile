@@ -17,7 +17,9 @@ RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /out/photo-n
 FROM ${RUNTIME_BASE_IMAGE}
 RUN apk add --no-cache ca-certificates tzdata \
     && addgroup -S -g 10001 app \
-    && adduser -S -D -H -u 10001 -G app app
+    && adduser -S -D -H -u 10001 -G app app \
+    && mkdir -p /var/lib/photo-nini/uploads \
+    && chown -R app:app /var/lib/photo-nini/uploads
 COPY --from=build /out/photo-nini-api /usr/local/bin/photo-nini-api
 USER 10001:10001
 EXPOSE 8080

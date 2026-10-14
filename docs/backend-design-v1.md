@@ -2,7 +2,7 @@
 
 ## 1. 目标与边界
 
-首版后端为跨平台图片与文本编辑器提供账户、标签和灵感图数据接口。技术栈采用 Go、Gin、GORM、PostgreSQL 和 Redis。`backend/` 已包含服务代码、版本化建表 SQL、PostgreSQL 17、Redis 和 API 的 Docker Compose 配置；数据库迁移由 PostgreSQL 空数据卷首次启动时执行初始化 SQL，服务本身不自动运行 GORM AutoMigrate。
+首版后端为跨平台图片与文本编辑器提供账户、标签、灵感图和文件读写接口。技术栈采用 Go、Gin、GORM、PostgreSQL 和 Redis。`backend/` 已包含服务代码、版本化 SQL、PostgreSQL 17、Redis 和 API 的 Docker Compose 配置；数据库迁移由 PostgreSQL 空数据卷首次启动时执行初始化 SQL，服务本身不自动运行 GORM AutoMigrate。
 
 PostgreSQL 保存配置、用户、标签和灵感图；Redis 保存访问令牌、刷新令牌及其会话索引。`backend/docker-compose.yml` 同时启动 PostgreSQL 17、Redis 7 和 Gin API；数据库初始化 SQL 在空数据卷首次启动时创建 schema 并写入服务默认配置。`app_configs` 只保存非秘密配置；PostgreSQL/Redis 连接参数和连接凭证由服务运行环境提供，HTTP 与认证运行参数由统一配置服务从表中读取。
 
@@ -41,7 +41,7 @@ GORM 迁移设置 `DisableForeignKeyConstraintWhenMigrating: true`，模型避�
 | `config_value` | `text` | 非空，保存非秘密配置值 |
 | `description` | `text` | 配置说明 |
 
-配置表仅供服务端管理，V1 不提供面向客户端的配置读写接口。服务通过统一配置服务按 key 加载 `app.mode`、`http.listen_addr`、HTTP 请求体上限和超时、Access/Refresh Token 时长；连接 PostgreSQL 和 Redis 所需的地址、账号及密码保留在运行环境中。`000002_seed_runtime_config.sql` 为新环境提供这些非秘密参数的初始值；缺少必需配置项时服务拒绝启动。
+配置表仅供服务端管理，V1 不提供面向客户端的配置读写接口。服务通过统一配置服务按 key 加载 `app.mode`、`http.listen_addr`、HTTP 请求体上限和超时、Access/Refresh Token 时长、文件存储根目录和单文件大小上限；`files.active_store_type` 在每次上传时重新读取，使存储类型切换对下一次写入生效。连接 PostgreSQL 和 Redis 所需的地址、账号及密码保留在运行环境中。`000002_seed_runtime_config.sql` 和 `000003_seed_file_storage_config.sql` 为新环境提供非秘密初始值；缺少必需配置项时服务拒绝启动。
 
 ### 3.2 `users` 用户表
 
@@ -81,6 +81,14 @@ GORM 迁移设置 `DisableForeignKeyConstraintWhenMigrating: true`，模型避�
 
 PostgreSQL 的 GIN 适用于索引复合值中的成员（包括数组元素），供标签数组检索使用：[PostgreSQL GIN 索引文档](https://www.postgresql.org/docs/current/gin.html)。
 
+### 3.6 文件存储
+
+- V1 文件不写入 PostgreSQL，不建立文件元数据表，不关联 `user_id`，也不提供列表、删除或自动清理能力。上传和下载路由仍要求有效 Access Token；已鉴权用户持有有效 `storekey` 即可读取其定位的文件。
+- `files.max_upload_bytes` 配置单文件最大字节数，默认 `52428800`（50 MiB）；`files.local_root` 配置本地存储根目录，默认 `/var/lib/photo-nini/uploads`。Compose 使用 `uploaded_files_data` 命名卷持久化该目录。
+- `files.active_store_type` 规定新上传的存储类型，每次上传时从配置表重新读取。当前接受 `local` 和 `oss` 类型；V1 仅实现本地后端，配置为 `oss` 时上传返回 501，避免静默写到本地。以后接入 OSS 后，上传按当前配置选择后端并写入对应类型前缀。
+- `storekey` 格式为 `<type>_yyyymmdd_uuid.ext`，例如 `local_20261014_550e8400-e29b-41d4-a716-446655440000.png`。下载根据 key 的 type 分派；非法 key 不会被拼接为路径，OSS key 在后端尚未接入时返回 501。
+- 本地目录为 `<root>/yyyymmdd/<uuid前三位>/<uuid>.<ext>`；日期使用 UTC，UUID 和扩展名由服务端校验或生成。上传端只接受一个 `file` multipart 字段，并按配置限制实际读取字节数；下载以附件和 `no-store` 方式返回原始二进制。
+
 ## 4. Token 与 Redis
 
 ### 4.1 签发和存储
@@ -102,7 +110,7 @@ GORM 关联迁移默认可能创建外键；配置 `DisableForeignKeyConstraintW
 
 ## 5. V1 HTTP API
 
-统一前缀 `/api/v1`。注册、登录和刷新是无需 Access Token 的认证入口；退出登录、用户资料、标签和灵感图接口都需要有效 Access Token。每次受保护请求都通过 Redis 校验 token。额外的 `/healthz` readiness 接口也要求 Access Token。资源归属一律从 token 中的用户业务 UUID 得出，服务端不接受客户端传入的 `user_id` 覆盖归属。
+统一前缀 `/api/v1`。注册、登录和刷新是无需 Access Token 的认证入口；退出登录、用户资料、标签、灵感图和文件接口都需要有效 Access Token。每次受保护请求都通过 Redis 校验 token。`/healthz` readiness 接口公开访问。业务数据归属从 token 中的用户业务 UUID 得出；文件 V1 不记录用户归属，任何已通过鉴权且持有有效 `storekey` 的用户都可读取对应文件。
 
 ### 5.1 响应与错误
 
@@ -133,6 +141,7 @@ GORM 关联迁移默认可能创建外键；配置 `DisableForeignKeyConstraintW
 | `POST /auth/login` | 否 | `phone`, `password` | 用户资料与 token pair |
 | `POST /auth/refresh` | 否（请求体带 RT） | `refresh_token`；原子轮换 | 新 token pair |
 | `POST /auth/logout` | AT | 撤销当前会话 | `204` |
+| `GET /healthz` | 否 | 检查 PostgreSQL 和 Redis 连通性 | readiness 状态 |
 | `GET /users/me` | AT | 无 | 当前用户 `business_id`、昵称、手机号、头像 key 和时间字段 |
 | `PATCH /users/me` | AT | 可选 `nickname`, `avatar_key` | 更新后的当前用户资料 |
 | `GET /tags` | AT | 分页参数 | 当前用户标签列表 |
@@ -144,8 +153,12 @@ GORM 关联迁移默认可能创建外键；配置 `DisableForeignKeyConstraintW
 | `GET /inspirations/{business_id}` | AT | 路径业务 UUID | 灵感图详情 |
 | `PATCH /inspirations/{business_id}` | AT | 可选 `tag_ids`, `image_key`, `data` | 更新后的灵感图 |
 | `DELETE /inspirations/{business_id}` | AT | 路径业务 UUID | `204` |
+| `POST /files` | AT | multipart/form-data，单个文件字段 `file` | `storekey` |
+| `GET /files/{storekey}` | AT | 根据 key 中的存储类型读取文件 | 二进制文件流 |
 
-所有请求和响应使用 UTF-8 JSON；日期时间以 RFC 3339 格式返回。创建请求不得传 `id`、`business_id`、`user_id` 或时间字段，这些由服务端生成或从 token 得出。更新请求只修改列出的字段，未提供字段保持原值；`tag_ids: []` 表示清空所有标签。响应对象不得包含自增 `id`、`password` 或 `password_hash`。
+上传成功返回 `{ "data": { "storekey": "local_yyyymmdd_uuid.ext" }, "request_id": "..." }`。修改 `files.active_store_type` 后，后续上传无需重启即可采用新值；`files.max_upload_bytes` 和 `files.local_root` 在启动时加载，修改后需重启服务生效。
+
+JSON 请求和响应使用 UTF-8；日期时间以 RFC 3339 格式返回。创建请求不得传 `id`、`business_id`、`user_id` 或时间字段，这些由服务端生成或从 token 得出。更新请求只修改列出的字段，未提供字段保持原值；`tag_ids: []` 表示清空所有标签。响应对象不得包含自增 `id`、`password` 或 `password_hash`。文件下载返回原始二进制流，不使用 JSON 封套。
 
 注册请求示例：`{ "phone": "+8613800138000", "password": "...", "nickname": "..." }`。手机号必须是规范化 E.164 值；密码长度为 8 至 128 个字符；昵称最多 64 个字符。登录使用相同的 `phone` 和 `password` 字段；手机号不存在和密码错误使用相同的 `401` 错误语义，避免泄露账户是否存在。
 

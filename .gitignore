@@ -1,3 +1,5 @@
 /.idea/
 /backend/.env
 /backend/dist/
+/backend/postgres17_data/
+/backend/uploads/

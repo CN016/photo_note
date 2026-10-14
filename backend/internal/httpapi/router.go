@@ -30,14 +30,23 @@ type accessTokenValidator interface {
 
 // Dependencies 汇总 HTTP 层使用的业务服务和健康检查依赖，路由不直接创建数据库连接。
 type Dependencies struct {
-	Auth         *service.AuthService
-	Users        *service.UserService
-	Tags         *service.TagService
-	Inspirations *service.InspirationService
-	Tokens       accessTokenValidator
-	PostgresPing func(context.Context) error
-	RedisPing    func(context.Context) error
-	MaxBodyBytes int64
+	Auth                 *service.AuthService
+	Users                *service.UserService
+	Tags                 *service.TagService
+	Inspirations         *service.InspirationService
+	Tokens               accessTokenValidator
+	PostgresPing         func(context.Context) error
+	RedisPing            func(context.Context) error
+	MaxBodyBytes         int64
+	Files                fileStorage
+	MaxUploadBytes       int64
+	CurrentFileStoreType func(context.Context) (string, error)
+}
+
+// fileStorage 是 HTTP 上传和读取使用的文件存储能力，不包含用户归属或文件元数据管理。
+type fileStorage interface {
+	Store(context.Context, string, string, io.Reader, int64) (string, error)
+	Open(string) (io.ReadCloser, int64, string, error)
 }
 
 // Router 创建 V1 HTTP 路由，并集中安装请求 ID、请求体限制和不泄露敏感数据的异常处理。
@@ -57,13 +66,14 @@ func Router(dependencies Dependencies) *gin.Engine {
 	api.POST("/auth/login", loginHandler(dependencies.Auth))
 	api.POST("/auth/refresh", refreshHandler(dependencies.Auth))
 
-	protectedRoot := router.Group("")
-	protectedRoot.Use(authenticationMiddleware(dependencies.Tokens))
-	protectedRoot.GET("/healthz", healthHandler(dependencies.PostgresPing, dependencies.RedisPing))
+	// readiness 只探测服务依赖，不访问用户数据，因此允许部署平台在无 token 时调用。
+	router.GET("/healthz", healthHandler(dependencies.PostgresPing, dependencies.RedisPing))
 
 	protected := api.Group("")
 	protected.Use(authenticationMiddleware(dependencies.Tokens))
 	protected.POST("/auth/logout", logoutHandler(dependencies.Auth))
+	protected.POST("/files", uploadFileHandler(dependencies.Files, dependencies.MaxUploadBytes, dependencies.CurrentFileStoreType))
+	protected.GET("/files/:storekey", downloadFileHandler(dependencies.Files))
 	protected.GET("/users/me", getCurrentUserHandler(dependencies.Users))
 	protected.PATCH("/users/me", patchCurrentUserHandler(dependencies.Users))
 	protected.GET("/tags", listTagsHandler(dependencies.Tags))
@@ -94,7 +104,9 @@ func requestIDMiddleware() gin.HandlerFunc {
 // bodyLimitMiddleware 在 JSON 解析前限制请求体大小，避免大请求耗尽服务内存。
 func bodyLimitMiddleware(maxBytes int64) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		if maxBytes > 0 && c.Request.Body != nil {
+		mediaType := strings.ToLower(strings.TrimSpace(strings.Split(c.GetHeader("Content-Type"), ";")[0]))
+		// JSON 上限不应拦截 multipart；上传 handler 会按 files.max_upload_bytes 设置独立请求上限。
+		if maxBytes > 0 && c.Request.Body != nil && mediaType != "multipart/form-data" {
 			c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, maxBytes)
 		}
 		c.Next()

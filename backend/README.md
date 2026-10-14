@@ -8,7 +8,11 @@
 docker compose -f backend/docker-compose.yml up -d --build
 ```
 
-API 默认通过宿主机 `127.0.0.1:8089` 提供服务，监听地址、请求上限、超时和 token 有效期从 `app_configs` 读取；`000002_seed_runtime_config.sql` 为新数据库添加初始值。readiness 地址为 `/healthz`，调用时也需要有效的 Bearer Access Token。Compose 内的服务使用 `POSTGRES_USER` 连接 PostgreSQL；该账号是 PostgreSQL 初始化管理员，适合本地快速部署。生产环境应预先创建权限受限的数据库账号，并设置 `DB_USER`、`DB_PASSWORD` 覆盖默认值。
+API 默认通过宿主机 `127.0.0.1:8089` 提供服务，监听地址、请求上限、超时、token 有效期和文件存储配置从 `app_configs` 读取；`000002_seed_runtime_config.sql` 和 `000003_seed_file_storage_config.sql` 为新数据库添加初始值。readiness 地址为公开的 `/healthz`。Compose 内的服务使用 `POSTGRES_USER` 连接 PostgreSQL；该账号是 PostgreSQL 初始化管理员，适合本地快速部署。生产环境应预先创建权限受限的数据库账号，并设置 `DB_USER`、`DB_PASSWORD` 覆盖默认值。
+
+文件上传使用 `POST /api/v1/files`，请求为单文件 `multipart/form-data`，字段名为 `file`；上传大小由配置表中的 `files.max_upload_bytes` 控制，默认 50 MiB。当前 `files.active_store_type` 默认为 `local`，上传时每次读取该配置；文件 key 的类型前缀用于后续下载分发。下载使用 `GET /api/v1/files/{storekey}`，上传和下载均需 Bearer Access Token。V1 不建立文件元数据、不绑定用户，也不提供文件列表、删除和自动清理接口；拥有有效 storekey 的已鉴权用户都能获取对应文件。`oss` 类型已保留 key 路由分支，但当前尚未接入 OSS 后端，切换到 `oss` 后上传和读取会返回 501。
+
+本地文件默认写入 `/var/lib/photo-nini/uploads/<yyyymmdd>/<uuid前三位>/<uuid>.<ext>`，由 Compose 命名卷 `uploaded_files_data` 持久化。`files.local_root` 修改后需重启 API；单文件大小限制 `files.max_upload_bytes` 也是启动时读取。新上传的存储类型每次上传时从配置表重新读取，变更后立即对下一次上传生效。
 
 ### 构建镜像源
 

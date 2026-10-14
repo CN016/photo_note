@@ -26,6 +26,9 @@ type Config struct {
 	AccessTokenTTL        time.Duration
 	RefreshTokenTTL       time.Duration
 	MaxJSONBodyBytes      int64
+	MaxUploadBytes        int64
+	LocalStorageRoot      string
+	ActiveStoreType       string
 	HTTPReadHeaderTimeout time.Duration
 	HTTPReadTimeout       time.Duration
 	HTTPWriteTimeout      time.Duration
