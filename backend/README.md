@@ -14,7 +14,7 @@ API 默认通过宿主机 `127.0.0.1:8089` 提供服务，监听地址、请求�
 
 本地文件默认写入 `/var/lib/photo-nini/uploads/<yyyymmdd>/<uuid前三位>/<uuid>.<ext>`，由 Compose 命名卷 `uploaded_files_data` 持久化。`files.local_root` 修改后需重启 API；单文件大小限制 `files.max_upload_bytes` 也是启动时读取。新上传的存储类型每次上传时从配置表重新读取，变更后立即对下一次上传生效。
 
-灵感图 `POST`/`PATCH` 请求可传 `file_name` 保存原始图片文件名；创建或提交 `image_key` 更新时，若 key 是有效 storekey，API 会读取 JPEG、PNG、GIF 或 WebP 图片。超过 1 MB 的静态图片会压缩并原位覆盖同一 storekey，不生成新 key；不透明图片转为 JPEG，有透明通道的图片保留为 PNG。超过 1 MB 的动画 GIF 或 WebP 会被拒绝。后端随后基于最终存储字节保存 SHA-256（小写 64 位十六进制）到 `file_hash`，并按该字段索引。读取时按文件实际内容返回 MIME 类型和下载扩展名，因此压缩后即使编码格式变化，原 storekey 仍可使用。小于或等于 1 MB 的图片保持原始内容。更换为非 storekey 的 `image_key` 时哈希会清空。现有数据库升级需执行 `backend/migrations/000005_add_inspiration_file_metadata.sql`。
+灵感图 `POST`/`PATCH` 请求可传 `file_name` 保存原始图片文件名；创建或提交 `image_key` 更新时，若 key 是有效 storekey，API 会读取 JPEG、PNG、GIF 或 WebP 图片。超过 1 MB 的静态图片会压缩并原位覆盖同一 storekey，不生成新 key；不透明图片转为 JPEG，有透明通道的图片保留为 PNG。超过 1 MB 的动画 GIF 或 WebP 会被拒绝。后端随后基于最终存储字节保存 SHA-256（小写 64 位十六进制）到 `file_hash`，并按该字段索引；同时将压缩后实际字节数保存到 `file_size`，单位为字节。读取时按文件实际内容返回 MIME 类型和下载扩展名，因此压缩后即使编码格式变化，原 storekey 仍可使用。小于或等于 1 MB 的图片保持原始内容。更换为非 storekey 的 `image_key` 时哈希和大小会清空。现有数据库升级需依次执行 `backend/migrations/000005_add_inspiration_file_metadata.sql` 与 `backend/migrations/000006_add_inspiration_file_size.sql`；历史灵感图的 `file_size` 保持为空。
 
 ### 构建镜像源
 

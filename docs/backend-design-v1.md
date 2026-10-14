@@ -71,9 +71,10 @@ GORM 迁移设置 `DisableForeignKeyConstraintWhenMigrating: true`，模型避�
 | `image_key` | `text` | 非空，保存 OSS key 或由服务管理的文件标识 |
 | `file_name` | `text` | 非空，保存原始文件名；历史记录默认空字符串，最多 255 个字符 |
 | `file_hash` | `varchar(64)` | 可空，保存图片内容 SHA-256 小写十六进制摘要；建立部分 B-tree 索引 |
+| `file_size` | `bigint` | 可空，保存服务端确认或压缩后最终文件大小，单位字节；历史记录和非 storekey 图片为空 |
 | `data` | `jsonb` | 非空，保存灵感图复杂数据；作为对象使用并包含 `schema_version` |
 
-创建或更新灵感图时，服务端一次性检查所有 `tag_ids` 是否存在且属于当前用户；任一标签不合法则整次请求失败。`image_key` 传入本服务格式的 `storekey` 时，服务端读取其内容；超过 1 MB 的静态图片会压缩后原位覆盖，不生成新 key，再根据最终存储字节计算 SHA-256。更新 `image_key` 时重新处理并覆盖旧摘要；非 storekey 的历史 OSS key 等标识不计算哈希，`file_hash` 为空。`file_name` 由客户端传入，服务端只保存文件名部分，不保存客户端本机目录。删除标签时，在同一 PostgreSQL 事务中从该用户的灵感图 `tag_ids` 中移除对应业务 UUID，再删除标签记录。删除灵感图采用物理删除；V1 不引入软删除字段。
+创建或更新灵感图时，服务端一次性检查所有 `tag_ids` 是否存在且属于当前用户；任一标签不合法则整次请求失败。`image_key` 传入本服务格式的 `storekey` 时，服务端读取其内容；超过 1 MB 的静态图片会压缩后原位覆盖，不生成新 key，再根据最终存储字节计算 SHA-256 和文件大小。`file_size` 以字节为单位，表示压缩覆盖完成后的实际大小；小于或等于压缩目标的文件记录其原始字节数。更新 `image_key` 时重新处理并覆盖旧摘要和大小；非 storekey 的历史 OSS key 等标识不计算哈希或大小，两列均为空。`file_name` 由客户端传入，服务端只保存文件名部分，不保存客户端本机目录。删除标签时，在同一 PostgreSQL 事务中从该用户的灵感图 `tag_ids` 中移除对应业务 UUID，再删除标签记录。删除灵感图采用物理删除；V1 不引入软删除字段。
 
 ### 3.5 索引清单
 
@@ -196,7 +197,7 @@ JSON 请求和响应使用 UTF-8；日期时间以 RFC 3339 格式返回。创�
 
 标签创建和更新请求为 `{ "content": "标签内容" }`，内容最多 64 个字符。标签响应为 `{ "business_id": "uuid", "content": "...", "created_at": "...", "updated_at": "..." }`。标签列表的 `data` 为 `{ "items": [...], "page": 1, "page_size": 20, "total": 0 }`。
 
-灵感图创建请求示例：`{ "tag_ids": ["uuid"], "image_key": "local_yyyymmdd_uuid.ext", "file_name": "原始文件名.png", "data": { "schema_version": 1 } }`。`image_key` 为上传接口返回的 storekey 时，后端读取文件；大于 1 MB 的静态图片会原位覆盖压缩后的内容，不改变 storekey，并根据最终字节计算 `file_hash`。创建和显式更新 `image_key` 都会处理。压缩不透明图片会输出 JPEG，带透明像素的图片会输出 PNG；动画 GIF/WebP 大于目标大小时拒绝保存；下载以实际内容而不是 storekey 扩展名设置 MIME 类型。`file_name` 可选，缺省为空字符串，最多 255 个字符。`data` 必须是 JSON 对象并带正整数 `schema_version`；其他编辑数据字段由编辑器文档版本定义并原样保存。灵感图响应对象包含 `business_id`、`tag_ids`、`image_key`、`file_name`、`file_hash`、`data`、`created_at`、`updated_at`。列表使用同一分页结构。
+灵感图创建请求示例：`{ "tag_ids": ["uuid"], "image_key": "local_yyyymmdd_uuid.ext", "file_name": "原始文件名.png", "data": { "schema_version": 1 } }`。`image_key` 为上传接口返回的 storekey 时，后端读取文件；大于 1 MB 的静态图片会原位覆盖压缩后的内容，不改变 storekey，并根据最终字节计算 `file_hash` 和 `file_size`。`file_size` 是压缩后实际存储的字节数，不接受客户端设置；创建和显式更新 `image_key` 都会重新计算。压缩不透明图片会输出 JPEG，带透明像素的图片会输出 PNG；动画 GIF/WebP 大于目标大小时拒绝保存；下载以实际内容而不是 storekey 扩展名设置 MIME 类型。`file_name` 可选，缺省为空字符串，最多 255 个字符。`data` 必须是 JSON 对象并带正整数 `schema_version`；其他编辑数据字段由编辑器文档版本定义并原样保存。灵感图响应对象包含 `business_id`、`tag_ids`、`image_key`、`file_name`、`file_hash`、`file_size`、`data`、`created_at`、`updated_at`。列表使用同一分页结构。
 
 标签检索 `tag_match` 默认 `any`：命中任一指定标签；`all`：必须同时包含所有指定标签；不传 `tag_ids` 时不按标签过滤。`tag_ids` 以重复 query 参数传入，例如 `?tag_ids=uuid1&tag_ids=uuid2&tag_match=all`。用户归属从 token 得出；访问其他用户的资源统一返回 `404`。列表对象和详情对象都只返回业务 UUID，不返回自增 `id`。
 
