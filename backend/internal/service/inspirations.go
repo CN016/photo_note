@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/google/uuid"
+	"github.com/lib/pq"
 	"github.com/photo-nini/backend/internal/domain/fault"
 	"github.com/photo-nini/backend/internal/model"
 )
@@ -91,7 +92,8 @@ func (service *InspirationService) Update(ctx context.Context, userID, inspirati
 		if err := service.inspirations.ValidateTagOwnership(ctx, userID, input.TagIDs); err != nil {
 			return model.Inspiration{}, err
 		}
-		updates["tag_ids"] = uuidStrings(input.TagIDs)
+		// 使用 pq.StringArray 明确编码空数组为 PostgreSQL '{}'，避免驱动将空切片写成 NULL。
+		updates["tag_ids"] = pq.StringArray(uuidStrings(input.TagIDs))
 	}
 	if imageKeySet {
 		imageKey := strings.TrimSpace(input.ImageKey)
