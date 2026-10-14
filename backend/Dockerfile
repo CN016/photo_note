@@ -7,7 +7,7 @@ FROM ${GO_BASE_IMAGE} AS build
 
 WORKDIR /src
 # Go 模块代理只影响构建阶段；默认使用 Go 官方代理，也可由 Compose 构建参数覆盖。
-ARG GOPROXY=https://proxy.golang.org,direct
+ARG GOPROXY=https://goproxy.cn|https://proxy.golang.org|direct
 ENV GOPROXY=${GOPROXY}
 COPY go.mod go.sum ./
 RUN go mod download

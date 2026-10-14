@@ -12,12 +12,12 @@ API 默认通过宿主机 `127.0.0.1:8089` 提供服务，监听地址、请求�
 
 ### 构建镜像源
 
-Compose 默认通过 DaoCloud Docker Hub 代理拉取 Go 和 Alpine 基础镜像，并使用 `goproxy.cn` 下载 Go 模块。Dockerfile 保留 `go.mod`、`go.sum` 独立层，依赖清单未变化时，Docker 可复用 Go 模块下载层。Docker 镜像代理和 Go 模块代理是两项独立设置；如果服务器无法访问默认代理，可在启动 Compose 的 shell 中覆盖：
+Compose 默认通过 DaoCloud Docker Hub 代理拉取 Go 和 Alpine 基础镜像，并先用 `goproxy.cn` 下载 Go 模块；该代理失败时继续尝试 Go 官方模块代理和 direct。Dockerfile 保留 `go.mod`、`go.sum` 独立层，依赖清单未变化时，Docker 可复用 Go 模块下载层。Docker 镜像代理和 Go 模块代理是两项独立设置；如果服务器无法访问默认代理，可在启动 Compose 的 shell 中覆盖：
 
 ```sh
 GO_BASE_IMAGE=golang:1.24-alpine \
 RUNTIME_BASE_IMAGE=alpine:3.22 \
-GOPROXY=https://proxy.golang.org,direct \
+GOPROXY='https://proxy.golang.org,direct' \
 docker compose -f backend/docker-compose.yml up -d --build
 ```
 
@@ -31,7 +31,7 @@ docker compose -f backend/docker-compose.yml up -d --build
 docker buildx build --platform linux/amd64 \
   --build-arg GO_BASE_IMAGE=m.daocloud.io/docker.io/library/golang:1.24-alpine \
   --build-arg RUNTIME_BASE_IMAGE=m.daocloud.io/docker.io/library/alpine:3.22 \
-  --build-arg GOPROXY=https://goproxy.cn,direct \
+  --build-arg 'GOPROXY=https://goproxy.cn|https://proxy.golang.org|direct' \
   --tag photo-nini-api:local --load \
   --file backend/Dockerfile backend
 mkdir -p backend/dist
