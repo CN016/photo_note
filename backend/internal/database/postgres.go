@@ -82,8 +82,8 @@ func checkSchema(ctx context.Context, connection *gorm.DB) error {
 		// 灵感图文件元数据缺失时不能安全创建或更新灵感图，因此启动阶段要求先执行增量迁移。
 		if name == "inspirations" {
 			migrator := connection.WithContext(ctx).Migrator()
-			if !migrator.HasColumn(table, "FileName") || !migrator.HasColumn(table, "FileHash") {
-				return fmt.Errorf("PostgreSQL schema 缺少 inspirations.file_name 或 inspirations.file_hash，请先执行 backend/migrations/000005_add_inspiration_file_metadata.sql")
+			if !migrator.HasColumn(table, "FileName") || !migrator.HasColumn(table, "FileHash") || !migrator.HasColumn(table, "FileSize") {
+				return fmt.Errorf("PostgreSQL schema 缺少灵感图文件元数据列，请按顺序执行 backend/migrations/000005_add_inspiration_file_metadata.sql 和 backend/migrations/000006_add_inspiration_file_size.sql")
 			}
 		}
 	}

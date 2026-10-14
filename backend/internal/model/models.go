@@ -60,7 +60,9 @@ type Inspiration struct {
 	FileName string `gorm:"column:file_name;type:text;not null;default:''"`
 	// FileHash 保存有效 storekey 指向文件的 SHA-256 小写十六进制值；非 storekey 图片为空。
 	FileHash *string `gorm:"column:file_hash;type:varchar(64);index:ix_inspirations_file_hash" json:"-"`
-	Data     JSONB   `gorm:"column:data;type:jsonb;not null"`
+	// FileSize 保存文件经过压缩并写回存储后的字节数；非 storekey 图片和历史记录可为空。
+	FileSize *int64 `gorm:"column:file_size;type:bigint" json:"-"`
+	Data     JSONB  `gorm:"column:data;type:jsonb;not null"`
 }
 
 // TableName 固定灵感图模型使用与版本化建表 SQL 相同的表名。
