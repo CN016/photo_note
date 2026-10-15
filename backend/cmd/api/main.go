@@ -23,8 +23,9 @@ import (
 // main 负责加载环境配置、验证依赖、装配分层组件并执行可优雅退出的 HTTP 服务。
 func main() {
 	if err := run(); err != nil {
-		// 只记录错误类型，避免数据源或 Redis 的错误文本泄露连接凭据。
-		log.Printf("服务启动或运行失败，错误类型=%T", err)
+		// 启动阶段尚可能没有可写入的日志 worker；只输出过滤凭据后的原因摘要以便定位故障。
+		causeType, causeMessage := service.SafeErrorSummary(err)
+		log.Printf("服务启动或运行失败，错误类型=%s 原因=%q", causeType, causeMessage)
 		os.Exit(1)
 	}
 }
@@ -77,8 +78,11 @@ func run() error {
 		return err
 	}
 	notices := service.NewNoticeService(repository, runtimeConfigService)
+	errorLogs := service.NewErrorLogService(repository, runtimeConfigService, notices)
+	notices.SetErrorLogService(errorLogs)
 	inspirations := service.NewInspirationService(repository, fileManager, runtimeConfig.MaxUploadBytes)
 	inspirations.SetCompressionNotifier(notices)
+	inspirations.SetErrorLogService(errorLogs)
 	dependencies := httpapi.Dependencies{
 		Auth:                 service.NewAuthService(repository, tokens, passwords),
 		Users:                service.NewUserService(repository),
@@ -97,6 +101,7 @@ func run() error {
 		Schedule:             service.NewScheduleService(repository, tokens, runtimeConfig.SchedulePerIPPerHour),
 		Notices:              notices,
 		TrustedProxyCIDRs:    runtimeConfig.TrustedProxyCIDRs,
+		ErrorLogs:            errorLogs,
 	}
 	router := httpapi.Router(dependencies)
 	server := &http.Server{
@@ -114,6 +119,20 @@ func run() error {
 	go func() {
 		defer close(noticeWorkerDone)
 		notices.RunDeliveryWorker(shutdownContext)
+	}()
+	errorLogWorkerDone := make(chan struct{})
+	errorLogContext, cancelErrorLogs := context.WithCancel(context.Background())
+	go func() {
+		defer close(errorLogWorkerDone)
+		errorLogs.Run(errorLogContext)
+	}()
+	defer func() {
+		cancelErrorLogs()
+		select {
+		case <-errorLogWorkerDone:
+		case <-time.After(8 * time.Second):
+			log.Printf("event=error_log_shutdown_timeout")
+		}
 	}()
 	serverError := make(chan error, 1)
 	go func() {

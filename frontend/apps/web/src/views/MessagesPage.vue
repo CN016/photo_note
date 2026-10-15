@@ -97,6 +97,7 @@ function selectTab(next: 'inbox' | 'channels') {
 function messageTitle(item: NoticeMessage): string {
   if (item.event_type === 'inspiration.compression.succeeded') return t('compressionSucceeded')
   if (item.event_type === 'inspiration.compression.failed') return t('compressionFailed')
+  if (item.event_type === 'system.error_log.created') return t('errorLogCreated')
   return t('title')
 }
 
@@ -106,6 +107,14 @@ function messageBody(item: NoticeMessage): string {
   }
   if (item.event_type === 'inspiration.compression.failed') {
     return t('version', { version: item.payload.async_version ?? 0 })
+  }
+  if (item.event_type === 'system.error_log.created') {
+    const source = item.payload.source_file || t('errorLogUnknownSource')
+    return t('errorLogBody', {
+      code: item.payload.error_code || 'internal_error',
+      source,
+      line: item.payload.source_line ?? 0,
+    })
   }
   return t('description')
 }
@@ -359,7 +368,7 @@ onBeforeUnmount(() => {
                 <button v-if="delivery.can_retry" class="inline-action" type="button" @click="retryDelivery(delivery)">{{ t('retry') }}</button>
               </div>
             </div>
-            <p v-else class="no-delivery-status">{{ t('noWebhookStatus') }}</p>
+            <p v-else class="no-delivery-status">{{ item.event_type === 'system.error_log.created' ? t('errorLogInternalOnly') : t('noWebhookStatus') }}</p>
 
             <button v-if="item.resource_type === 'inspiration' && item.resource_business_id" class="open-resource" type="button" @click.stop="openMessage(item)">{{ t('goToInspiration') }} <span aria-hidden="true">↗</span></button>
           </div>

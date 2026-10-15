@@ -79,6 +79,7 @@ func checkSchema(ctx context.Context, connection *gorm.DB) error {
 		"notifications":       &model.Notification{},
 		"notice_config":       &model.NoticeConfig{},
 		"notice_deliveries":   &model.NoticeDelivery{},
+		"error_logs":          &model.ErrorLog{},
 	} {
 		if !connection.WithContext(ctx).Migrator().HasTable(table) {
 			if name == "ledger_records" {
@@ -86,6 +87,9 @@ func checkSchema(ctx context.Context, connection *gorm.DB) error {
 			}
 			if name == "notifications" || name == "notice_config" || name == "notice_deliveries" {
 				return fmt.Errorf("PostgreSQL schema 缺少消息中心表 %s，请先执行 backend/migrations/000011_create_notification_center.sql", name)
+			}
+			if name == "error_logs" {
+				return fmt.Errorf("PostgreSQL schema 缺少错误日志表 error_logs，请先执行 backend/migrations/000012_create_error_logs.sql")
 			}
 			return fmt.Errorf("PostgreSQL schema 缺少表 %s，请先执行 backend/migrations 中的版本化 SQL", name)
 		}

@@ -179,6 +179,35 @@ func (service *RuntimeConfigService) CurrentNoticeWebhookLimit(ctx context.Conte
 	return limit, nil
 }
 
+// ErrorLogNotificationSettings 按需读取管理员通知开关和手机号；私有配置缺失时默认不通知。
+func (service *RuntimeConfigService) ErrorLogNotificationSettings(ctx context.Context) (bool, string, error) {
+	values, err := service.reader.ReadConfigValues(ctx, []string{"error_logs.notify_admin", "error_logs.admin_phone"})
+	if err != nil {
+		return false, "", fmt.Errorf("读取错误日志管理员通知配置失败: %w", err)
+	}
+	enabledValue := strings.TrimSpace(values["error_logs.notify_admin"])
+	if enabledValue == "" {
+		return false, "", nil
+	}
+	enabled, err := strconv.ParseBool(enabledValue)
+	if err != nil {
+		return false, "", errors.New("配置项 error_logs.notify_admin 必须是布尔值")
+	}
+	phone := strings.TrimSpace(values["error_logs.admin_phone"])
+	if !enabled || phone == "" {
+		return false, phone, nil
+	}
+	if len(phone) != 11 {
+		return false, "", errors.New("配置项 error_logs.admin_phone 必须是 11 位手机号")
+	}
+	for _, digit := range phone {
+		if digit < '0' || digit > '9' {
+			return false, "", errors.New("配置项 error_logs.admin_phone 必须是 11 位手机号")
+		}
+	}
+	return true, phone, nil
+}
+
 // ListPublicConfigValues 从统一配置 repository 读取已开放配置，并按 key 排序以提供稳定响应顺序。
 // keys 为空时返回全部开放项；指定 key 时，私有项和不存在项都会被 repository 过滤掉。
 func (service *RuntimeConfigService) ListPublicConfigValues(ctx context.Context, keys []string) ([]PublicConfigValue, error) {

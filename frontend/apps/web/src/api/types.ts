@@ -102,7 +102,14 @@ export interface NoticeMessage {
   event_type: string
   resource_type: string
   resource_business_id: string | null
-  payload: { result?: string; async_version?: number; message?: string }
+  payload: {
+    result?: string
+    async_version?: number
+    message?: string
+    error_code?: string
+    source_file?: string
+    source_line?: number
+  }
   read_at: string | null
   created_at: string
   deliveries: NoticeDelivery[]

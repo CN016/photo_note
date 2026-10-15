@@ -28,6 +28,29 @@ type AppConfig struct {
 // TableName 固定配置模型使用与版本化建表 SQL 相同的表名。
 func (AppConfig) TableName() string { return "app_configs" }
 
+// ErrorLog 保存服务端错误的安全诊断信息；不保存请求体、访问令牌或数据库自增关联。
+type ErrorLog struct {
+	BaseModel
+	DedupKey       string     `gorm:"column:dedup_key;type:char(64);not null;index:ix_error_logs_dedup_last_seen,priority:1"`
+	HTTPStatus     int        `gorm:"column:http_status;type:integer;not null"`
+	ErrorCode      string     `gorm:"column:error_code;type:varchar(64);not null"`
+	ErrorMessage   string     `gorm:"column:error_message;type:text;not null"`
+	CauseType      string     `gorm:"column:cause_type;type:varchar(128);not null;default:''"`
+	CauseMessage   string     `gorm:"column:cause_message;type:text;not null;default:''"`
+	SourceFile     string     `gorm:"column:source_file;type:text;not null;default:''"`
+	SourceLine     int        `gorm:"column:source_line;type:integer;not null;default:0"`
+	SourceFunction string     `gorm:"column:source_function;type:text;not null;default:''"`
+	StackTrace     string     `gorm:"column:stack_trace;type:text;not null;default:''"`
+	RequestID      *uuid.UUID `gorm:"column:request_id;type:uuid"`
+	HTTPMethod     string     `gorm:"column:http_method;type:varchar(16);not null;default:''"`
+	HTTPRoute      string     `gorm:"column:http_route;type:text;not null;default:''"`
+	Occurrences    int64      `gorm:"column:occurrence_count;type:bigint;not null;default:1"`
+	LastSeenAt     time.Time  `gorm:"column:last_seen_at;type:timestamptz;not null;index:ix_error_logs_dedup_last_seen,priority:2"`
+}
+
+// TableName 固定错误日志模型使用与版本化迁移 SQL 相同的表名。
+func (ErrorLog) TableName() string { return "error_logs" }
+
 // User 映射用户表；密码哈希仅供认证流程使用，不通过 JSON 序列化。
 type User struct {
 	BaseModel

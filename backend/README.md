@@ -26,7 +26,19 @@ API 默认通过宿主机 `127.0.0.1:8089` 提供服务，监听地址、请求�
 
 通知 API 均需 Bearer Access Token，并从 token 取得用户业务 UUID：`GET /api/v1/notifications?page=1&page_size=20&unread_only=false` 分页查询消息及各渠道投递状态，`GET /api/v1/notifications/unread-count` 读取角标数量，`PATCH /api/v1/notifications/{business_id}/read` 标记单条已读，`POST /api/v1/notifications/read-all` 标记全部已读。配置 API 为 `GET/POST /api/v1/notice-configs`、`PATCH/DELETE /api/v1/notice-configs/{business_id}` 和 `POST /api/v1/notice-configs/{business_id}/test`；测试接口只创建 outbox 并以 202 返回。用 `GET /api/v1/notice-deliveries/{business_id}` 查询投递状态，`POST /api/v1/notice-deliveries/{business_id}/retry` 重新排队最终失败的任务。
 
-后台事件在同一数据库事务中写入站内通知和各启用配置的 webhook outbox，独立 worker 负责外部 HTTP 请求，使用 12 秒超时、拒绝重定向和最多 5 次发送尝试。网络错误、HTTP 状态或平台业务码只转换成安全错误分类，不记录 webhook 地址、签名密钥或远端响应正文。投递失败仍可从站内消息查看并单渠道重试；系统要求事件当前 `image_key` 和 `async_version` 同时匹配，不为已删除或过期版本生成通知。新增数据库需执行 `backend/migrations/000011_create_notification_center.sql`；已有数据库升级前先备份并按迁移顺序手动执行。该迁移创建 `notifications`、`notice_config` 和 `notice_deliveries` 表，不建立外键。
+后台事件在同一数据库事务中写入站内通知和各启用配置的 webhook outbox，独立 worker 负责外部 HTTP 请求，使用 12 秒超时、拒绝重定向和最多 5 次发送尝试。网络错误、HTTP 状态或平台业务码只转换成安全错误分类，不记录 webhook 地址、签名密钥或远端响应正文。投递失败仍可从站内消息查看并单渠道重试；系统要求事件当前 `image_key` 和 `async_version` 同时匹配，不为已删除或过期版本生成通知。新数据库应按序执行 `backend/migrations/000001` 至当前最新迁移；已有数据库升级前先备份并按顺序手动执行所有尚未应用的文件。`000011_create_notification_center.sql` 创建 `notifications`、`notice_config` 和 `notice_deliveries` 表，不建立外键。
+
+### 服务端错误日志与管理员通知
+
+统一 HTTP 5xx、灵感图图片处理后台失败、通知 worker 数据库操作失败会进入 `error_logs` 表。请求线程只生成安全摘要并非阻塞地投递到容量为 512 的内存队列；标准输出、数据库写入、一分钟去重和管理员站内通知由后台 worker 处理。重复键优先按源码文件和行号计算，一分钟内同一代码行的重复只增加 `occurrence_count` 并更新时间；缺少源码位置时才按错误码和原因类型区分。间隔超过一分钟后再次发生会新增一行。PostgreSQL 原因保存 SQLSTATE 等结构化信息，其他原因会遮蔽常见凭据格式，不保存请求正文、上传内容或访问令牌。
+
+迁移 `backend/migrations/000012_create_error_logs.sql` 创建错误日志表，并增加私有配置 `error_logs.notify_admin`（初始为 `true`）和 `error_logs.admin_phone`（初始为空）。需要通知管理员时，将 `error_logs.admin_phone` 更新为已注册用户的 11 位手机号；worker 每条新日志读取配置并按手机号查找用户，找到后只创建该用户的站内通知，不将错误内容发送到 webhook。将 `error_logs.notify_admin` 设为 `false` 可暂停通知。已有数据库应先备份，再按顺序手动执行所有尚未应用的迁移直至 `000012`；API 启动会检查 `error_logs` 表是否存在。
+
+```sql
+UPDATE app_configs
+SET config_value = '<已注册管理员手机号>', updated_at = now()
+WHERE config_key = 'error_logs.admin_phone';
+```
 
 ### 构建镜像源
 

@@ -54,6 +54,7 @@ type NoticeService struct {
 	repository NoticeRepository
 	limits     noticeLimitReader
 	client     *http.Client
+	errorLogs  *ErrorLogService
 }
 
 // NewNoticeService 创建带有限网络超时且拒绝自动跟随重定向的通知服务。
@@ -68,6 +69,11 @@ func NewNoticeService(repository NoticeRepository, limits noticeLimitReader) *No
 			},
 		},
 	}
+}
+
+// SetErrorLogService 接收通知 worker 自身的失败事件，避免后台错误只停留在容器标准输出。
+func (service *NoticeService) SetErrorLogService(errorLogs *ErrorLogService) {
+	service.errorLogs = errorLogs
 }
 
 // PublishInspirationCompressionResult 只发布指定当前版本的终态事件，旧代次或已删除灵感图不产生任何消息。
@@ -93,6 +99,26 @@ func (service *NoticeService) PublishInspirationCompressionResult(ctx context.Co
 		return nil
 	}
 	return err
+}
+
+// PublishErrorLog 为系统配置指定的管理员创建站内消息，不把内部诊断写入管理员的外部 webhook。
+func (service *NoticeService) PublishErrorLog(ctx context.Context, userID uuid.UUID, entry model.ErrorLog) error {
+	payload, err := json.Marshal(map[string]any{
+		"error_code":  entry.ErrorCode,
+		"source_file": entry.SourceFile,
+		"source_line": entry.SourceLine,
+	})
+	if err != nil {
+		return err
+	}
+	eventKey := fmt.Sprintf("system.error_log.created:%s", entry.BusinessID)
+	repository, ok := service.repository.(interface {
+		CreateErrorLogNotification(context.Context, uuid.UUID, uuid.UUID, string, model.JSONB) error
+	})
+	if !ok {
+		return errors.New("error log notification repository is not configured")
+	}
+	return repository.CreateErrorLogNotification(ctx, userID, entry.BusinessID, eventKey, model.JSONB(payload))
 }
 
 // NoticeConfigInput 是新增 webhook 配置的业务输入，不包含用户 ID 或数据库自增 ID。
@@ -361,8 +387,12 @@ func (service *NoticeService) RunDeliveryWorker(ctx context.Context) {
 			if ctx.Err() != nil {
 				return
 			}
-			// 日志只记录安全的操作类型和 Go 错误类型，绝不输出含有凭据的 URL。
-			log.Printf("notice_worker claim_failed error_type=%T", err)
+			// 通知队列异常进入统一错误日志；未装配记录器时仍保留安全的 stdout 诊断。
+			if service.errorLogs != nil {
+				service.errorLogs.CaptureBackground("notice_worker_claim_failed", err)
+			} else {
+				log.Printf("notice_worker claim_failed error_type=%T", err)
+			}
 			claimed = false
 		}
 		if claimed {
@@ -371,7 +401,11 @@ func (service *NoticeService) RunDeliveryWorker(ctx context.Context) {
 			finishErr := service.repository.FinishNoticeDelivery(finishCtx, delivery.BusinessID, delivery.AttemptCount, errorCode == "", errorCode)
 			cancel()
 			if finishErr != nil {
-				log.Printf("notice_worker finish_failed error_type=%T", finishErr)
+				if service.errorLogs != nil {
+					service.errorLogs.CaptureBackground("notice_worker_finish_failed", finishErr)
+				} else {
+					log.Printf("notice_worker finish_failed error_type=%T", finishErr)
+				}
 			}
 			continue
 		}

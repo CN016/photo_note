@@ -320,5 +320,5 @@ func persistenceError(err error) error {
 	if errors.Is(err, gorm.ErrDuplicatedKey) {
 		return fault.Conflict("唯一字段已存在")
 	}
-	return fault.Unavailable(err)
+	return fault.AttachSourceFromCaller(fault.Unavailable(err), 2)
 }

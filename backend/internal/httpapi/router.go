@@ -57,6 +57,7 @@ type Dependencies struct {
 	Schedule             *service.ScheduleService
 	Notices              *service.NoticeService
 	TrustedProxyCIDRs    []string
+	ErrorLogs            *service.ErrorLogService
 }
 
 // fileStorage 是 HTTP 上传和读取使用的文件存储能力，不包含用户归属或文件元数据管理。
@@ -72,10 +73,14 @@ func Router(dependencies Dependencies) *gin.Engine {
 	router.HandleMethodNotAllowed = true
 	// 只有配置表允许的代理网段可声明转发客户端 IP；不可信请求头由 Gin 忽略。
 	if err := router.SetTrustedProxies(dependencies.TrustedProxyCIDRs); err != nil {
-		log.Printf("event=trusted_proxy_config_invalid")
+		if dependencies.ErrorLogs != nil {
+			dependencies.ErrorLogs.CaptureBackground("trusted_proxy_config_invalid", err)
+		} else {
+			log.Printf("event=trusted_proxy_config_invalid")
+		}
 		_ = router.SetTrustedProxies(nil)
 	}
-	router.Use(requestIDMiddleware(), bodyLimitMiddleware(dependencies.MaxBodyBytes), recoveryMiddleware())
+	router.Use(requestIDMiddleware(), errorLogContextMiddleware(dependencies.ErrorLogs), bodyLimitMiddleware(dependencies.MaxBodyBytes), recoveryMiddleware())
 	router.NoRoute(func(c *gin.Context) {
 		writeError(c, fault.NotFound())
 	})
@@ -150,12 +155,22 @@ func Router(dependencies Dependencies) *gin.Engine {
 // claimsKey 是请求上下文中的私有键，避免认证声明与业务上下文值发生冲突。
 type claimsKey struct{}
 
+const errorLogContextKey = "photo_nini_error_log_service"
+
 // requestIDMiddleware 为每次调用生成服务端 UUID，供成功响应、错误响应和安全日志关联。
 func requestIDMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		requestID := uuid.NewString()
 		c.Set("request_id", requestID)
 		c.Header("X-Request-ID", requestID)
+		c.Next()
+	}
+}
+
+// errorLogContextMiddleware 将异步错误日志服务放入 Gin 请求上下文，供统一错误响应记录服务端故障。
+func errorLogContextMiddleware(errorLogs *service.ErrorLogService) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		c.Set(errorLogContextKey, errorLogs)
 		c.Next()
 	}
 }
@@ -175,7 +190,6 @@ func bodyLimitMiddleware(maxBytes int64) gin.HandlerFunc {
 // recoveryMiddleware 将未捕获 panic 转换为统一 500 响应，同时不把 panic 内容返回给客户端。
 func recoveryMiddleware() gin.HandlerFunc {
 	return gin.CustomRecovery(func(c *gin.Context, recovered any) {
-		log.Printf("request_id=%s event=panic", requestID(c))
 		writeError(c, fault.Internal(fmt.Errorf("HTTP handler panic 类型 %T", recovered)))
 	})
 }
@@ -329,7 +343,15 @@ func writeError(c *gin.Context, err error) {
 		appError = fault.Internal(err)
 	}
 	if appError.Status >= http.StatusInternalServerError {
-		log.Printf("request_id=%s status=%d code=%s cause_type=%T", requestID(c), appError.Status, appError.Code, appError.Cause)
+		if value, exists := c.Get(errorLogContextKey); exists {
+			if errorLogs, ok := value.(*service.ErrorLogService); ok && errorLogs != nil {
+				errorLogs.CaptureHTTP(appError, requestID(c), c.Request.Method, c.FullPath())
+			} else {
+				log.Printf("request_id=%s status=%d code=%s cause_type=%T", requestID(c), appError.Status, appError.Code, appError.Cause)
+			}
+		} else {
+			log.Printf("request_id=%s status=%d code=%s cause_type=%T", requestID(c), appError.Status, appError.Code, appError.Cause)
+		}
 	}
 	c.AbortWithStatusJSON(appError.Status, errorEnvelope{
 		Error:     errorBody{Code: appError.Code, Message: appError.Message, Details: appError.Details},

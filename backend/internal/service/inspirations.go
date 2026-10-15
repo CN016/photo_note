@@ -47,6 +47,7 @@ type InspirationFileStore interface {
 type InspirationService struct {
 	inspirations       InspirationRepository
 	files              InspirationFileStore
+	errorLogs          *ErrorLogService
 	compressionNotices InspirationCompressionNotifier
 	maxImageBytes      int64
 	fileLocks          storeKeyLocks
@@ -121,6 +122,11 @@ func NewInspirationService(inspirations InspirationRepository, files Inspiration
 		go service.runCompressionWorker()
 	}
 	return service
+}
+
+// SetErrorLogService 将后台图片处理故障接入统一错误日志表。
+func (service *InspirationService) SetErrorLogService(errorLogs *ErrorLogService) {
+	service.errorLogs = errorLogs
 }
 
 // SetCompressionNotifier 注入异步任务终态发布器；未配置时图片压缩仍可独立运行。
@@ -376,7 +382,11 @@ func (service *InspirationService) runCompressionWorker() {
 		service.compressionMutex.Unlock()
 
 		if err := service.processCompressionJob(job); err != nil {
-			log.Printf("灵感图异步图片处理失败，错误类型=%T", err)
+			if service.errorLogs != nil {
+				service.errorLogs.CaptureBackground("inspiration_compression_failed", err)
+			} else {
+				log.Printf("灵感图异步图片处理失败，错误类型=%T", err)
+			}
 			if service.compressionNotices != nil {
 				service.publishCompressionNotice(job, false)
 			}
@@ -451,7 +461,11 @@ func (service *InspirationService) publishCompressionNotice(job inspirationCompr
 			time.Sleep(250 * time.Millisecond)
 		}
 	}
-	log.Printf("灵感图异步通知创建失败，错误类型=%T", lastErr)
+	if service.errorLogs != nil {
+		service.errorLogs.CaptureBackground("inspiration_compression_notice_failed", lastErr)
+	} else {
+		log.Printf("灵感图异步通知创建失败，错误类型=%T", lastErr)
+	}
 }
 
 // WaitForCompression 等待队列清空，供进程收到退出信号后在超时前完成已接受的图片处理任务。
