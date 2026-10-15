@@ -63,7 +63,7 @@ CREATE INDEX ix_notice_deliveries_notification ON notice_deliveries (user_id, no
 CREATE INDEX ix_notice_deliveries_config ON notice_deliveries (user_id, notice_config_business_id);
 
 INSERT INTO app_configs (business_id, config_key, config_value, description, is_public)
-VALUES ('a7d58d52-8a1d-4a7b-8da2-b5d3b2110011', 'notice.max_webhooks_per_user', '20', '每位用户可创建的 webhook 通知配置总数上限，停用配置仍计入。', false)
+VALUES (gen_random_uuid(), 'notice.max_webhooks_per_user', '20', '每位用户可创建的 webhook 通知配置总数上限，停用配置仍计入。', false)
 ON CONFLICT (config_key) DO NOTHING;
 
 COMMENT ON TABLE notifications IS '站内业务通知表，每条异步业务事件为用户生成一条可读消息。';
