@@ -76,7 +76,9 @@ func run() error {
 	if err != nil {
 		return err
 	}
+	notices := service.NewNoticeService(repository, runtimeConfigService)
 	inspirations := service.NewInspirationService(repository, fileManager, runtimeConfig.MaxUploadBytes)
+	inspirations.SetCompressionNotifier(notices)
 	dependencies := httpapi.Dependencies{
 		Auth:                 service.NewAuthService(repository, tokens, passwords),
 		Users:                service.NewUserService(repository),
@@ -93,6 +95,7 @@ func run() error {
 		Feedback:             service.NewFeedbackService(repository, tokens, runtimeConfig.FeedbackMaxTextChars, runtimeConfig.FeedbackMaxImages, runtimeConfig.FeedbackPerIPPerHour),
 		Ledger:               service.NewLedgerService(repository),
 		Schedule:             service.NewScheduleService(repository, tokens, runtimeConfig.SchedulePerIPPerHour),
+		Notices:              notices,
 		TrustedProxyCIDRs:    runtimeConfig.TrustedProxyCIDRs,
 	}
 	router := httpapi.Router(dependencies)
@@ -107,6 +110,11 @@ func run() error {
 
 	shutdownContext, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
+	noticeWorkerDone := make(chan struct{})
+	go func() {
+		defer close(noticeWorkerDone)
+		notices.RunDeliveryWorker(shutdownContext)
+	}()
 	serverError := make(chan error, 1)
 	go func() {
 		log.Printf("HTTP 服务已启动，监听地址 %s", runtimeConfig.HTTPAddr)
@@ -126,6 +134,11 @@ func run() error {
 		}
 		if err := inspirations.WaitForCompression(shutdown); err != nil {
 			return err
+		}
+		select {
+		case <-noticeWorkerDone:
+		case <-shutdown.Done():
+			return shutdown.Err()
 		}
 		return nil
 	}

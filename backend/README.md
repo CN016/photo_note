@@ -18,6 +18,16 @@ API 默认通过宿主机 `127.0.0.1:8089` 提供服务，监听地址、请求�
 
 账本使用 `ledger_records` 表逐笔保存已完成收支和可恢复草稿；金额在数据库中保存为整数分，API 使用两位小数的十进制字符串。所有 `/api/v1/ledger/*` 接口均需 Bearer Access Token，并从令牌读取用户业务 UUID 限定查询和写入。`GET /api/v1/ledger/records?from=YYYY-MM-DD&to=YYYY-MM-DD` 返回日期范围内的正式记录及当前用户的未完成草稿；`POST /api/v1/ledger/records` 创建草稿，`PATCH /api/v1/ledger/records/{business_id}/draft` 自动保存快照并校验草稿修订号，`POST /api/v1/ledger/records/{business_id}/complete` 完成草稿或应用编辑，`DELETE /api/v1/ledger/records/{business_id}` 删除记录，`POST /api/v1/ledger/import` 在单个事务中导入完整记录。正式分析不包含草稿；编辑已完成记录期间，统计仍按原正式字段计算。旧营收日历 JSON/CSV 导入时类型默认为收入。已有数据库升级前先备份 PostgreSQL，再确认并按顺序应用尚未执行的版本化迁移；账本表迁移为 `backend/migrations/000009_create_ledger_records.sql`，API 不会自动执行 SQL。
 
+### 消息中心与 webhook 通知
+
+登录用户可在共享 Web 应用 `/messages` 页查看灵感图图片处理成功或失败通知、筛选未读消息、标记已读并打开关联灵感图。应用打开期间导航角标约每 30 秒刷新一次，并在应用内提示新消息；不提供浏览器关闭后的系统推送。
+
+用户可在“Webhook 渠道”中创建多个企业微信、钉钉或飞书自定义机器人配置，停用的配置仍计入总数上限。配置数量上限来自私有 `app_configs` 项 `notice.max_webhooks_per_user`，迁移初始值为 20，运行时读取，配置更新后无需重启。支持启停、修改、软删除和异步测试；完整 webhook 地址和签名密钥只在创建/修改时提交，读取只返回平台主机遮罩和是否配置签名。编辑时空白 webhook 地址或签名密钥表示保留原值；清除签名需显式设置 `clear_signing_secret=true`。
+
+通知 API 均需 Bearer Access Token，并从 token 取得用户业务 UUID：`GET /api/v1/notifications?page=1&page_size=20&unread_only=false` 分页查询消息及各渠道投递状态，`GET /api/v1/notifications/unread-count` 读取角标数量，`PATCH /api/v1/notifications/{business_id}/read` 标记单条已读，`POST /api/v1/notifications/read-all` 标记全部已读。配置 API 为 `GET/POST /api/v1/notice-configs`、`PATCH/DELETE /api/v1/notice-configs/{business_id}` 和 `POST /api/v1/notice-configs/{business_id}/test`；测试接口只创建 outbox 并以 202 返回。用 `GET /api/v1/notice-deliveries/{business_id}` 查询投递状态，`POST /api/v1/notice-deliveries/{business_id}/retry` 重新排队最终失败的任务。
+
+后台事件在同一数据库事务中写入站内通知和各启用配置的 webhook outbox，独立 worker 负责外部 HTTP 请求，使用 12 秒超时、拒绝重定向和最多 5 次发送尝试。网络错误、HTTP 状态或平台业务码只转换成安全错误分类，不记录 webhook 地址、签名密钥或远端响应正文。投递失败仍可从站内消息查看并单渠道重试；系统要求事件当前 `image_key` 和 `async_version` 同时匹配，不为已删除或过期版本生成通知。新增数据库需执行 `backend/migrations/000011_create_notification_center.sql`；已有数据库升级前先备份并按迁移顺序手动执行。该迁移创建 `notifications`、`notice_config` 和 `notice_deliveries` 表，不建立外键。
+
 ### 构建镜像源
 
 Compose 默认通过 DaoCloud Docker Hub 代理拉取 Go 和 Alpine 基础镜像，并先用 `goproxy.cn` 下载 Go 模块；该代理失败时继续尝试 Go 官方模块代理和 direct。Dockerfile 保留 `go.mod`、`go.sum` 独立层，依赖清单未变化时，Docker 可复用 Go 模块下载层。Docker 镜像代理和 Go 模块代理是两项独立设置；如果服务器无法访问默认代理，可在启动 Compose 的 shell 中覆盖：

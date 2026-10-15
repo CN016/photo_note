@@ -16,6 +16,7 @@ export const router = createRouter({
     { path: '/inspirations/:id', name: 'edit-inspiration', component: () => import('./views/EditorPage.vue') },
     { path: '/ledger', name: 'ledger', component: () => import('./views/LedgerPage.vue') },
     { path: '/schedule', name: 'schedule', component: () => import('./views/SchedulePage.vue') },
+    { path: '/messages', name: 'messages', component: () => import('./views/MessagesPage.vue') },
     { path: '/profile', name: 'profile', component: () => import('./views/ProfilePage.vue') },
     { path: '/:pathMatch(.*)*', redirect: '/inspirations' },
   ],

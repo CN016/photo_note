@@ -1,4 +1,4 @@
-import { ApiError, type ApiEnvelope, type ApiErrorEnvelope, type AuthResponse, type InspirationRecord, type LedgerFields, type LedgerImportItem, type LedgerImportResult, type LedgerRecord, type ScheduleBooking, type ScheduleBookingReceipt, type ScheduleFields, type ScheduleOccurrence, type SchedulePublicSlot, type ScheduleShare, type PageResult, type TokenPair, type UserProfile } from './types'
+import { ApiError, type ApiEnvelope, type ApiErrorEnvelope, type AuthResponse, type InspirationRecord, type LedgerFields, type LedgerImportItem, type LedgerImportResult, type LedgerRecord, type NoticeConfig, type NoticeConfigList, type NoticeDelivery, type NotificationPage, type PageResult, type ScheduleBooking, type ScheduleBookingReceipt, type ScheduleFields, type ScheduleOccurrence, type SchedulePublicSlot, type ScheduleShare, type TokenPair, type UserProfile } from './types'
 import { API_REQUEST_ORIGIN } from './config'
 
 /** V1 业务路由统一加版本前缀；环境变量只提供服务主机。 */
@@ -198,6 +198,34 @@ export const api = {
   importLedgerRecords(records: LedgerImportItem[]) {
     return request<LedgerImportResult>('/ledger/import', { method: 'POST', body: JSON.stringify({ records }) })
   },
+  /** 按页读取站内通知和相关 webhook 状态。 */
+  notifications(page = 1, pageSize = 20, unreadOnly = false) {
+    return request<NotificationPage>(`/notifications?page=${page}&page_size=${pageSize}&unread_only=${unreadOnly}`)
+  },
+  /** 读取消息中心导航角标。 */
+  unreadNotificationCount() { return request<{ unread_count: number }>('/notifications/unread-count') },
+  /** 把一条站内通知标为已读。 */
+  markNotificationRead(id: string) { return request<{ read: boolean }>(`/notifications/${encodeURIComponent(id)}/read`, { method: 'PATCH' }) },
+  /** 一次性标记所有站内通知已读。 */
+  markAllNotificationsRead() { return request<{ updated: number }>('/notifications/read-all', { method: 'POST' }) },
+  /** 查询 webhook 配置；服务端返回地址遮罩和当前数量上限。 */
+  noticeConfigs() { return request<NoticeConfigList>('/notice-configs') },
+  /** 新建用户自有 webhook；凭据只提交给服务端，不持久化到客户端存储。 */
+  createNoticeConfig(input: { provider: NoticeConfig['provider']; name: string; webhook_url: string; signing_secret: string }) {
+    return request<NoticeConfig>('/notice-configs', { method: 'POST', body: JSON.stringify(input) })
+  },
+  /** 修改配置时空 webhook_url 和 signing_secret 保留服务端已保存值。 */
+  updateNoticeConfig(id: string, patch: { provider?: NoticeConfig['provider']; name?: string; webhook_url?: string; signing_secret?: string; clear_signing_secret?: boolean; enabled?: boolean }) {
+    return request<NoticeConfig>(`/notice-configs/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify(patch) })
+  },
+  /** 软删除当前用户的 webhook 配置。 */
+  deleteNoticeConfig(id: string) { return request<void>(`/notice-configs/${encodeURIComponent(id)}`, { method: 'DELETE' }) },
+  /** 测试消息先入队，响应不等待机器人平台。 */
+  testNoticeConfig(id: string) { return request<NoticeDelivery>(`/notice-configs/${encodeURIComponent(id)}/test`, { method: 'POST' }) },
+  /** 轮询异步测试或通知投递结果。 */
+  noticeDelivery(id: string) { return request<NoticeDelivery>(`/notice-deliveries/${encodeURIComponent(id)}`) },
+  /** 将最终失败的本人投递任务重置为待发送。 */
+  retryNoticeDelivery(id: string) { return request<NoticeDelivery>(`/notice-deliveries/${encodeURIComponent(id)}/retry`, { method: 'POST' }) },
   /** 读取当前用户的日历发生项，日期区间按中国标准时间解释。 */
   scheduleItems(from: string, to: string) { return request<{ items: ScheduleOccurrence[] }>(`/schedule/items?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`) },
   /** 创建工作事项或开放预约时段。 */

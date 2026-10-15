@@ -311,6 +311,9 @@ func (store *PostgresStore) DeleteInspiration(ctx context.Context, userID, inspi
 
 // persistenceError 统一映射数据库错误，绝不把 SQL、字段值或底层驱动诊断回传客户端。
 func persistenceError(err error) error {
+	if err == nil {
+		return nil
+	}
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return fault.NotFound()
 	}

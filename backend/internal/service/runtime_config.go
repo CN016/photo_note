@@ -58,6 +58,7 @@ func (service *RuntimeConfigService) Load(ctx context.Context, base config.Confi
 		"feedback.max_images",
 		"feedback.rate_limit_per_ip_hour",
 		"schedule.booking_rate_limit_per_ip_hour",
+		"notice.max_webhooks_per_user",
 	}
 	values, err := service.reader.ReadConfigValues(ctx, keys)
 	if err != nil {
@@ -116,6 +117,9 @@ func (service *RuntimeConfigService) Load(ctx context.Context, base config.Confi
 	if base.SchedulePerIPPerHour, err = parsePositiveConfigInt("schedule.booking_rate_limit_per_ip_hour", values["schedule.booking_rate_limit_per_ip_hour"], 1000); err != nil {
 		return config.Config{}, err
 	}
+	if _, err = parsePositiveConfigInt("notice.max_webhooks_per_user", values["notice.max_webhooks_per_user"], 1000); err != nil {
+		return config.Config{}, err
+	}
 	if base.HTTPReadHeaderTimeout, err = parseRuntimeDuration("http.read_header_timeout", values["http.read_header_timeout"]); err != nil {
 		return config.Config{}, err
 	}
@@ -160,6 +164,19 @@ func (service *RuntimeConfigService) CurrentFileStoreType(ctx context.Context) (
 		return "", errors.New("配置项 files.active_store_type 只允许 local 或 oss")
 	}
 	return storeType, nil
+}
+
+// CurrentNoticeWebhookLimit 每次读取系统 webhook 总数上限，使配置调整无需重启即可生效。
+func (service *RuntimeConfigService) CurrentNoticeWebhookLimit(ctx context.Context) (int, error) {
+	values, err := service.reader.ReadConfigValues(ctx, []string{"notice.max_webhooks_per_user"})
+	if err != nil {
+		return 0, fmt.Errorf("读取 webhook 配置上限失败: %w", err)
+	}
+	limit, err := parsePositiveConfigInt("notice.max_webhooks_per_user", values["notice.max_webhooks_per_user"], 1000)
+	if err != nil {
+		return 0, err
+	}
+	return limit, nil
 }
 
 // ListPublicConfigValues 从统一配置 repository 读取已开放配置，并按 key 排序以提供稳定响应顺序。

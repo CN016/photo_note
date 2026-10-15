@@ -164,3 +164,55 @@ type ScheduleShare struct {
 
 // TableName 固定分享配置模型使用与版本化 SQL 迁移一致的表名。
 func (ScheduleShare) TableName() string { return "schedule_shares" }
+
+// Notification 保存面向单个用户的站内业务通知，事件载荷仅存放客户端展示所需的非敏感参数。
+type Notification struct {
+	BaseModel
+	UserID             uuid.UUID  `gorm:"column:user_id;type:uuid;not null;index"`
+	EventType          string     `gorm:"column:event_type;type:varchar(64);not null"`
+	EventKey           string     `gorm:"column:event_key;type:varchar(180);not null"`
+	ResourceType       string     `gorm:"column:resource_type;type:varchar(32);not null;default:''"`
+	ResourceBusinessID *uuid.UUID `gorm:"column:resource_business_id;type:uuid"`
+	Payload            JSONB      `gorm:"column:payload;type:jsonb;not null;default:'{}'"`
+	ReadAt             *time.Time `gorm:"column:read_at;type:timestamptz"`
+}
+
+// TableName 固定站内通知模型使用与版本化 SQL 迁移一致的表名。
+func (Notification) TableName() string { return "notifications" }
+
+// NoticeConfig 保存用户私有的群机器人 webhook 配置；网址和签名密钥不得进入 API 响应或日志。
+type NoticeConfig struct {
+	BaseModel
+	UserID        uuid.UUID  `gorm:"column:user_id;type:uuid;not null;index"`
+	Provider      string     `gorm:"column:provider;type:varchar(16);not null"`
+	Name          string     `gorm:"column:config_name;type:varchar(80);not null"`
+	WebhookURL    string     `gorm:"column:webhook_url;type:text;not null" json:"-"`
+	SigningSecret string     `gorm:"column:signing_secret;type:text;not null;default:''" json:"-"`
+	Enabled       bool       `gorm:"column:enabled;type:boolean;not null;default:true"`
+	DeletedAt     *time.Time `gorm:"column:deleted_at;type:timestamptz"`
+}
+
+// TableName 固定用户通知配置模型使用与版本化 SQL 迁移一致的表名。
+func (NoticeConfig) TableName() string { return "notice_config" }
+
+// NoticeDelivery 保存可恢复的 webhook 投递任务、重试状态和安全错误分类，不保存远端响应正文。
+type NoticeDelivery struct {
+	BaseModel
+	UserID                 uuid.UUID  `gorm:"column:user_id;type:uuid;not null;index"`
+	DeliveryKind           string     `gorm:"column:delivery_kind;type:varchar(16);not null"`
+	NotificationBusinessID *uuid.UUID `gorm:"column:notification_business_id;type:uuid"`
+	NoticeConfigBusinessID uuid.UUID  `gorm:"column:notice_config_business_id;type:uuid;not null"`
+	Provider               string     `gorm:"column:provider;type:varchar(16);not null"`
+	ConfigName             string     `gorm:"column:config_name;type:varchar(80);not null"`
+	EventType              string     `gorm:"column:event_type;type:varchar(64);not null"`
+	Payload                JSONB      `gorm:"column:payload;type:jsonb;not null"`
+	Status                 string     `gorm:"column:delivery_status;type:varchar(16);not null;default:'pending'"`
+	AttemptCount           int        `gorm:"column:attempt_count;type:smallint;not null;default:0"`
+	NextAttemptAt          time.Time  `gorm:"column:next_attempt_at;type:timestamptz;not null"`
+	LastAttemptAt          *time.Time `gorm:"column:last_attempt_at;type:timestamptz"`
+	DeliveredAt            *time.Time `gorm:"column:delivered_at;type:timestamptz"`
+	LastErrorCode          string     `gorm:"column:last_error_code;type:varchar(64);not null;default:''"`
+}
+
+// TableName 固定 webhook 投递模型使用与版本化 SQL 迁移一致的表名。
+func (NoticeDelivery) TableName() string { return "notice_deliveries" }

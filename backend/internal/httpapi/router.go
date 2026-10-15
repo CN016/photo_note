@@ -55,6 +55,7 @@ type Dependencies struct {
 	Feedback             *service.FeedbackService
 	Ledger               *service.LedgerService
 	Schedule             *service.ScheduleService
+	Notices              *service.NoticeService
 	TrustedProxyCIDRs    []string
 }
 
@@ -132,6 +133,17 @@ func Router(dependencies Dependencies) *gin.Engine {
 	protected.GET("/schedule/share", getScheduleShareHandler(dependencies.Schedule))
 	protected.POST("/schedule/share", createScheduleShareHandler(dependencies.Schedule))
 	protected.DELETE("/schedule/share", revokeScheduleShareHandler(dependencies.Schedule))
+	protected.GET("/notifications", listNotificationsHandler(dependencies.Notices))
+	protected.GET("/notifications/unread-count", unreadNotificationCountHandler(dependencies.Notices))
+	protected.PATCH("/notifications/:business_id/read", markNotificationReadHandler(dependencies.Notices))
+	protected.POST("/notifications/read-all", markAllNotificationsReadHandler(dependencies.Notices))
+	protected.GET("/notice-configs", listNoticeConfigsHandler(dependencies.Notices))
+	protected.POST("/notice-configs", createNoticeConfigHandler(dependencies.Notices))
+	protected.PATCH("/notice-configs/:business_id", updateNoticeConfigHandler(dependencies.Notices))
+	protected.DELETE("/notice-configs/:business_id", deleteNoticeConfigHandler(dependencies.Notices))
+	protected.POST("/notice-configs/:business_id/test", testNoticeConfigHandler(dependencies.Notices))
+	protected.GET("/notice-deliveries/:business_id", getNoticeDeliveryHandler(dependencies.Notices))
+	protected.POST("/notice-deliveries/:business_id/retry", retryNoticeDeliveryHandler(dependencies.Notices))
 	return router
 }
 

@@ -141,3 +141,14 @@ photo_nini/
 - 按改动选择适当的静态检查、构建或测试；优先验证受影响的功能和平台。
 - 涉及多平台行为时，记录每个平台的验证结果；当前环境无法运行的平台应标为未验证。
 - 完成说明应列出主要改动、实际执行的验证及结果，以及重要限制，并链接到对应改动记录。
+
+## 9. 消息中心与 webhook 通知使用规范
+
+- 登录后从侧边栏或手机底部导航进入 `/messages`。站内消息默认长期保留；导航未读角标会在应用打开时定时刷新，新消息会显示应用内提示。打开灵感图处理通知可跳转到对应灵感图，消息列表支持全部/未读筛选、单条已读和全部已读。
+- 用户在“Webhook 渠道”中可新增多个企业微信、钉钉或飞书自定义机器人，填写名称、平台官方 HTTPS webhook 地址，并按平台需要填写签名密钥；企业微信不使用签名密钥字段。保存后完整地址和密钥不会再次显示，编辑时空地址/空密钥表示保留原值，只有显式勾选清除才清除已保存密钥。用户可以启停、修改、删除配置或发送异步测试消息。
+- 新增配置数量上限读取私有系统项 `notice.max_webhooks_per_user`，初始值为 20；启用和停用配置都会计入，软删除配置不计入。调整该值经统一配置服务生效，不需要修改业务常量或重启。
+- 测试消息提交后页面会异步刷新状态；普通业务消息在站内消息中分别显示各渠道的排队、发送、送达、重试、失败或取消状态。最终失败的投递可单独重试。接口使用 `GET /api/v1/notice-deliveries/{business_id}` 查询结果，`POST /api/v1/notice-deliveries/{business_id}/retry` 重试；所有消息和配置接口都从 Access Token 获取用户范围。
+- 新增业务通知时，由后台业务 service 注入 `NoticeService` 并调用 `PublishInspirationCompressionResult` 同类的业务事件发布方法。业务服务只负责提交事件和安全载荷；事件发布事务会同时保存站内通知与每个启用配置的 outbox 任务，外网发送由独立 worker 异步执行，业务 HTTP handler 不得直接等待 webhook。耗时任务只有当前业务版本仍匹配时才能发布完成或失败事件，事件键必须稳定以保证幂等。
+- webhook 适配按平台维护在 `backend/internal/service/notices.go`：生成对应机器人的请求 JSON 和签名，地址校验只允许受支持的官方 HTTPS 主机；客户端禁止重定向。不得在日志、错误响应、消息载荷或 API DTO 中写入完整地址、query/path 凭据、签名密钥或远端响应正文，只保存安全错误分类。
+- 新增可见通知类型时，为类型设计稳定 `event_type`，更新 `frontend/apps/web/src/i18n/messages.zh-CN.json` 与 `messages.en-US.json` 中相同键的中英文标题、正文和错误状态，并在 `frontend/apps/web/src/i18n/index.ts` 登记页面命名空间。仅导航标签等跨页面公共文案放入 `common.zh-CN.json` 和 `common.en-US.json`；页面可见文案不得硬编码。
+- 消息表、用户配置表和 webhook outbox 的结构变更必须使用 `backend/migrations/` 新增带中文表/字段注释且无外键的版本化 SQL，并同步更新 API 文档和 `docs/` 改动记录。

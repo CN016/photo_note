@@ -45,14 +45,20 @@ type InspirationFileStore interface {
 
 // InspirationService 校验编辑数据、标签归属和图片文件信息，所有资源范围来自 access token 用户 UUID。
 type InspirationService struct {
-	inspirations      InspirationRepository
-	files             InspirationFileStore
-	maxImageBytes     int64
-	fileLocks         storeKeyLocks
-	compressionMutex  sync.Mutex
-	compressionCond   *sync.Cond
-	compressionJobs   []inspirationCompressionJob
-	compressionActive int
+	inspirations       InspirationRepository
+	files              InspirationFileStore
+	compressionNotices InspirationCompressionNotifier
+	maxImageBytes      int64
+	fileLocks          storeKeyLocks
+	compressionMutex   sync.Mutex
+	compressionCond    *sync.Cond
+	compressionJobs    []inspirationCompressionJob
+	compressionActive  int
+}
+
+// InspirationCompressionNotifier 只接收可展示的异步处理终态，外部 webhook 本身由 notice outbox worker 独立发送。
+type InspirationCompressionNotifier interface {
+	PublishInspirationCompressionResult(context.Context, uuid.UUID, uuid.UUID, string, int64, bool) error
 }
 
 const (
@@ -115,6 +121,11 @@ func NewInspirationService(inspirations InspirationRepository, files Inspiration
 		go service.runCompressionWorker()
 	}
 	return service
+}
+
+// SetCompressionNotifier 注入异步任务终态发布器；未配置时图片压缩仍可独立运行。
+func (service *InspirationService) SetCompressionNotifier(notifier InspirationCompressionNotifier) {
+	service.compressionNotices = notifier
 }
 
 // InspirationInput 是创建或局部更新时已解析的业务数据，不包含 user_id 或数据库 id。
@@ -366,6 +377,9 @@ func (service *InspirationService) runCompressionWorker() {
 
 		if err := service.processCompressionJob(job); err != nil {
 			log.Printf("灵感图异步图片处理失败，错误类型=%T", err)
+			if service.compressionNotices != nil {
+				service.publishCompressionNotice(job, false)
+			}
 		}
 
 		service.compressionMutex.Lock()
@@ -412,9 +426,32 @@ func (service *InspirationService) processCompressionJob(job inspirationCompress
 			return mapInspirationFileError(err)
 		}
 	}
-	_, err = service.inspirations.UpdateInspirationFileMetadataIfVersion(ctx, job.userID, job.inspirationID,
+	updated, err := service.inspirations.UpdateInspirationFileMetadataIfVersion(ctx, job.userID, job.inspirationID,
 		job.imageKey, job.asyncVersion, compressed.metadata.fileHash, compressed.metadata.fileSize)
-	return err
+	if err != nil || !updated {
+		return err
+	}
+	if service.compressionNotices != nil {
+		service.publishCompressionNotice(job, true)
+	}
+	return nil
+}
+
+// publishCompressionNotice 在后台有限重试创建终态通知；通知存储短暂不可用时不把成功压缩误报成失败。
+func (service *InspirationService) publishCompressionNotice(job inspirationCompressionJob, succeeded bool) {
+	var lastErr error
+	for attempt := 0; attempt < 3; attempt++ {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		lastErr = service.compressionNotices.PublishInspirationCompressionResult(ctx, job.userID, job.inspirationID, job.imageKey, job.asyncVersion, succeeded)
+		cancel()
+		if lastErr == nil {
+			return
+		}
+		if attempt < 2 {
+			time.Sleep(250 * time.Millisecond)
+		}
+	}
+	log.Printf("灵感图异步通知创建失败，错误类型=%T", lastErr)
 }
 
 // WaitForCompression 等待队列清空，供进程收到退出信号后在超时前完成已接受的图片处理任务。

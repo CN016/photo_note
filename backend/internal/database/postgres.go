@@ -67,19 +67,25 @@ func postgresDSN(cfg config.Config) string {
 // checkSchema 只读取数据库目录，不自动建表；缺表或发现外键时让进程启动失败并提示修复 SQL。
 func checkSchema(ctx context.Context, connection *gorm.DB) error {
 	for name, table := range map[string]any{
-		"app_configs":    &model.AppConfig{},
-		"users":          &model.User{},
-		"tags":           &model.Tag{},
-		"inspirations":   &model.Inspiration{},
+		"app_configs":         &model.AppConfig{},
+		"users":               &model.User{},
+		"tags":                &model.Tag{},
+		"inspirations":        &model.Inspiration{},
 		"ledger_records":      &model.LedgerRecord{},
 		"schedule_items":      &model.ScheduleItem{},
 		"schedule_exceptions": &model.ScheduleException{},
 		"schedule_bookings":   &model.ScheduleBooking{},
 		"schedule_shares":     &model.ScheduleShare{},
+		"notifications":       &model.Notification{},
+		"notice_config":       &model.NoticeConfig{},
+		"notice_deliveries":   &model.NoticeDelivery{},
 	} {
 		if !connection.WithContext(ctx).Migrator().HasTable(table) {
 			if name == "ledger_records" {
 				return fmt.Errorf("PostgreSQL schema 缺少表 ledger_records，请先执行 backend/migrations/000009_create_ledger_records.sql")
+			}
+			if name == "notifications" || name == "notice_config" || name == "notice_deliveries" {
+				return fmt.Errorf("PostgreSQL schema 缺少消息中心表 %s，请先执行 backend/migrations/000011_create_notification_center.sql", name)
 			}
 			return fmt.Errorf("PostgreSQL schema 缺少表 %s，请先执行 backend/migrations 中的版本化 SQL", name)
 		}

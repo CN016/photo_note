@@ -84,6 +84,56 @@ export interface LedgerImportResult {
   updated: number
 }
 
+/** webhook 单渠道的异步投递状态；错误码不含远端响应正文或连接地址。 */
+export interface NoticeDelivery {
+  business_id: string
+  provider: 'wecom' | 'dingtalk' | 'feishu'
+  config_name: string
+  status: 'pending' | 'sending' | 'retry' | 'delivered' | 'failed' | 'cancelled'
+  attempt_count: number
+  last_error_code: string
+  can_retry: boolean
+  updated_at: string
+}
+
+/** 消息中心只暴露关联业务 UUID、翻译键所需事件类型和每渠道结果。 */
+export interface NoticeMessage {
+  business_id: string
+  event_type: string
+  resource_type: string
+  resource_business_id: string | null
+  payload: { result?: string; async_version?: number; message?: string }
+  read_at: string | null
+  created_at: string
+  deliveries: NoticeDelivery[]
+}
+
+export interface NotificationPage {
+  items: NoticeMessage[]
+  page: number
+  page_size: number
+  total: number
+  unread_count: number
+}
+
+/** webhook 地址和签名不回显，只提供脱敏地址与是否已设置签名。 */
+export interface NoticeConfig {
+  business_id: string
+  provider: 'wecom' | 'dingtalk' | 'feishu'
+  name: string
+  webhook_masked: string
+  secret_configured: boolean
+  enabled: boolean
+  created_at: string
+  updated_at: string
+}
+
+export interface NoticeConfigList {
+  items: NoticeConfig[]
+  maximum: number
+  count: number
+}
+
 /** 档期主记录字段；重复规则日期使用中国标准时间语义。 */
 export interface ScheduleFields {
   kind: 'work' | 'availability'

@@ -31,6 +31,7 @@ declare module 'vue' {
     ElRadioGroup: typeof import('element-plus/es')['ElRadioGroup']
     ElSelect: typeof import('element-plus/es')['ElSelect']
     ElSlider: typeof import('element-plus/es')['ElSlider']
+    ElSwitch: typeof import('element-plus/es')['ElSwitch']
     ElUpload: typeof import('element-plus/es')['ElUpload']
     FeedbackWidget: typeof import('./src/components/FeedbackWidget.vue')['default']
     InspirationThumbnail: typeof import('./src/components/InspirationThumbnail.vue')['default']
