@@ -1,0 +1,19 @@
+{
+  "title": "档期管理",
+  "subtitle": "在日历里安排工作、开放预约时段，并处理客户申请。",
+  "loading": "正在读取档期…",
+  "loadError": "档期暂时无法读取，请稍后重试。",
+  "retry": "重试",
+  "views": { "month": "月历", "seven": "最近 7 天", "fourteen": "最近 14 天", "custom": "自定义天数", "days": "天" },
+  "weekdays": ["周一", "周二", "周三", "周四", "周五", "周六", "周日"],
+  "actions": {
+    "today": "今天", "previous": "上一段", "next": "下一段", "add": "新增档期", "addWork": "新增工作事项", "addAvailability": "开放预约时段", "edit": "编辑", "delete": "删除整个系列", "cancelOccurrence": "只取消这一天", "save": "保存档期", "close": "关闭", "refresh": "刷新", "share": "创建预约分享链接", "rotateShare": "重新生成链接", "revokeShare": "撤销链接", "copy": "复制链接", "confirm": "确认申请", "reject": "拒绝申请", "cancelBooking": "取消预约", "submit": "提交预约申请", "book": "申请此时段"
+  },
+  "calendar": { "noItems": "这一天还没有档期。", "noRangeItems": "所选日期范围内没有档期。", "details": "日期详情", "more": "还有 {count} 项", "allDay": "全天", "month": "月历", "week": "周" },
+  "form": {
+    "newTitle": "新增档期", "editTitle": "编辑档期", "kind": "档期类型", "work": "工作事项", "availability": "开放预约时段", "title": "标题", "titlePlaceholder": "例如：拍摄、咨询", "content": "内容", "contentPlaceholder": "补充说明", "start": "开始时间", "end": "结束时间", "recurrence": "重复", "none": "不重复", "daily": "每天", "weekly": "每周指定星期", "monthly": "每月同一日", "weekdays": "重复星期", "recurrenceEnd": "重复结束日期", "recurrenceEndHelp": "开放预约的重复档期需要设置结束日期。", "capacity": "可预约人数", "capacityHelp": "每份申请占 1 位，待确认申请保留 24 小时。", "occurrenceEdit": "只修改 {date} 这一次", "conflict": "开放时段不能与工作事项或其他开放时段重叠。", "saved": "档期已保存。", "deleted": "档期已删除。", "validation": "请检查标题、时间和重复规则。", "confirmDelete": "删除整个重复系列及其单次例外？历史预约申请会保留。"
+  },
+  "share": { "title": "客户预约链接", "enabled": "链接已启用", "disabled": "尚未创建分享链接", "created": "预约链接已生成，请复制后分享给客户。", "copied": "已复制预约链接。", "revoked": "预约链接已撤销。", "failed": "无法更新预约链接。", "help": "访客无需注册；新的链接会立即替换旧链接。" },
+  "bookings": { "title": "客户申请", "empty": "暂无申请。", "guest": "联系人", "phone": "手机号", "note": "备注", "requestCode": "申请编号", "expires": "保留至", "confirmed": "预约已确认。", "rejected": "申请已拒绝。", "cancelled": "预约已取消。", "failed": "无法处理该申请。", "pending": "待确认", "confirmedStatus": "已确认", "rejectedStatus": "已拒绝", "expired": "已过期", "cancelledStatus": "已取消" },
+  "public": { "title": "预约时段", "subtitle": "选择合适的开放时段，提交后等待档期拥有者联系你。", "loading": "正在读取可预约时段…", "unavailable": "此预约链接已失效或暂不可用。", "empty": "近期没有可预约时段。", "remaining": "剩余 {count} 位", "full": "名额已满", "name": "姓名", "phone": "手机号", "note": "备注（选填）", "notePlaceholder": "告诉对方你想预约的事项", "submit": "提交申请", "success": "申请已提交", "receipt": "请记下申请编号：{code}", "pendingHelp": "申请名额保留 24 小时，档期拥有者会线下联系你。", "required": "请填写姓名和手机号。", "submitFailed": "提交失败，时段可能已满；请刷新后重试。" }
+}

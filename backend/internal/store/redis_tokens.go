@@ -305,8 +305,18 @@ func (store *TokenStore) IndexExistingSessions(ctx context.Context) error {
 
 // CheckFeedbackLimit 使用 IP 摘要执行滚动一小时计数，不在 Redis 键或日志中保存原始 IP。
 func (store *TokenStore) CheckFeedbackLimit(ctx context.Context, clientIP string, limit int) (bool, error) {
+	return store.checkIPRateLimit(ctx, "feedback", clientIP, limit)
+}
+
+// CheckScheduleBookingLimit 用独立 Redis 命名空间限制公开预约申请，不与反馈额度互相占用。
+func (store *TokenStore) CheckScheduleBookingLimit(ctx context.Context, clientIP string, limit int) (bool, error) {
+	return store.checkIPRateLimit(ctx, "schedule-booking", clientIP, limit)
+}
+
+// checkIPRateLimit 以 IP 摘要执行滚动一小时计数，Redis 不保存原始网络地址。
+func (store *TokenStore) checkIPRateLimit(ctx context.Context, namespace, clientIP string, limit int) (bool, error) {
 	digest := sha256.Sum256([]byte(clientIP))
-	key := "feedback:ip:" + hex.EncodeToString(digest[:])
+	key := namespace + ":ip:" + hex.EncodeToString(digest[:])
 	entryID := uuid.NewString()
 	const rateLimitScript = `
 		local current = redis.call('TIME')

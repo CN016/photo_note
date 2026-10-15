@@ -555,7 +555,7 @@ button.image-anchor:hover .image-anchor-label { background: rgb(20 22 23 / 64%);
 @media (max-width: 768px) {
   .app-navigation { inset: auto 0 0; width: 100%; height: calc(64px + env(safe-area-inset-bottom)); padding: 0 8px env(safe-area-inset-bottom); border-top: 1px solid var(--line); border-right: 0; background: color-mix(in srgb, var(--surface) 96%, transparent); backdrop-filter: blur(16px); }
   .app-navigation > .brand-lockup, .desktop-nav, .navigation-account { display: none; }
-  .mobile-nav { display: grid; height: 64px; grid-template-columns: repeat(4, 1fr); align-items: stretch; }
+  .mobile-nav { display: grid; height: 64px; grid-template-columns: repeat(5, 1fr); align-items: stretch; }
   .mobile-nav-item { display: grid; align-content: center; justify-items: center; gap: 2px; color: var(--muted); text-decoration: none; }
   .mobile-nav-item > span { font-size: 20px; line-height: 1.15; }
   .mobile-nav-item > small { font-size: 10px; }

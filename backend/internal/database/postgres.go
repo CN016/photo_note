@@ -71,7 +71,11 @@ func checkSchema(ctx context.Context, connection *gorm.DB) error {
 		"users":          &model.User{},
 		"tags":           &model.Tag{},
 		"inspirations":   &model.Inspiration{},
-		"ledger_records": &model.LedgerRecord{},
+		"ledger_records":      &model.LedgerRecord{},
+		"schedule_items":      &model.ScheduleItem{},
+		"schedule_exceptions": &model.ScheduleException{},
+		"schedule_bookings":   &model.ScheduleBooking{},
+		"schedule_shares":     &model.ScheduleShare{},
 	} {
 		if !connection.WithContext(ctx).Migrator().HasTable(table) {
 			if name == "ledger_records" {

@@ -1,4 +1,4 @@
-import { ApiError, type ApiEnvelope, type ApiErrorEnvelope, type AuthResponse, type InspirationRecord, type LedgerFields, type LedgerImportItem, type LedgerImportResult, type LedgerRecord, type PageResult, type TokenPair, type UserProfile } from './types'
+import { ApiError, type ApiEnvelope, type ApiErrorEnvelope, type AuthResponse, type InspirationRecord, type LedgerFields, type LedgerImportItem, type LedgerImportResult, type LedgerRecord, type ScheduleBooking, type ScheduleBookingReceipt, type ScheduleFields, type ScheduleOccurrence, type SchedulePublicSlot, type ScheduleShare, type PageResult, type TokenPair, type UserProfile } from './types'
 import { API_REQUEST_ORIGIN } from './config'
 
 /** V1 业务路由统一加版本前缀；环境变量只提供服务主机。 */
@@ -198,6 +198,34 @@ export const api = {
   importLedgerRecords(records: LedgerImportItem[]) {
     return request<LedgerImportResult>('/ledger/import', { method: 'POST', body: JSON.stringify({ records }) })
   },
+  /** 读取当前用户的日历发生项，日期区间按中国标准时间解释。 */
+  scheduleItems(from: string, to: string) { return request<{ items: ScheduleOccurrence[] }>(`/schedule/items?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`) },
+  /** 创建工作事项或开放预约时段。 */
+  createScheduleItem(fields: ScheduleFields) { return request<ScheduleOccurrence>('/schedule/items', { method: 'POST', body: JSON.stringify(fields) }) },
+  /** 更新整个重复系列。 */
+  updateScheduleItem(id: string, fields: ScheduleFields) { return request<ScheduleOccurrence>(`/schedule/items/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify(fields) }) },
+  /** 删除整个档期系列。 */
+  deleteScheduleItem(id: string) { return request<void>(`/schedule/items/${encodeURIComponent(id)}`, { method: 'DELETE' }) },
+  /** 仅覆盖重复系列的一个日期。 */
+  updateScheduleOccurrence(id: string, date: string, fields: ScheduleFields) { return request<{ updated: boolean }>(`/schedule/items/${encodeURIComponent(id)}/occurrences/${encodeURIComponent(date)}`, { method: 'PATCH', body: JSON.stringify({ ...fields, recurrence: 'none', recurrence_end: '' }) }) },
+  /** 仅取消重复系列的一个日期。 */
+  cancelScheduleOccurrence(id: string, date: string) { return request<{ cancelled: boolean }>(`/schedule/items/${encodeURIComponent(id)}/occurrences/${encodeURIComponent(date)}`, { method: 'DELETE' }) },
+  /** 读取当前用户的预约申请队列。 */
+  scheduleBookings(status = 'pending') { return request<{ items: ScheduleBooking[] }>(`/schedule/bookings?status=${encodeURIComponent(status)}`) },
+  /** 确认或拒绝访客申请。 */
+  decideScheduleBooking(id: string, decision: 'confirm' | 'reject') { return request<{ status: string }>(`/schedule/bookings/${encodeURIComponent(id)}/${decision}`, { method: 'POST' }) },
+  /** 取消待确认或已确认申请，并释放一个预约名额。 */
+  cancelScheduleBooking(id: string) { return request<{ status: string }>(`/schedule/bookings/${encodeURIComponent(id)}/cancel`, { method: 'POST' }) },
+  /** 查询当前预约分享链接是否启用。 */
+  scheduleShare() { return request<ScheduleShare>('/schedule/share') },
+  /** 生成新随机分享地址并使旧链接失效。 */
+  createScheduleShare() { return request<ScheduleShare>('/schedule/share', { method: 'POST' }) },
+  /** 撤销公开预约分享链接。 */
+  revokeScheduleShare() { return request<{ enabled: boolean }>('/schedule/share', { method: 'DELETE' }) },
+  /** 游客读取分享用户的开放时段，接口不携带登录令牌。 */
+  publicScheduleSlots(token: string, from: string, to: string) { return request<{ items: SchedulePublicSlot[] }>(`/book/${encodeURIComponent(token)}/slots?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`, {}, false) },
+  /** 游客提交姓名、电话、备注和具体开放发生项。 */
+  requestScheduleBooking(token: string, input: { schedule_id: string; start_at: string; name: string; phone: string; note: string }) { return request<ScheduleBookingReceipt>(`/book/${encodeURIComponent(token)}/requests`, { method: 'POST', body: JSON.stringify(input) }, false) },
   /** 创建灵感图；image_key 指向服务端可能压缩的工作副本。 */
   createInspiration(imageKey: string, filename: string, data: Record<string, unknown>) {
     return request<InspirationRecord>('/inspirations', { method: 'POST', body: JSON.stringify({ image_key: imageKey, file_name: filename, data }) })

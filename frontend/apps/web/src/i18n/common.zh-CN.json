@@ -21,6 +21,7 @@
   "inspirations": "灵感图",
   "create": "新建",
   "ledger": "收支账本",
+  "schedule": "档期管理",
   "footer": "为灵感留一处空间",
   "logoutFailed": "本机已退出登录，但服务端未确认会话撤销；网络恢复后请重新登录以关闭旧会话。",
   "copyright": "© 2026 Photo Nini · 为灵感留一处空间",

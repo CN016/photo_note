@@ -100,3 +100,67 @@ type LedgerRecord struct {
 
 // TableName 固定账本记录模型使用与版本化迁移相同的表名。
 func (LedgerRecord) TableName() string { return "ledger_records" }
+
+// ScheduleItem 保存用户的工作事项或开放预约时段；重复规则按中国标准时间展开。
+type ScheduleItem struct {
+	BaseModel
+	UserID             uuid.UUID     `gorm:"column:user_id;type:uuid;not null;index"`
+	Kind               string        `gorm:"column:item_kind;type:varchar(16);not null"`
+	Title              string        `gorm:"column:title;type:varchar(120);not null"`
+	Content            string        `gorm:"column:content;type:text;not null;default:''"`
+	StartAt            time.Time     `gorm:"column:start_at;type:timestamptz;not null"`
+	EndAt              time.Time     `gorm:"column:end_at;type:timestamptz;not null"`
+	Recurrence         string        `gorm:"column:recurrence;type:varchar(16);not null;default:'none'"`
+	RecurrenceWeekdays pq.Int64Array `gorm:"column:recurrence_weekdays;type:integer[];not null;default:ARRAY[]::integer[]"`
+	RecurrenceEnd      *time.Time    `gorm:"column:recurrence_end;type:date"`
+	Capacity           int           `gorm:"column:capacity;type:integer;not null;default:1"`
+}
+
+// TableName 固定档期模型使用与版本化 SQL 迁移一致的表名。
+func (ScheduleItem) TableName() string { return "schedule_items" }
+
+// ScheduleException 保存某个重复档期发生项的取消或覆盖内容，不修改整个重复系列。
+type ScheduleException struct {
+	BaseModel
+	UserID             uuid.UUID  `gorm:"column:user_id;type:uuid;not null;index"`
+	ScheduleBusinessID uuid.UUID  `gorm:"column:schedule_business_id;type:uuid;not null;index"`
+	OccurrenceDate     time.Time  `gorm:"column:occurrence_date;type:date;not null"`
+	Action             string     `gorm:"column:exception_action;type:varchar(16);not null"`
+	Title              *string    `gorm:"column:title;type:varchar(120)"`
+	Content            *string    `gorm:"column:content;type:text"`
+	StartAt            *time.Time `gorm:"column:start_at;type:timestamptz"`
+	EndAt              *time.Time `gorm:"column:end_at;type:timestamptz"`
+	Capacity           *int       `gorm:"column:capacity;type:integer"`
+}
+
+// TableName 固定单次例外模型使用与版本化 SQL 迁移一致的表名。
+func (ScheduleException) TableName() string { return "schedule_exceptions" }
+
+// ScheduleBooking 保存访客对一个具体发生项的申请；游客联系方式只用于拥有者线下联系。
+type ScheduleBooking struct {
+	BaseModel
+	UserID             uuid.UUID  `gorm:"column:user_id;type:uuid;not null;index"`
+	ScheduleBusinessID uuid.UUID  `gorm:"column:schedule_business_id;type:uuid;not null;index"`
+	OccurrenceStart    time.Time  `gorm:"column:occurrence_start;type:timestamptz;not null"`
+	OccurrenceEnd      time.Time  `gorm:"column:occurrence_end;type:timestamptz;not null"`
+	GuestName          string     `gorm:"column:guest_name;type:varchar(80);not null"`
+	GuestPhone         string     `gorm:"column:guest_phone;type:varchar(32);not null"`
+	Note               string     `gorm:"column:note;type:varchar(1000);not null;default:''"`
+	Status             string     `gorm:"column:booking_status;type:varchar(16);not null;default:'pending'"`
+	RequestCode        string     `gorm:"column:request_code;type:varchar(12);not null;uniqueIndex"`
+	ExpiresAt          *time.Time `gorm:"column:expires_at;type:timestamptz"`
+}
+
+// TableName 固定预约申请模型使用与版本化 SQL 迁移一致的表名。
+func (ScheduleBooking) TableName() string { return "schedule_bookings" }
+
+// ScheduleShare 只保存公开随机令牌的 SHA-256 摘要；撤销后原链接立即失效。
+type ScheduleShare struct {
+	BaseModel
+	UserID    uuid.UUID `gorm:"column:user_id;type:uuid;not null;uniqueIndex"`
+	TokenHash string    `gorm:"column:token_hash;type:char(64);not null;uniqueIndex"`
+	Enabled   bool      `gorm:"column:enabled;type:boolean;not null;default:true"`
+}
+
+// TableName 固定分享配置模型使用与版本化 SQL 迁移一致的表名。
+func (ScheduleShare) TableName() string { return "schedule_shares" }

@@ -92,6 +92,7 @@ func run() error {
 		PublicConfigs:        runtimeConfigService,
 		Feedback:             service.NewFeedbackService(repository, tokens, runtimeConfig.FeedbackMaxTextChars, runtimeConfig.FeedbackMaxImages, runtimeConfig.FeedbackPerIPPerHour),
 		Ledger:               service.NewLedgerService(repository),
+		Schedule:             service.NewScheduleService(repository, tokens, runtimeConfig.SchedulePerIPPerHour),
 		TrustedProxyCIDRs:    runtimeConfig.TrustedProxyCIDRs,
 	}
 	router := httpapi.Router(dependencies)

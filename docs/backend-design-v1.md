@@ -220,6 +220,27 @@ JSON 请求和响应使用 UTF-8；日期时间以 RFC 3339 格式返回。创�
 
 ## 6. 验收与未覆盖内容
 
+### 档期管理与客户预约
+
+后端 `2.2.0` 增加独立的档期模块，与收支账本表及接口相互隔离。`schedule_items` 保存工作事项和开放预约时段；`schedule_exceptions` 保存重复系列中单个发生日期的取消或覆盖；`schedule_bookings` 保存访客申请和拥有者处理状态；`schedule_shares` 保存分享令牌摘要。四张业务表均具有标准业务字段、唯一 `business_id` 和中文表/字段注释，不创建外键。`000010_schedule_management.sql` 还新增私有配置 `schedule.booking_rate_limit_per_ip_hour`，初始值为每 IP 每小时 10 次。
+
+所有日期参数和重复规则都按 `Asia/Shanghai` 解释。`none`、`daily`、`weekly` 和 `monthly` 分别表示单次、每日、每周指定星期和每月相同日期；月末不存在目标日期时跳过该次。重复开放时段必须设置结束日期，以便系统在整个有效周期内检查其与工作事项及其他开放时段的冲突；重复工作事项可不设置结束日期。工作事项彼此允许重叠。
+
+拥有者接口位于受保护的 `/api/v1/schedule/`：
+
+- `GET /items?from=YYYY-MM-DD&to=YYYY-MM-DD`：读取最多 90 天的展开后日历项。
+- `POST /items`、`PATCH /items/:business_id`、`DELETE /items/:business_id`：创建、替换整个系列、删除整个系列。
+- `PATCH /items/:business_id/occurrences/:date`、`DELETE /items/:business_id/occurrences/:date`：覆盖或取消重复系列的单次发生项。
+- `GET /bookings?status=pending|confirmed|rejected|expired|all`：列出拥有者申请；读取时同步释放超过 24 小时的待确认名额。
+- `POST /bookings/:business_id/confirm` 和 `/reject`：处理有效待确认申请。
+- `GET /share`、`POST /share`、`DELETE /share`：查询、生成/轮换和撤销分享链接。服务只保存随机令牌 SHA-256 摘要；明文链接只在创建响应返回。
+
+公开接口 `GET /api/v1/book/:share_token/slots?from=...&to=...` 只返回开放时段和剩余容量；不返回用户 UUID、工作事项、客户资料或数据库内部主键。`POST /api/v1/book/:share_token/requests` 接收 `schedule_id`、`start_at`、`name`、`phone` 和可选 `note`，成功响应返回申请编号。姓名和手机号最多 80/32 个字符，备注最多 1000 个字符。可信代理地址由 Gin 代理配置确定，Redis 以独立键空间按私有配置限流。
+
+预约写入事务会锁定开放时段主记录、核验仍然有效的分享令牌并匹配具体发生项，然后将过期待确认申请改为 `expired`、统计仍占位的 `pending` 和已 `confirmed` 申请，只有容量未满时才插入新申请。待确认申请占位 24 小时；确认后继续占位，拒绝、过期或取消释放名额。没有短信或邮件通知，拥有者在档期管理页确认/拒绝后线下联系客户。
+
+当前前端在桌面和移动 Web 共用 `/schedule` 管理页：月历显示标题/时间摘要并支持选择日期查看完整档期，7/14/自定义 1–90 天视图显示完整卡片； `/book/:shareToken` 为无账号访客页。当前环境通过 Go 测试、独立 PostgreSQL 迁移与并发容量集成用例、前端单元测试及生产构建；未覆盖微信小程序/原生壳真机体验、生产代理链和生产规模并发压力。重复开放时段结束日期是冲突校验要求，因此 UI 会要求设置结束日期。
+
 ### 实施验收
 
 - 检查所有五张业务表均包含通用字段，业务 UUID 均唯一，内部 `id` 不出现在 API 契约中。

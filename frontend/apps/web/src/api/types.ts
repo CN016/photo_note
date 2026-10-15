@@ -84,6 +84,67 @@ export interface LedgerImportResult {
   updated: number
 }
 
+/** 档期主记录字段；重复规则日期使用中国标准时间语义。 */
+export interface ScheduleFields {
+  kind: 'work' | 'availability'
+  title: string
+  content: string
+  start_at: string
+  end_at: string
+  recurrence: 'none' | 'daily' | 'weekly' | 'monthly'
+  weekdays: number[]
+  recurrence_end: string
+  capacity: number
+}
+
+/** 服务端展开后的单次日历发生项，不含用户内部标识。 */
+export interface ScheduleOccurrence {
+  business_id: string
+  kind: 'work' | 'availability'
+  title: string
+  content: string
+  start_at: string
+  end_at: string
+  capacity: number
+  recurrence: string
+  weekdays: number[]
+  recurrence_end: string
+  series_start_at: string
+  series_end_at: string
+  series_date: string
+}
+
+/** 分享页公开开放时段只含预约必需信息和剩余名额。 */
+export interface SchedulePublicSlot extends ScheduleOccurrence {
+  remaining: number
+}
+
+/** 仅拥有者可见的客户预约申请。 */
+export interface ScheduleBooking {
+  business_id: string
+  schedule_id: string
+  start_at: string
+  end_at: string
+  guest_name: string
+  guest_phone: string
+  note: string
+  status: 'pending' | 'confirmed' | 'rejected' | 'expired' | 'cancelled'
+  request_code: string
+  expires_at: string | null
+  created_at: string
+}
+
+export interface ScheduleShare {
+  enabled: boolean
+  url?: string
+}
+
+export interface ScheduleBookingReceipt {
+  request_code: string
+  status: 'pending'
+  expires_at: string | null
+}
+
 /** 可按接口 code 选择本地化提示的请求错误类型。 */
 export class ApiError extends Error {
   constructor(

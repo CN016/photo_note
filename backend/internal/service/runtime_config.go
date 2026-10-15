@@ -57,6 +57,7 @@ func (service *RuntimeConfigService) Load(ctx context.Context, base config.Confi
 		"feedback.max_text_chars",
 		"feedback.max_images",
 		"feedback.rate_limit_per_ip_hour",
+		"schedule.booking_rate_limit_per_ip_hour",
 	}
 	values, err := service.reader.ReadConfigValues(ctx, keys)
 	if err != nil {
@@ -110,6 +111,9 @@ func (service *RuntimeConfigService) Load(ctx context.Context, base config.Confi
 		return config.Config{}, err
 	}
 	if base.FeedbackPerIPPerHour, err = parsePositiveConfigInt("feedback.rate_limit_per_ip_hour", values["feedback.rate_limit_per_ip_hour"], 1000); err != nil {
+		return config.Config{}, err
+	}
+	if base.SchedulePerIPPerHour, err = parsePositiveConfigInt("schedule.booking_rate_limit_per_ip_hour", values["schedule.booking_rate_limit_per_ip_hour"], 1000); err != nil {
 		return config.Config{}, err
 	}
 	if base.HTTPReadHeaderTimeout, err = parseRuntimeDuration("http.read_header_timeout", values["http.read_header_timeout"]); err != nil {

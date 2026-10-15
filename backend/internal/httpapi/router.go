@@ -54,6 +54,7 @@ type Dependencies struct {
 	PublicConfigs        publicConfigReader
 	Feedback             *service.FeedbackService
 	Ledger               *service.LedgerService
+	Schedule             *service.ScheduleService
 	TrustedProxyCIDRs    []string
 }
 
@@ -87,6 +88,8 @@ func Router(dependencies Dependencies) *gin.Engine {
 	api.POST("/auth/refresh", refreshHandler(dependencies.Auth))
 	api.GET("/configs/public", publicConfigsHandler(dependencies.PublicConfigs))
 	api.POST("/feedback", optionalAuthenticationMiddleware(dependencies.Tokens), feedbackHandler(dependencies))
+	api.GET("/book/:share_token/slots", publicScheduleSlotsHandler(dependencies.Schedule))
+	api.POST("/book/:share_token/requests", scheduleBookingHandler(dependencies.Schedule))
 	v2 := router.Group("/api/v2")
 	v2.POST("/auth/register", registerV2Handler(dependencies))
 
@@ -116,6 +119,19 @@ func Router(dependencies Dependencies) *gin.Engine {
 	protected.POST("/ledger/records/:business_id/complete", completeLedgerRecordHandler(dependencies.Ledger))
 	protected.DELETE("/ledger/records/:business_id", deleteLedgerRecordHandler(dependencies.Ledger))
 	protected.POST("/ledger/import", importLedgerRecordsHandler(dependencies.Ledger))
+	protected.GET("/schedule/items", listScheduleItemsHandler(dependencies.Schedule))
+	protected.POST("/schedule/items", createScheduleItemHandler(dependencies.Schedule))
+	protected.PATCH("/schedule/items/:business_id", updateScheduleItemHandler(dependencies.Schedule))
+	protected.DELETE("/schedule/items/:business_id", deleteScheduleItemHandler(dependencies.Schedule))
+	protected.PATCH("/schedule/items/:business_id/occurrences/:date", updateScheduleOccurrenceHandler(dependencies.Schedule))
+	protected.DELETE("/schedule/items/:business_id/occurrences/:date", cancelScheduleOccurrenceHandler(dependencies.Schedule))
+	protected.GET("/schedule/bookings", listScheduleBookingsHandler(dependencies.Schedule))
+	protected.POST("/schedule/bookings/:business_id/confirm", decideScheduleBookingHandler(dependencies.Schedule, "confirmed"))
+	protected.POST("/schedule/bookings/:business_id/reject", decideScheduleBookingHandler(dependencies.Schedule, "rejected"))
+	protected.POST("/schedule/bookings/:business_id/cancel", cancelScheduleBookingHandler(dependencies.Schedule))
+	protected.GET("/schedule/share", getScheduleShareHandler(dependencies.Schedule))
+	protected.POST("/schedule/share", createScheduleShareHandler(dependencies.Schedule))
+	protected.DELETE("/schedule/share", revokeScheduleShareHandler(dependencies.Schedule))
 	return router
 }
 
