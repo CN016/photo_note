@@ -10,6 +10,7 @@ import (
 	"github.com/photo-nini/backend/internal/domain/fault"
 	"github.com/photo-nini/backend/internal/model"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 // PostgresStore 把所有 GORM 查询集中在 repository 层，service 不直接拼接或执行数据库语句。
@@ -233,6 +234,33 @@ func (store *PostgresStore) UpdateInspiration(ctx context.Context, userID, inspi
 		return model.Inspiration{}, persistenceError(result.Error)
 	}
 	return store.FindInspirationByBusinessID(ctx, userID, inspirationID)
+}
+
+// UpdateInspirationWithAsyncVersion 原子更新灵感图并递增异步代次，RETURNING 返回本次请求实际取得的版本。
+func (store *PostgresStore) UpdateInspirationWithAsyncVersion(ctx context.Context, userID, inspirationID uuid.UUID, updates map[string]any) (model.Inspiration, error) {
+	updates["async_version"] = gorm.Expr("async_version + 1")
+	updates["updated_at"] = time.Now().UTC()
+	var inspiration model.Inspiration
+	result := store.db.WithContext(ctx).Model(&inspiration).Clauses(clause.Returning{}).
+		Where("user_id = ? AND business_id = ?", userID, inspirationID).Updates(updates)
+	if result.Error != nil {
+		return model.Inspiration{}, persistenceError(result.Error)
+	}
+	if result.RowsAffected == 0 {
+		return model.Inspiration{}, fault.NotFound()
+	}
+	return inspiration, nil
+}
+
+// UpdateInspirationFileMetadataIfVersion 仅在图片 key 和异步代次仍匹配时写入后台处理结果。
+func (store *PostgresStore) UpdateInspirationFileMetadataIfVersion(ctx context.Context, userID, inspirationID uuid.UUID, imageKey string, asyncVersion int64, fileHash *string, fileSize *int64) (bool, error) {
+	result := store.db.WithContext(ctx).Model(&model.Inspiration{}).
+		Where("user_id = ? AND business_id = ? AND image_key = ? AND async_version = ?", userID, inspirationID, imageKey, asyncVersion).
+		Updates(map[string]any{"file_hash": fileHash, "file_size": fileSize, "updated_at": time.Now().UTC()})
+	if result.Error != nil {
+		return false, persistenceError(result.Error)
+	}
+	return result.RowsAffected > 0, nil
 }
 
 // DeleteInspiration 仅物理删除当前用户自己的灵感图。

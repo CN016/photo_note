@@ -73,11 +73,12 @@ func run() error {
 	if err != nil {
 		return err
 	}
+	inspirations := service.NewInspirationService(repository, fileManager, runtimeConfig.MaxUploadBytes)
 	dependencies := httpapi.Dependencies{
 		Auth:                 service.NewAuthService(repository, tokens, passwords),
 		Users:                service.NewUserService(repository),
 		Tags:                 service.NewTagService(repository),
-		Inspirations:         service.NewInspirationService(repository, fileManager, runtimeConfig.MaxUploadBytes),
+		Inspirations:         inspirations,
 		Tokens:               tokens,
 		PostgresPing:         func(ctx context.Context) error { return database.Ping(ctx, databaseConnection) },
 		RedisPing:            func(ctx context.Context) error { return tokens.Client().Ping(ctx).Err() },
@@ -114,6 +115,9 @@ func run() error {
 		shutdown, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
 		if err := server.Shutdown(shutdown); err != nil {
+			return err
+		}
+		if err := inspirations.WaitForCompression(shutdown); err != nil {
 			return err
 		}
 		return nil

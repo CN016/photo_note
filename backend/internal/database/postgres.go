@@ -85,6 +85,9 @@ func checkSchema(ctx context.Context, connection *gorm.DB) error {
 			if !migrator.HasColumn(table, "FileName") || !migrator.HasColumn(table, "FileHash") || !migrator.HasColumn(table, "FileSize") {
 				return fmt.Errorf("PostgreSQL schema 缺少灵感图文件元数据列，请按顺序执行 backend/migrations/000005_add_inspiration_file_metadata.sql 和 backend/migrations/000006_add_inspiration_file_size.sql")
 			}
+			if !migrator.HasColumn(table, "AsyncVersion") {
+				return fmt.Errorf("PostgreSQL schema 缺少 inspirations.async_version，请先执行 backend/migrations/000007_add_inspiration_async_version.sql")
+			}
 		}
 	}
 	var foreignKeyCount int64

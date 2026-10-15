@@ -8,11 +8,13 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"log"
 	"net/http"
 	"path"
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 	"unicode/utf8"
 
 	"github.com/google/uuid"
@@ -30,6 +32,8 @@ type InspirationRepository interface {
 	ListInspirations(context.Context, uuid.UUID, []uuid.UUID, string, int, int) ([]model.Inspiration, int64, error)
 	FindInspirationByBusinessID(context.Context, uuid.UUID, uuid.UUID) (model.Inspiration, error)
 	UpdateInspiration(context.Context, uuid.UUID, uuid.UUID, map[string]any) (model.Inspiration, error)
+	UpdateInspirationWithAsyncVersion(context.Context, uuid.UUID, uuid.UUID, map[string]any) (model.Inspiration, error)
+	UpdateInspirationFileMetadataIfVersion(context.Context, uuid.UUID, uuid.UUID, string, int64, *string, *int64) (bool, error)
 	DeleteInspiration(context.Context, uuid.UUID, uuid.UUID) error
 }
 
@@ -41,10 +45,28 @@ type InspirationFileStore interface {
 
 // InspirationService 校验编辑数据、标签归属和图片文件信息，所有资源范围来自 access token 用户 UUID。
 type InspirationService struct {
-	inspirations  InspirationRepository
-	files         InspirationFileStore
-	maxImageBytes int64
-	fileLocks     storeKeyLocks
+	inspirations      InspirationRepository
+	files             InspirationFileStore
+	maxImageBytes     int64
+	fileLocks         storeKeyLocks
+	compressionMutex  sync.Mutex
+	compressionCond   *sync.Cond
+	compressionJobs   []inspirationCompressionJob
+	compressionActive int
+}
+
+const (
+	// 灵感图压缩会解码图片并占用较多 CPU 和内存，因此固定后台并发数，避免请求高峰放大资源占用。
+	inspirationCompressionWorkers = 2
+	inspirationCompressionTimeout = 5 * time.Minute
+)
+
+// inspirationCompressionJob 只携带业务 UUID、图片 key 和创建/更新时捕获的异步代次。
+type inspirationCompressionJob struct {
+	userID        uuid.UUID
+	inspirationID uuid.UUID
+	imageKey      string
+	asyncVersion  int64
 }
 
 // storeKeyLockEntry 为同一进程内同一个 storekey 的压缩与数据库写入提供串行区间。
@@ -85,9 +107,14 @@ func (locks *storeKeyLocks) acquire(storekey string) func() {
 	}
 }
 
-// NewInspirationService 注入数据库、文件存储和上传大小上限，供图片压缩时限制输入内存。
+// NewInspirationService 注入数据库和文件存储，并启动固定并发的后台图片处理工作线程。
 func NewInspirationService(inspirations InspirationRepository, files InspirationFileStore, maxImageBytes int64) *InspirationService {
-	return &InspirationService{inspirations: inspirations, files: files, maxImageBytes: maxImageBytes}
+	service := &InspirationService{inspirations: inspirations, files: files, maxImageBytes: maxImageBytes}
+	service.compressionCond = sync.NewCond(&service.compressionMutex)
+	for worker := 0; worker < inspirationCompressionWorkers; worker++ {
+		go service.runCompressionWorker()
+	}
+	return service
 }
 
 // InspirationInput 是创建或局部更新时已解析的业务数据，不包含 user_id 或数据库 id。
@@ -106,6 +133,13 @@ type inspirationFileMetadata struct {
 	fileSize *int64
 }
 
+// inspirationFileCompression 保存后台压缩出的字节和元数据；文件覆盖须在确认异步代次仍有效后进行。
+type inspirationFileCompression struct {
+	content  []byte
+	changed  bool
+	metadata inspirationFileMetadata
+}
+
 // List 在数据库中按当前用户及 any/all 标签条件分页查询。
 func (service *InspirationService) List(ctx context.Context, userID uuid.UUID, tagIDs []uuid.UUID, match string, page PageRequest) (Page[model.Inspiration], error) {
 	if match == "" {
@@ -121,11 +155,15 @@ func (service *InspirationService) List(ctx context.Context, userID uuid.UUID, t
 	return Page[model.Inspiration]{Items: items, Page: page.Page, PageSize: page.PageSize, Total: total}, nil
 }
 
-// Create 校验 JSON 和标签后压缩有效 storekey 图片、原位覆盖文件并为最终字节生成 SHA-256。
+// Create 同步校验并保存灵感图记录；有效 storekey 的压缩、文件覆盖和元数据计算进入后台队列。
 func (service *InspirationService) Create(ctx context.Context, userID uuid.UUID, input InspirationInput) (model.Inspiration, error) {
 	input.ImageKey = strings.TrimSpace(input.ImageKey)
 	if input.ImageKey == "" {
 		return model.Inspiration{}, fault.InvalidField("image_key", "图片 key 不能为空")
+	}
+	storeKeyImage, err := service.validateInspirationImageKey(input.ImageKey)
+	if err != nil {
+		return model.Inspiration{}, err
 	}
 	fileName, err := normalizeInspirationFileName(input.FileName)
 	if err != nil {
@@ -137,25 +175,22 @@ func (service *InspirationService) Create(ctx context.Context, userID uuid.UUID,
 	if err := service.inspirations.ValidateTagOwnership(ctx, userID, input.TagIDs); err != nil {
 		return model.Inspiration{}, err
 	}
-	// 同一服务进程中的并发保存按 storekey 串行，防止同时改写同一文件造成哈希错配。
-	unlockFile := service.fileLocks.acquire(input.ImageKey)
-	defer unlockFile()
-	fileMetadata, err := service.compressStoreKeyContent(ctx, input.ImageKey)
-	if err != nil {
-		return model.Inspiration{}, err
-	}
 	inspiration := model.Inspiration{
 		BaseModel: model.BaseModel{BusinessID: uuid.New()},
 		UserID:    userID,
 		TagIDs:    uuidStrings(input.TagIDs),
 		ImageKey:  input.ImageKey,
 		FileName:  fileName,
-		FileHash:  fileMetadataHash(fileMetadata),
-		FileSize:  fileMetadataSize(fileMetadata),
+		FileHash:  nil,
+		FileSize:  nil,
 		Data:      model.JSONB(append([]byte(nil), input.Data...)),
 	}
 	if err := service.inspirations.CreateInspiration(ctx, &inspiration); err != nil {
 		return model.Inspiration{}, err
+	}
+	if storeKeyImage {
+		service.enqueueCompression(inspirationCompressionJob{userID: userID, inspirationID: inspiration.BusinessID,
+			imageKey: input.ImageKey, asyncVersion: inspiration.AsyncVersion})
 	}
 	return inspiration, nil
 }
@@ -165,14 +200,20 @@ func (service *InspirationService) Get(ctx context.Context, userID, inspirationI
 	return service.inspirations.FindInspirationByBusinessID(ctx, userID, inspirationID)
 }
 
-// Update 保留未提交字段；提交 storekey 时先确认灵感图存在，再压缩覆盖文件并更新最终内容哈希。
+// Update 保留未提交字段；提交有效 storekey 时先递增异步代次并保存记录，再排队处理图片。
 func (service *InspirationService) Update(ctx context.Context, userID, inspirationID uuid.UUID, input InspirationInput, tagIDsSet, imageKeySet, fileNameSet, dataSet bool) (model.Inspiration, error) {
 	updates := make(map[string]any, 5)
+	storeKeyImage := false
 	if imageKeySet {
 		input.ImageKey = strings.TrimSpace(input.ImageKey)
 		if input.ImageKey == "" {
 			return model.Inspiration{}, fault.InvalidField("image_key", "图片 key 不能为空")
 		}
+		validStoreKey, err := service.validateInspirationImageKey(input.ImageKey)
+		if err != nil {
+			return model.Inspiration{}, err
+		}
+		storeKeyImage = validStoreKey
 		// 先确认更新目标存在，避免无效 business_id 也触发对 storekey 文件的覆盖。
 		if _, err := service.inspirations.FindInspirationByBusinessID(ctx, userID, inspirationID); err != nil {
 			return model.Inspiration{}, err
@@ -199,31 +240,45 @@ func (service *InspirationService) Update(ctx context.Context, userID, inspirati
 		updates["data"] = model.JSONB(append([]byte(nil), input.Data...))
 	}
 	if imageKeySet {
-		// 锁覆盖图片写入和灵感图更新，保持共享 storekey 的文件字节与哈希顺序一致。
-		unlockFile := service.fileLocks.acquire(input.ImageKey)
-		defer unlockFile()
-		fileMetadata, err := service.compressStoreKeyContent(ctx, input.ImageKey)
-		if err != nil {
-			return model.Inspiration{}, err
-		}
 		updates["image_key"] = input.ImageKey
-		updates["file_hash"] = fileMetadataHash(fileMetadata)
-		updates["file_size"] = fileMetadataSize(fileMetadata)
+		// 新图片尚未处理完成时清空旧文件元数据，避免把旧图的哈希或大小返回给前端。
+		updates["file_hash"] = nil
+		updates["file_size"] = nil
 	}
 	if len(updates) == 0 {
 		return model.Inspiration{}, fault.InvalidRequest("至少提供 tag_ids、image_key、file_name 或 data 中的一个字段")
 	}
+	if storeKeyImage {
+		updated, err := service.inspirations.UpdateInspirationWithAsyncVersion(ctx, userID, inspirationID, updates)
+		if err != nil {
+			return model.Inspiration{}, err
+		}
+		service.enqueueCompression(inspirationCompressionJob{userID: userID, inspirationID: inspirationID,
+			imageKey: input.ImageKey, asyncVersion: updated.AsyncVersion})
+		return updated, nil
+	}
 	return service.inspirations.UpdateInspiration(ctx, userID, inspirationID, updates)
 }
 
-// compressStoreKeyContent 对有效 storekey 读取并压缩图片，原位覆盖后记录最终字节的哈希和大小。
-func (service *InspirationService) compressStoreKeyContent(ctx context.Context, imageKey string) (*inspirationFileMetadata, error) {
-	if _, err := filestore.ParseKey(imageKey); err != nil {
-		// 已声明 local/oss 类型前缀却格式错误时拒绝保存，防止坏 storekey 被当作普通图片 key 绕过哈希校验。
-		if strings.HasPrefix(imageKey, "local_") || strings.HasPrefix(imageKey, "oss_") {
-			return nil, fault.InvalidField("image_key", "storekey 格式无效")
+// validateInspirationImageKey 同步拒绝格式错误的 storekey，并在提交异步任务前检查文件处理依赖。
+func (service *InspirationService) validateInspirationImageKey(imageKey string) (bool, error) {
+	if _, err := filestore.ParseKey(imageKey); err == nil {
+		if service.files == nil || service.maxImageBytes < 1 {
+			return false, fault.Unavailable(errors.New("灵感图文件存储或图片大小配置未初始化"))
 		}
-		return nil, nil
+		return true, nil
+	}
+	// 已声明 local/oss 类型前缀却格式错误时拒绝保存，避免错误 key 被当作普通图片标识绕过校验。
+	if strings.HasPrefix(imageKey, "local_") || strings.HasPrefix(imageKey, "oss_") {
+		return false, fault.InvalidField("image_key", "storekey 格式无效")
+	}
+	return false, nil
+}
+
+// compressStoreKeyContent 在后台读取并压缩有效 storekey 图片，但暂不覆盖文件以便先检查任务代次。
+func (service *InspirationService) compressStoreKeyContent(ctx context.Context, imageKey string) (*inspirationFileCompression, error) {
+	if _, err := filestore.ParseKey(imageKey); err != nil {
+		return nil, fault.InvalidField("image_key", "storekey 格式无效")
 	}
 	if service.files == nil || service.maxImageBytes < 1 {
 		return nil, fault.Unavailable(errors.New("灵感图文件存储或图片大小配置未初始化"))
@@ -266,31 +321,119 @@ func (service *InspirationService) compressStoreKeyContent(ctx context.Context, 
 			return nil, fault.Internal(err)
 		}
 	}
-	if changed {
-		if err := service.files.Replace(ctx, imageKey, compressed); err != nil {
-			return nil, mapInspirationFileError(err)
-		}
-	}
 	hashBytes := sha256.Sum256(compressed)
 	hash := hex.EncodeToString(hashBytes[:])
 	finalSize := int64(len(compressed))
-	return &inspirationFileMetadata{fileHash: &hash, fileSize: &finalSize}, nil
+	return &inspirationFileCompression{content: compressed, changed: changed,
+		metadata: inspirationFileMetadata{fileHash: &hash, fileSize: &finalSize}}, nil
 }
 
-// fileMetadataHash 返回 storekey 图片哈希；非 storekey 图片没有可由服务端验证的文件内容，返回 nil。
-func fileMetadataHash(metadata *inspirationFileMetadata) *string {
-	if metadata == nil {
-		return nil
+// enqueueCompression 只将轻量任务描述加入进程内队列；同一记录保留最新代次，避免连续更新堆积过期任务。
+func (service *InspirationService) enqueueCompression(job inspirationCompressionJob) {
+	service.compressionMutex.Lock()
+	for index := range service.compressionJobs {
+		queued := &service.compressionJobs[index]
+		if queued.inspirationID != job.inspirationID {
+			continue
+		}
+		if job.asyncVersion > queued.asyncVersion {
+			*queued = job
+		}
+		service.compressionCond.Signal()
+		service.compressionMutex.Unlock()
+		return
 	}
-	return metadata.fileHash
+	service.compressionJobs = append(service.compressionJobs, job)
+	service.compressionCond.Signal()
+	service.compressionMutex.Unlock()
 }
 
-// fileMetadataSize 返回压缩后 storekey 文件的字节数；非 storekey 图片和历史记录保持为空。
-func fileMetadataSize(metadata *inspirationFileMetadata) *int64 {
-	if metadata == nil {
+// runCompressionWorker 按固定并发数消费后台任务，异步失败只记录错误类型，不记录图片 key 或底层路径。
+func (service *InspirationService) runCompressionWorker() {
+	for {
+		service.compressionMutex.Lock()
+		for len(service.compressionJobs) == 0 {
+			service.compressionCond.Wait()
+		}
+		job := service.compressionJobs[0]
+		service.compressionJobs[0] = inspirationCompressionJob{}
+		service.compressionJobs = service.compressionJobs[1:]
+		if len(service.compressionJobs) == 0 {
+			service.compressionJobs = nil
+		}
+		service.compressionActive++
+		service.compressionMutex.Unlock()
+
+		if err := service.processCompressionJob(job); err != nil {
+			log.Printf("灵感图异步图片处理失败，错误类型=%T", err)
+		}
+
+		service.compressionMutex.Lock()
+		service.compressionActive--
+		service.compressionMutex.Unlock()
+	}
+}
+
+// processCompressionJob 在 storekey 锁内压缩文件，并在文件覆盖及元数据写回前分别核对异步代次。
+func (service *InspirationService) processCompressionJob(job inspirationCompressionJob) error {
+	ctx, cancel := context.WithTimeout(context.Background(), inspirationCompressionTimeout)
+	defer cancel()
+	unlockFile := service.fileLocks.acquire(job.imageKey)
+	defer unlockFile()
+
+	current, err := service.inspirations.FindInspirationByBusinessID(ctx, job.userID, job.inspirationID)
+	if err != nil {
+		if fault.Is(err, http.StatusNotFound, "not_found") {
+			return nil
+		}
+		return err
+	}
+	if current.ImageKey != job.imageKey || current.AsyncVersion != job.asyncVersion {
 		return nil
 	}
-	return metadata.fileSize
+
+	compressed, err := service.compressStoreKeyContent(ctx, job.imageKey)
+	if err != nil {
+		return err
+	}
+	// 图片解码可能耗时；处理结束后重读当前代次，丢弃期间已被新请求替代的结果。
+	current, err = service.inspirations.FindInspirationByBusinessID(ctx, job.userID, job.inspirationID)
+	if err != nil {
+		if fault.Is(err, http.StatusNotFound, "not_found") {
+			return nil
+		}
+		return err
+	}
+	if current.ImageKey != job.imageKey || current.AsyncVersion != job.asyncVersion {
+		return nil
+	}
+	if compressed.changed {
+		if err := service.files.Replace(ctx, job.imageKey, compressed.content); err != nil {
+			return mapInspirationFileError(err)
+		}
+	}
+	_, err = service.inspirations.UpdateInspirationFileMetadataIfVersion(ctx, job.userID, job.inspirationID,
+		job.imageKey, job.asyncVersion, compressed.metadata.fileHash, compressed.metadata.fileSize)
+	return err
+}
+
+// WaitForCompression 等待队列清空，供进程收到退出信号后在超时前完成已接受的图片处理任务。
+func (service *InspirationService) WaitForCompression(ctx context.Context) error {
+	ticker := time.NewTicker(100 * time.Millisecond)
+	defer ticker.Stop()
+	for {
+		service.compressionMutex.Lock()
+		drained := len(service.compressionJobs) == 0 && service.compressionActive == 0
+		service.compressionMutex.Unlock()
+		if drained {
+			return nil
+		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-ticker.C:
+		}
+	}
 }
 
 // mapInspirationFileError 将文件后端错误转为稳定 API 语义，不向客户端泄露本地路径。
