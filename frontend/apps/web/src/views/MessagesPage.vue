@@ -53,7 +53,12 @@ async function loadMessages(quiet = false) {
   messageError.value = false
   try {
     const result = await api.notifications(currentPage.value, pageSize, filter.value === 'unread')
-    messages.value = result.items
+    // 旧版本 API 或异常响应可能把无投递记录序列化为 null；归一化避免单条通知导致整页崩溃。
+    messages.value = (Array.isArray(result?.items) ? result.items : []).map(item => ({
+      ...item,
+      deliveries: Array.isArray(item?.deliveries) ? item.deliveries : [],
+      payload: item?.payload && typeof item.payload === 'object' && !Array.isArray(item.payload) ? item.payload : {},
+    }))
     messageTotal.value = result.total
     unreadCount.value = result.unread_count
   } catch {
@@ -69,7 +74,7 @@ async function loadConfigs(quiet = false) {
   configError.value = false
   try {
     const result = await api.noticeConfigs()
-    configs.value = result.items
+    configs.value = Array.isArray(result?.items) ? result.items : []
     maximumConfigs.value = result.maximum
   } catch {
     configError.value = true
@@ -128,7 +133,7 @@ function deliveryStatus(delivery: NoticeDelivery): string {
 function replaceDelivery(updated: NoticeDelivery) {
   messages.value = messages.value.map(item => ({
     ...item,
-    deliveries: item.deliveries.map(delivery => delivery.business_id === updated.business_id ? updated : delivery),
+    deliveries: (Array.isArray(item.deliveries) ? item.deliveries : []).map(delivery => delivery.business_id === updated.business_id ? updated : delivery),
   }))
 }
 
@@ -347,7 +352,7 @@ onBeforeUnmount(() => {
             <p class="notification-body">{{ messageBody(item) }}</p>
             <div class="notification-meta"><span>{{ t('createdAt') }} · {{ formatDate(item.created_at) }}</span></div>
 
-            <div v-if="item.deliveries.length" class="delivery-list" @click.stop>
+            <div v-if="item.deliveries?.length" class="delivery-list" @click.stop>
               <div v-for="delivery in item.deliveries" :key="delivery.business_id" class="delivery-row">
                 <span class="provider-chip">{{ providerName(delivery.provider) }} · {{ delivery.config_name }}</span>
                 <span class="delivery-state" :class="`state-${delivery.status}`">{{ deliveryStatus(delivery) }}</span>

@@ -1,6 +1,7 @@
 package service
 
 import (
+	"context"
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/base64"
@@ -10,10 +11,49 @@ import (
 	"net/url"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/photo-nini/backend/internal/model"
 )
+
+// notificationListTestRepository 只提供消息列表序列化回归检查所需的两项读取能力。
+type notificationListTestRepository struct {
+	NoticeRepository
+	items      []model.Notification
+	deliveries []model.NoticeDelivery
+}
+
+func (repository notificationListTestRepository) ListNotifications(context.Context, uuid.UUID, bool, int, int) ([]model.Notification, int64, int64, error) {
+	return repository.items, int64(len(repository.items)), 0, nil
+}
+
+func (repository notificationListTestRepository) ListNotificationDeliveries(context.Context, uuid.UUID, []uuid.UUID) ([]model.NoticeDelivery, error) {
+	return repository.deliveries, nil
+}
+
+// TestListNotificationsReturnsEmptyDeliveryArray 防止无 webhook 投递的消息再次编码成 JSON null。
+func TestListNotificationsReturnsEmptyDeliveryArray(t *testing.T) {
+	repository := notificationListTestRepository{
+		items: []model.Notification{{
+			BaseModel: model.BaseModel{BusinessID: uuid.New(), CreatedAt: time.Now().UTC()},
+			EventType: "inspiration.compression.succeeded", Payload: model.JSONB(`{"async_version":1}`),
+		}},
+	}
+	service := NewNoticeService(repository, nil)
+
+	page, err := service.ListNotifications(context.Background(), uuid.New(), false, 1, 20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	encoded, err := json.Marshal(page)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(encoded), `"deliveries":[]`) {
+		t.Fatalf("notifications without webhook deliveries must serialize deliveries as an empty array: %s", encoded)
+	}
+}
 
 func TestValidateNoticeConfigRequiresOfficialHTTPSWebhook(t *testing.T) {
 	tests := []struct {

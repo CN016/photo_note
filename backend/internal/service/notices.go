@@ -200,10 +200,15 @@ func (service *NoticeService) ListNotifications(ctx context.Context, userID uuid
 		if !json.Valid(payload) {
 			payload = json.RawMessage(`{}`)
 		}
+		itemDeliveries := byNotification[item.BusinessID]
+		if itemDeliveries == nil {
+			// JSON null 会让前端无法遍历；没有配置 webhook 时接口仍统一返回空数组。
+			itemDeliveries = []NoticeDeliveryView{}
+		}
 		views = append(views, NotificationView{
 			BusinessID: item.BusinessID.String(), EventType: item.EventType, ResourceType: item.ResourceType,
 			ResourceBusinessID: resourceID, Payload: payload, ReadAt: item.ReadAt, CreatedAt: item.CreatedAt,
-			Deliveries: byNotification[item.BusinessID],
+			Deliveries: itemDeliveries,
 		})
 	}
 	return NotificationPage{Items: views, Page: page, PageSize: pageSize, Total: total, UnreadCount: unread}, nil
