@@ -78,6 +78,39 @@ func (store *PostgresStore) FindUserByBusinessID(ctx context.Context, businessID
 	return user, nil
 }
 
+// FindUserPasswordHash 仅供密码修改验证当前凭据，返回字段不会进入用户资料 DTO。
+func (store *PostgresStore) FindUserPasswordHash(ctx context.Context, businessID uuid.UUID) (model.User, error) {
+	var user model.User
+	err := store.db.WithContext(ctx).Select("business_id", "password_hash").
+		Where("business_id = ?", businessID).First(&user).Error
+	if err != nil {
+		return model.User{}, persistenceError(err)
+	}
+	return user, nil
+}
+
+// UpdateUserPasswordHash 只保存 Argon2id 编码哈希并更新资料修改时间。
+func (store *PostgresStore) UpdateUserPasswordHash(ctx context.Context, businessID uuid.UUID, passwordHash string) error {
+	result := store.db.WithContext(ctx).Model(&model.User{}).
+		Where("business_id = ?", businessID).
+		Updates(map[string]any{"password_hash": passwordHash, "updated_at": time.Now().UTC()})
+	if result.Error != nil {
+		return persistenceError(result.Error)
+	}
+	if result.RowsAffected == 0 {
+		return fault.NotFound()
+	}
+	return nil
+}
+
+// CreateFeedback 持久化游客或已认证用户的反馈；图片只保存受服务端验证的 storekey 数组。
+func (store *PostgresStore) CreateFeedback(ctx context.Context, feedback *model.Feedback) error {
+	if err := store.db.WithContext(ctx).Create(feedback).Error; err != nil {
+		return persistenceError(err)
+	}
+	return nil
+}
+
 // CreateUser 保存服务器生成业务 UUID 和 Argon2id 密码哈希后的新用户。
 func (store *PostgresStore) CreateUser(ctx context.Context, user *model.User) error {
 	if err := store.db.WithContext(ctx).Create(user).Error; err != nil {

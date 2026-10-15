@@ -88,6 +88,8 @@ func (store *TokenStore) Issue(ctx context.Context, userID uuid.UUID) (TokenPair
 	pipe.Set(ctx, refreshKey, serialized, store.refreshTokenTTL)
 	pipe.SAdd(ctx, sessionKey, accessKey, refreshKey)
 	pipe.Expire(ctx, sessionKey, store.refreshTokenTTL)
+	pipe.SAdd(ctx, userSessionRedisKey(userID), claims.SessionID)
+	pipe.Expire(ctx, userSessionRedisKey(userID), store.refreshTokenTTL)
 	if _, err := pipe.Exec(ctx); err != nil {
 		return TokenPair{}, fault.Unavailable(err)
 	}
@@ -163,10 +165,12 @@ func (store *TokenStore) Rotate(ctx context.Context, rawToken string) (TokenPair
 		redis.call('SREM', KEYS[4], KEYS[1])
 		redis.call('SADD', KEYS[4], KEYS[2], KEYS[3])
 		redis.call('EXPIRE', KEYS[4], ARGV[6])
+		redis.call('SADD', KEYS[5], ARGV[1])
+		redis.call('EXPIRE', KEYS[5], ARGV[6])
 		return 1
 	`
 	result, err := store.client.Eval(ctx, rotateScript,
-		[]string{oldKey, newAccessKey, newRefreshKey, sessionRedisKey(claims.SessionID)},
+		[]string{oldKey, newAccessKey, newRefreshKey, sessionRedisKey(claims.SessionID), userSessionRedisKey(claims.UserBusinessID)},
 		claims.SessionID, claims.UserBusinessID.String(), string(accessValue), ttlSeconds(store.accessTokenTTL),
 		string(refreshValue), ttlSeconds(store.refreshTokenTTL)).Int64()
 	if err != nil {
@@ -185,7 +189,14 @@ func (store *TokenStore) Rotate(ctx context.Context, rawToken string) (TokenPair
 func (store *TokenStore) RevokeSession(ctx context.Context, sessionID string) error {
 	const revokeScript = `
 		local token_keys = redis.call('SMEMBERS', KEYS[1])
-		for _, token_key in ipairs(token_keys) do redis.call('DEL', token_key) end
+		for _, token_key in ipairs(token_keys) do
+			local token_value = redis.call('GET', token_key)
+			if token_value then
+				local claims = cjson.decode(token_value)
+				redis.call('SREM', 'auth:user-sessions:' .. claims.user_business_id, claims.session_id)
+			end
+			redis.call('DEL', token_key)
+		end
 		redis.call('DEL', KEYS[1])
 		return #token_keys
 	`
@@ -193,6 +204,126 @@ func (store *TokenStore) RevokeSession(ctx context.Context, sessionID string) er
 		return fault.Unavailable(err)
 	}
 	return nil
+}
+
+// RevokeOtherSessions 撤销用户索引中的其他设备会话，并保留当前请求所属会话。
+func (store *TokenStore) RevokeOtherSessions(ctx context.Context, userID uuid.UUID, keepSessionID string) error {
+	const revokeScript = `
+		local session_ids = redis.call('SMEMBERS', KEYS[1])
+		for _, session_id in ipairs(session_ids) do
+			if session_id ~= ARGV[1] then
+				local session_key = 'auth:session:' .. session_id
+				local token_keys = redis.call('SMEMBERS', session_key)
+				for _, token_key in ipairs(token_keys) do redis.call('DEL', token_key) end
+				redis.call('DEL', session_key)
+				redis.call('SREM', KEYS[1], session_id)
+			end
+		end
+		return 1
+	`
+	if err := store.client.Eval(ctx, revokeScript, []string{userSessionRedisKey(userID)}, keepSessionID).Err(); err != nil {
+		return fault.Unavailable(err)
+	}
+	return nil
+}
+
+// AcquireUserLock 串行同一用户的登录令牌签发与密码变更，避免旧密码在撤销边界并发生成新会话。
+func (store *TokenStore) AcquireUserLock(ctx context.Context, userID uuid.UUID) (func(), error) {
+	lockValue, err := secureToken()
+	if err != nil {
+		return nil, fault.Internal(err)
+	}
+	key := "auth:user-lock:" + userID.String()
+	deadline := time.NewTimer(5 * time.Second)
+	defer deadline.Stop()
+	ticker := time.NewTicker(25 * time.Millisecond)
+	defer ticker.Stop()
+	for {
+		acquired, setErr := store.client.SetNX(ctx, key, lockValue, time.Minute).Result()
+		if setErr != nil {
+			return nil, fault.Unavailable(setErr)
+		}
+		if acquired {
+			release := func() {
+				const unlockScript = `
+					if redis.call('GET', KEYS[1]) == ARGV[1] then return redis.call('DEL', KEYS[1]) end
+					return 0
+				`
+				unlockCtx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+				defer cancel()
+				_ = store.client.Eval(unlockCtx, unlockScript, []string{key}, lockValue).Err()
+			}
+			return release, nil
+		}
+		select {
+		case <-ctx.Done():
+			return nil, fault.Unavailable(ctx.Err())
+		case <-deadline.C:
+			return nil, fault.Unavailable(fmt.Errorf("等待用户账户锁超时"))
+		case <-ticker.C:
+		}
+	}
+}
+
+// IndexExistingSessions 为启用跨设备撤销前签发的会话补建用户索引，启动期间只读取令牌声明。
+func (store *TokenStore) IndexExistingSessions(ctx context.Context) error {
+	iterator := store.client.Scan(ctx, 0, "auth:session:*", 100).Iterator()
+	for iterator.Next(ctx) {
+		sessionKey := iterator.Val()
+		tokenKeys, err := store.client.SMembers(ctx, sessionKey).Result()
+		if err != nil {
+			return fault.Unavailable(err)
+		}
+		var claims TokenClaims
+		for _, tokenKey := range tokenKeys {
+			serialized, getErr := store.client.Get(ctx, tokenKey).Bytes()
+			if errors.Is(getErr, redis.Nil) {
+				continue
+			}
+			if getErr != nil {
+				return fault.Unavailable(getErr)
+			}
+			if json.Unmarshal(serialized, &claims) == nil && claims.UserBusinessID != uuid.Nil && claims.SessionID != "" {
+				break
+			}
+		}
+		if claims.UserBusinessID == uuid.Nil || claims.SessionID == "" {
+			continue
+		}
+		pipe := store.client.Pipeline()
+		pipe.SAdd(ctx, userSessionRedisKey(claims.UserBusinessID), claims.SessionID)
+		pipe.Expire(ctx, userSessionRedisKey(claims.UserBusinessID), store.refreshTokenTTL)
+		if _, err := pipe.Exec(ctx); err != nil {
+			return fault.Unavailable(err)
+		}
+	}
+	if err := iterator.Err(); err != nil {
+		return fault.Unavailable(err)
+	}
+	return nil
+}
+
+// CheckFeedbackLimit 使用 IP 摘要执行滚动一小时计数，不在 Redis 键或日志中保存原始 IP。
+func (store *TokenStore) CheckFeedbackLimit(ctx context.Context, clientIP string, limit int) (bool, error) {
+	digest := sha256.Sum256([]byte(clientIP))
+	key := "feedback:ip:" + hex.EncodeToString(digest[:])
+	entryID := uuid.NewString()
+	const rateLimitScript = `
+		local current = redis.call('TIME')
+		local now_ms = current[1] * 1000 + math.floor(current[2] / 1000)
+		local cutoff = now_ms - 3600000
+		redis.call('ZREMRANGEBYSCORE', KEYS[1], 0, cutoff)
+		local count = redis.call('ZCARD', KEYS[1])
+		if count >= tonumber(ARGV[1]) then return 0 end
+		redis.call('ZADD', KEYS[1], now_ms, ARGV[2])
+		redis.call('EXPIRE', KEYS[1], 3600)
+		return 1
+	`
+	allowed, err := store.client.Eval(ctx, rateLimitScript, []string{key}, limit, entryID).Int64()
+	if err != nil {
+		return false, fault.Unavailable(err)
+	}
+	return allowed == 1, nil
 }
 
 // pair 统一生成 API token 响应时长，秒数与 Redis TTL 使用同一配置来源。
@@ -227,6 +358,9 @@ func refreshTokenKey(rawToken string) string { return "auth:refresh:" + tokenDig
 
 // sessionRedisKey 以随机会话 UUID 编址，便于退出时撤销该设备会话的所有令牌。
 func sessionRedisKey(sessionID string) string { return "auth:session:" + sessionID }
+
+// userSessionRedisKey 索引用户业务 UUID 下的活跃会话 UUID，不存储 bearer token。
+func userSessionRedisKey(userID uuid.UUID) string { return "auth:user-sessions:" + userID.String() }
 
 // ttlSeconds 将正 duration 转为 Redis EX 秒数，避免小于一秒的配置被 Redis 当作无效 TTL。
 func ttlSeconds(value time.Duration) int64 {

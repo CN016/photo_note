@@ -1,0 +1,16 @@
+{
+  "open": "我要反馈",
+  "title": "提交反馈",
+  "description": "告诉我们你遇到的问题或希望改进的地方。游客也可以提交。",
+  "contentPlaceholder": "请描述你的反馈（最多 2000 字）",
+  "images": "图片",
+  "imageCount": "已添加 {count}/5 张",
+  "imageHelp": "最多上传 5 张图片，单张大小遵循服务端限制。",
+  "submit": "提交反馈",
+  "required": "请填写文字或至少上传一张图片。",
+  "tooLong": "反馈文字不能超过 2000 字。",
+  "imageInvalid": "无法读取图片，请换一张再试。",
+  "success": "反馈已提交，感谢你的建议。",
+  "rateLimited": "提交次数过多，请一小时后再试。",
+  "submitFailed": "反馈提交失败，内容已保留，请稍后重试。"
+}

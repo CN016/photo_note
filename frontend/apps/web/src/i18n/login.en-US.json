@@ -9,7 +9,7 @@
   "formTitle": "Welcome back",
   "formHint": "Sign in to continue creating",
   "phone": "Phone number",
-  "phonePlaceholder": "+1 415 555 0134",
+  "phonePlaceholder": "Enter an 11-digit phone number",
   "password": "Password",
   "passwordPlaceholder": "Enter your password",
   "showPassword": "Show password",
@@ -18,6 +18,6 @@
   "submitting": "Signing in…",
   "newHere": "New to Photo Nini?",
   "createAccount": "Create an account",
-  "phoneInvalid": "Enter a valid E.164 phone number, such as +14155550134.",
+  "phoneInvalid": "Enter an 11-digit phone number.",
   "loginFailed": "Sign in failed. Check your phone number and password."
 }

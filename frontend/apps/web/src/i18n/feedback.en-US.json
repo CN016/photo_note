@@ -1,0 +1,16 @@
+{
+  "open": "Send feedback",
+  "title": "Share feedback",
+  "description": "Tell us about a problem or an improvement. You can submit without signing in.",
+  "contentPlaceholder": "Describe your feedback (up to 2,000 characters)",
+  "images": "Images",
+  "imageCount": "{count}/5 added",
+  "imageHelp": "Up to 5 images. Each file follows the server upload limit.",
+  "submit": "Submit feedback",
+  "required": "Enter some text or attach at least one image.",
+  "tooLong": "Feedback must be 2,000 characters or fewer.",
+  "imageInvalid": "This image could not be read. Choose another one.",
+  "success": "Feedback sent. Thank you for sharing.",
+  "rateLimited": "Too many submissions. Try again in an hour.",
+  "submitFailed": "Feedback could not be sent. Your draft is saved; try again later."
+}

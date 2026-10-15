@@ -39,8 +39,8 @@ export const useAuthStore = defineStore('auth', {
       this.user = result.user
     },
     /** 注册成功直接使用返回的资料和 token pair 建立当前会话。 */
-    async signUp(phone: string, password: string, nickname: string): Promise<void> {
-      const result = await api.register(phone, password, nickname)
+    async signUp(phone: string, password: string, nickname: string, avatar: Blob, filename: string): Promise<void> {
+      const result = await api.register(phone, password, nickname, avatar, filename)
       acceptTokenPair(result.tokens)
       this.user = result.user
     },

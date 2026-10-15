@@ -68,6 +68,9 @@ func run() error {
 	if err := tokens.Client().Ping(startupContext).Err(); err != nil {
 		return errors.New("Redis 启动连通性检查失败")
 	}
+	if err := tokens.IndexExistingSessions(startupContext); err != nil {
+		return errors.New("Redis 用户会话索引初始化失败")
+	}
 
 	passwords, err := security.NewPasswordManager()
 	if err != nil {
@@ -87,6 +90,8 @@ func run() error {
 		MaxUploadBytes:       runtimeConfig.MaxUploadBytes,
 		CurrentFileStoreType: runtimeConfigService.CurrentFileStoreType,
 		PublicConfigs:        runtimeConfigService,
+		Feedback:             service.NewFeedbackService(repository, tokens, runtimeConfig.FeedbackMaxTextChars, runtimeConfig.FeedbackMaxImages, runtimeConfig.FeedbackPerIPPerHour),
+		TrustedProxyCIDRs:    runtimeConfig.TrustedProxyCIDRs,
 	}
 	router := httpapi.Router(dependencies)
 	server := &http.Server{

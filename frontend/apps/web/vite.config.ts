@@ -1,6 +1,9 @@
 import { defineConfig } from 'vitest/config'
 import { loadEnv } from 'vite'
 import vue from '@vitejs/plugin-vue'
+import AutoImport from 'unplugin-auto-import/vite'
+import Components from 'unplugin-vue-components/vite'
+import { ElementPlusResolver } from 'unplugin-vue-components/resolvers'
 import { fileURLToPath } from 'node:url'
 
 const heicPackage = new URL('./node_modules/@su-engineering/heic/dist/', import.meta.url)
@@ -10,7 +13,11 @@ export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '')
   const apiTarget = env.VITE_DEV_API_PROXY_TARGET || env.VITE_API_BASE_URL || 'http://127.0.0.1:8089'
   return {
-    plugins: [vue()],
+    plugins: [
+      vue(),
+      AutoImport({ resolvers: [ElementPlusResolver()] }),
+      Components({ resolvers: [ElementPlusResolver({ importStyle: 'css' })] }),
+    ],
     resolve: {
       alias: [
         { find: /^@su-engineering\/heic\/wasm$/, replacement: fileURLToPath(new URL('wasm.js', heicPackage)) },
@@ -22,6 +29,7 @@ export default defineConfig(({ mode }) => {
       port: 5173,
       proxy: {
         '/api/v1': { target: apiTarget, changeOrigin: true },
+        '/api/v2': { target: apiTarget, changeOrigin: true },
         '/healthz': { target: apiTarget, changeOrigin: true },
       },
     },

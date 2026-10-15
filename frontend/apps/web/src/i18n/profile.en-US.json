@@ -1,0 +1,22 @@
+{
+  "eyebrow": "Profile",
+  "title": "Account settings",
+  "subtitle": "Manage your avatar, nickname, and sign-in password.",
+  "avatar": "Avatar",
+  "avatarChange": "Upload new avatar",
+  "avatarHelp": "Common image formats are supported. Each image follows the server upload limit.",
+  "nickname": "Nickname",
+  "nicknamePlaceholder": "Enter a nickname",
+  "saveProfile": "Save profile",
+  "profileSaved": "Profile saved.",
+  "passwordTitle": "Change password",
+  "currentPassword": "Current password",
+  "newPassword": "New password",
+  "confirmPassword": "Confirm new password",
+  "passwordPlaceholder": "8 to 128 characters",
+  "passwordMismatch": "The new passwords do not match.",
+  "passwordChanged": "Password updated. Other devices have been signed out.",
+  "passwordSave": "Update password",
+  "profileError": "We couldn't save your profile. Try again.",
+  "passwordError": "We couldn't change your password. Check the current password and try again."
+}

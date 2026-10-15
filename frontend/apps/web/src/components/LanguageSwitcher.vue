@@ -8,11 +8,8 @@ const selected = computed(() => locale.value)
 </script>
 
 <template>
-  <label class="language-switcher">
-    <span class="sr-only">{{ t('common.language') }}</span>
-    <select :value="selected" :aria-label="t('common.language')" @change="setLocale(($event.target as HTMLSelectElement).value as 'zh-CN' | 'en-US')">
-      <option value="zh-CN">{{ t('common.chinese') }}</option>
-      <option value="en-US">{{ t('common.english') }}</option>
-    </select>
-  </label>
+  <el-select :model-value="selected" class="language-switcher" :aria-label="t('common.language')" @change="setLocale($event as 'zh-CN' | 'en-US')">
+    <el-option value="zh-CN" :label="t('common.chinese')" />
+    <el-option value="en-US" :label="t('common.english')" />
+  </el-select>
 </template>

@@ -49,11 +49,11 @@ GORM 迁移设置 `DisableForeignKeyConstraintWhenMigrating: true`，模型避�
 | 字段 | 类型 | 规则 / 用途 |
 | --- | --- | --- |
 | `nickname` | `varchar(64)` | 昵称 |
-| `phone` | `varchar(16)` | 非空、唯一，按 E.164 格式规范化后存储 |
+| `phone` | `varchar(11)` | 非空、唯一，只保存 11 位数字 |
 | `password_hash` | `text` | 非空，保存 Argon2id 编码哈希，不保存明文 |
 | `avatar_key` | `text` | 头像 OSS key 或由服务管理的文件标识 |
 
-手机号是 V1 登录标识。首版使用手机号和密码注册/登录，不包含短信验证码流程。
+手机号是登录标识。当前使用手机号和密码注册/登录，不包含短信验证码流程；旧客户端可在登录时传入 `+86` 加 11 位号码。
 
 ### 3.3 `tags` 标签表
 
@@ -76,9 +76,19 @@ GORM 迁移设置 `DisableForeignKeyConstraintWhenMigrating: true`，模型避�
 
 创建或更新灵感图时，服务端一次性检查所有 `tag_ids` 是否存在且属于当前用户；任一标签不合法则整次请求失败。`image_key` 传入本服务格式的 `storekey` 时，服务端读取其内容；超过 1 MB 的静态图片会压缩后原位覆盖，不生成新 key，再根据最终存储字节计算 SHA-256 和文件大小。`file_size` 以字节为单位，表示压缩覆盖完成后的实际大小；小于或等于压缩目标的文件记录其原始字节数。更新 `image_key` 时重新处理并覆盖旧摘要和大小；非 storekey 的历史 OSS key 等标识不计算哈希或大小，两列均为空。`file_name` 由客户端传入，服务端只保存文件名部分，不保存客户端本机目录。删除标签时，在同一 PostgreSQL 事务中从该用户的灵感图 `tag_ids` 中移除对应业务 UUID，再删除标签记录。删除灵感图采用物理删除；V1 不引入软删除字段。
 
-### 3.5 索引清单
+### 3.5 `feedbacks` 反馈表
 
-- 四张表均对 `business_id` 建唯一索引。
+| 字段 | 类型 | 规则 / 用途 |
+| --- | --- | --- |
+| `user_id` | `uuid` | 可空；登录用户保存 `users.business_id`，游客反馈为空；建立 B-tree 索引 |
+| `content` | `text` | 非空，默认空字符串；最多 2000 个 Unicode 字符，至少与一张图片提供其一 |
+| `image_keys` | `text[]` | 非空，默认空数组；保存服务端验证的图片 storekey，最多 5 个 |
+
+反馈接口允许游客提交；登录请求的用户归属始终从有效 token 得出。正文与图片至少提供一项，图片受文件单体积配置约束。该批只负责提交和持久化，不提供反馈后台、回复或用户历史页。
+
+### 3.6 索引清单
+
+- 所有业务表均对 `business_id` 建唯一索引；000008 迁移后包含用户、标签、灵感图、反馈和配置表。
 - `app_configs.config_key` 和 `users.phone` 建唯一索引。
 - `tags.user_id`、`inspirations.user_id` 建 B-tree 索引，满足按用户隔离和查询的要求。
 - `inspirations.tag_ids` 建 GIN 索引；V1 不为 `data` 增加 JSONB 索引，后续只在明确有查询条件时通过迁移添加。
@@ -86,7 +96,7 @@ GORM 迁移设置 `DisableForeignKeyConstraintWhenMigrating: true`，模型避�
 
 PostgreSQL 的 GIN 适用于索引复合值中的成员（包括数组元素），供标签数组检索使用：[PostgreSQL GIN 索引文档](https://www.postgresql.org/docs/current/gin.html)。
 
-### 3.6 文件存储
+### 3.7 文件存储
 
 - V1 文件不写入 PostgreSQL，不建立文件元数据表，不关联 `user_id`，也不提供列表、删除或自动清理能力。上传和下载路由仍要求有效 Access Token；已鉴权用户持有有效 `storekey` 即可读取其定位的文件。
 - `files.max_upload_bytes` 配置单文件最大字节数，默认 `52428800`（50 MiB）；`files.local_root` 配置本地存储根目录，默认 `/var/lib/photo-nini/uploads`。Compose 使用 `uploaded_files_data` 命名卷持久化该目录。
@@ -142,14 +152,17 @@ GORM 关联迁移默认可能创建外键；配置 `DisableForeignKeyConstraintW
 
 | 方法与路径 | 鉴权 | 请求字段 / 行为 | 成功结果 |
 | --- | --- | --- | --- |
-| `POST /auth/register` | 否 | `phone`, `password`, `nickname`；服务端规范化手机号并创建用户 | 用户资料与 token pair |
+| `POST /auth/register` | 否 | 旧 JSON 注册协议不再创建账户 | `426 upgrade_required` |
 | `POST /auth/login` | 否 | `phone`, `password` | 用户资料与 token pair |
+| `POST /api/v2/auth/register` | 否 | multipart：`phone`, `password`, `nickname`, 必传 `avatar` 图片 | 用户资料与 token pair |
 | `POST /auth/refresh` | 否（请求体带 RT） | `refresh_token`；原子轮换 | 新 token pair |
 | `POST /auth/logout` | AT | 撤销当前会话 | `204` |
 | `GET /healthz` | 否 | 检查 PostgreSQL 和 Redis 连通性 | `data.status` 与当前服务 `data.version` |
 | `GET /configs/public` | 否 | 可重复传 `keys` 筛选；只查询 `is_public=true` | `items` 中仅包含 `key`、`value` |
+| `POST /feedback` | 可选 AT | multipart：`content`，重复的 `images` 文件字段；允许游客 | `received: true` |
 | `GET /users/me` | AT | 无 | 当前用户 `business_id`、昵称、手机号、头像 key 和时间字段 |
 | `PATCH /users/me` | AT | 可选 `nickname`, `avatar_key` | 更新后的当前用户资料 |
+| `POST /users/me/password` | AT | `current_password`, `new_password` | `204`；保留当前设备并撤销其他设备会话 |
 | `GET /tags` | AT | 分页参数 | 当前用户标签列表 |
 | `POST /tags` | AT | `content` | 新建标签及其业务 UUID |
 | `PATCH /tags/{business_id}` | AT | `content` | 更新后的标签 |
@@ -166,9 +179,11 @@ GORM 关联迁移默认可能创建外键；配置 `DisableForeignKeyConstraintW
 
 JSON 请求和响应使用 UTF-8；日期时间以 RFC 3339 格式返回。创建请求不得传 `id`、`business_id`、`user_id` 或时间字段，这些由服务端生成或从 token 得出。更新请求只修改列出的字段，未提供字段保持原值；`tag_ids: []` 表示清空所有标签。响应对象不得包含自增 `id`、`password` 或 `password_hash`。文件下载返回原始二进制流，不使用 JSON 封套。
 
-健康检查成功时返回 `{"data":{"status":"ok","version":"1.0.0"},"request_id":"..."}`。版本号来自 `backend/internal/version/version.go`，后端代码、接口、配置、数据库迁移或构建配置的每个改动批次都需按 `AGENTS.md` 递增。
+健康检查成功时返回 `{"data":{"status":"ok","version":"2.0.0"},"request_id":"..."}`。版本号来自 `backend/internal/version/version.go`，后端代码、接口、配置、数据库迁移或构建配置的每个改动批次都需按 `AGENTS.md` 递增。
 
-注册请求示例：`{ "phone": "+8613800138000", "password": "...", "nickname": "..." }`。手机号必须是规范化 E.164 值；密码长度为 8 至 128 个字符；昵称最多 64 个字符。登录使用相同的 `phone` 和 `password` 字段；手机号不存在和密码错误使用相同的 `401` 错误语义，避免泄露账户是否存在。
+当前已部署契约为后端 2.0.0；此处较早的 V1 设计描述已由后续规则替代。注册仅使用 `POST /api/v2/auth/register` multipart，手机号为 11 位数字、密码为 8 至 128 个字符、昵称最多 64 个字符且头像必传；旧 `POST /api/v1/auth/register` 返回 `426 upgrade_required`。登录只接受 11 位数字，兼容旧客户端输入的 `+86` 加 11 位号码并映射到数据库中的 11 位值；手机号不存在和密码错误继续使用相同的 `401` 语义。
+
+反馈正文最多 2000 个 Unicode 字符，最多 5 张图片，至少提交正文或一张图片；单图受 `files.max_upload_bytes` 限制。每个客户端 IP 每小时最多提交 5 次。IP 仅从配置的可信代理链解析，Redis 键保存 IP 摘要。反馈图片 storekey 与正文写入 `feedbacks`，反馈内容不写入日志。
 
 注册和登录的 `data` 包含当前用户资料和 `tokens`：
 
@@ -178,8 +193,8 @@ JSON 请求和响应使用 UTF-8；日期时间以 RFC 3339 格式返回。创�
     "user": {
       "business_id": "uuid",
       "nickname": "昵称",
-      "phone": "+8613800138000",
-      "avatar_key": null,
+      "phone": "13800138000",
+      "avatar_key": "local_yyyymmdd_uuid.jpg",
       "created_at": "2026-10-12T00:00:00Z",
       "updated_at": "2026-10-12T00:00:00Z"
     },
@@ -207,7 +222,7 @@ JSON 请求和响应使用 UTF-8；日期时间以 RFC 3339 格式返回。创�
 
 ### 实施验收
 
-- 检查所有四张表均包含通用字段，业务 UUID 均唯一，内部 `id` 不出现在 API 契约中。
+- 检查所有五张业务表均包含通用字段，业务 UUID 均唯一，内部 `id` 不出现在 API 契约中。
 - 检查标签和灵感图均有 `user_id` 索引；标签数组保存标签业务 UUID 并配置 GIN 索引。
 - 检查文档与 `AGENTS.md` 对无外键、GORM 配置和 SQL 脚本归档规则一致。
 - 检查所有受保护 API、刷新轮换、会话退出和 Redis 故障语义都要求 Redis 校验。

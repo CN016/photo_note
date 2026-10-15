@@ -102,16 +102,16 @@ async function waitForRefreshReplacement(previousToken: string): Promise<string 
 }
 
 /** 统一处理 JSON 封套、Bearer 鉴权以及过期 Access Token 的单次重试。 */
-async function request<T>(path: string, init: RequestInit = {}, auth = true, retry = true): Promise<T> {
+async function request<T>(path: string, init: RequestInit = {}, auth = true, retry = true, apiBase = API_BASE): Promise<T> {
   const headers = new Headers(init.headers)
   if (init.body && !(init.body instanceof FormData) && !headers.has('Content-Type')) headers.set('Content-Type', 'application/json')
   if (auth && accessToken) headers.set('Authorization', `Bearer ${accessToken}`)
   let response: Response
-  try { response = await fetch(`${API_BASE}${path}`, { ...init, headers }) }
+  try { response = await fetch(`${apiBase}${path}`, { ...init, headers }) }
   catch { throw new ApiError('network', 'network', 0) }
   if (response.status === 401 && auth && retry) {
     const nextToken = await rotateRefreshToken()
-    if (nextToken) return request<T>(path, init, auth, false)
+    if (nextToken) return request<T>(path, init, auth, false, apiBase)
     throw new ApiError('unauthorized', 'unauthorized', 401)
   }
   if (!response.ok) throw await parseFailure(response)
@@ -138,14 +138,34 @@ async function requestBlob(path: string, retry = true): Promise<Blob> {
 export const api = {
   /** 登录后端当前手机号密码认证入口。 */
   login(phone: string, password: string) { return request<AuthResponse>('/auth/login', { method: 'POST', body: JSON.stringify({ phone, password }) }, false) },
-  /** 注册后端当前手机号密码认证入口，不提交短信验证码。 */
-  register(phone: string, password: string, nickname: string) { return request<AuthResponse>('/auth/register', { method: 'POST', body: JSON.stringify({ phone, password, nickname }) }, false) },
+  /** 注册必须上传头像；multipart 请求由服务端验证文件内容后创建账号。 */
+  register(phone: string, password: string, nickname: string, avatar: Blob, filename: string) {
+    const body = new FormData()
+    body.append('phone', phone)
+    body.append('password', password)
+    body.append('nickname', nickname)
+    body.append('avatar', avatar, filename)
+    return request<AuthResponse>('/auth/register', { method: 'POST', body }, false, true, `${API_REQUEST_ORIGIN}/api/v2`)
+  },
   /** 当前 refresh token 轮换结果仅含新 token pair。 */
   refresh() { return rotateRefreshToken() },
   /** 撤销当前服务端会话。 */
   logout() { return request<void>('/auth/logout', { method: 'POST' }) },
   /** 读取当前登录用户资料。 */
   currentUser() { return request<UserProfile>('/users/me') },
+  /** 只提交资料中发生变化的字段。 */
+  updateProfile(patch: { nickname?: string; avatar_key?: string }) { return request<UserProfile>('/users/me', { method: 'PATCH', body: JSON.stringify(patch) }) },
+  /** 更新 Argon2id 凭据；服务端保留当前会话并撤销同一用户其他设备。 */
+  changePassword(currentPassword: string, newPassword: string) {
+    return request<void>('/users/me/password', { method: 'POST', body: JSON.stringify({ current_password: currentPassword, new_password: newPassword }) })
+  },
+  /** 游客反馈无需登录；已有 bearer token 时由服务端关联提交用户。 */
+  feedback(content: string, images: Blob[], filenames: string[]) {
+    const body = new FormData()
+    body.append('content', content)
+    images.forEach((image, index) => body.append('images', image, filenames[index] || `feedback-${index + 1}.jpg`))
+    return request<void>('/feedback', { method: 'POST', body }, Boolean(accessToken))
+  },
   /** 使用服务端分页契约加载灵感图。 */
   inspirations(page: number, pageSize = 20) { return request<PageResult<InspirationRecord>>(`/inspirations?page=${page}&page_size=${pageSize}`) },
   /** 读取单张灵感图文档。 */

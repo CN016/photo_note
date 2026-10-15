@@ -13,10 +13,9 @@ const router = useRouter()
 const route = useRoute()
 const phone = ref('')
 const password = ref('')
-const showPassword = ref(false)
 const busy = ref(false)
 const error = ref('')
-const phoneValid = computed(() => /^\+[1-9]\d{1,14}$/.test(phone.value.trim()))
+const phoneValid = computed(() => /^\d{11}$/.test(phone.value.trim()))
 
 onMounted(() => { if (route.query.logout === 'failed') error.value = t('common.logoutFailed') })
 
@@ -61,11 +60,11 @@ async function submit() {
       <div class="auth-form-wrap">
         <div class="auth-heading"><p class="eyebrow">{{ t('login.formHint') }}</p><h2>{{ t('login.formTitle') }}</h2></div>
         <form class="auth-form" @submit.prevent="submit" novalidate>
-          <label class="field"><span>{{ t('login.phone') }}</span><input v-model="phone" name="phone" type="tel" inputmode="tel" autocomplete="tel" :placeholder="t('login.phonePlaceholder')" required aria-describedby="phone-help" /></label>
+          <el-form-item :label="t('login.phone')"><el-input v-model="phone" name="phone" type="tel" inputmode="numeric" autocomplete="tel-national" maxlength="11" :placeholder="t('login.phonePlaceholder')" aria-describedby="phone-help" @input="phone = phone.replace(/\D/g, '').slice(0, 11)" /></el-form-item>
           <p id="phone-help" class="field-help">{{ t('login.phoneInvalid') }}</p>
-          <label class="field"><span>{{ t('login.password') }}</span><span class="password-input"><input v-model="password" name="password" :type="showPassword ? 'text' : 'password'" autocomplete="current-password" :placeholder="t('login.passwordPlaceholder')" required /><button class="password-toggle" type="button" :aria-label="showPassword ? t('login.hidePassword') : t('login.showPassword')" @click="showPassword = !showPassword">{{ showPassword ? '◉' : '◎' }}</button></span></label>
+          <el-form-item :label="t('login.password')"><el-input v-model="password" name="password" type="password" show-password autocomplete="current-password" :placeholder="t('login.passwordPlaceholder')" /></el-form-item>
           <p v-if="error" class="form-error" role="alert">{{ error }}</p>
-          <button class="primary-button full-button" type="submit" :disabled="busy">{{ busy ? t('login.submitting') : t('login.submit') }}<span aria-hidden="true">↗</span></button>
+          <el-button class="primary-button full-button" type="primary" native-type="submit" :loading="busy">{{ busy ? t('login.submitting') : t('login.submit') }}<span aria-hidden="true">↗</span></el-button>
         </form>
         <p class="auth-switch">{{ t('login.newHere') }} <RouterLink to="/register">{{ t('login.createAccount') }}</RouterLink></p>
       </div>

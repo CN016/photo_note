@@ -10,8 +10,8 @@ function changeTheme() { theme.value = toggleTheme() }
 </script>
 
 <template>
-  <button class="theme-switcher" type="button" :aria-label="theme === 'dark' ? t('common.switchToLight') : t('common.switchToDark')" :title="theme === 'dark' ? t('common.switchToLight') : t('common.switchToDark')" @click="changeTheme">
+  <el-button class="theme-switcher" text :aria-label="theme === 'dark' ? t('common.switchToLight') : t('common.switchToDark')" :title="theme === 'dark' ? t('common.switchToLight') : t('common.switchToDark')" @click="changeTheme">
     <span aria-hidden="true">{{ theme === 'dark' ? '☀' : '☾' }}</span>
     <span class="theme-switcher-text">{{ theme === 'dark' ? t('common.lightTheme') : t('common.darkTheme') }}</span>
-  </button>
+  </el-button>
 </template>

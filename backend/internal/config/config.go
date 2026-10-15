@@ -33,6 +33,10 @@ type Config struct {
 	HTTPReadTimeout       time.Duration
 	HTTPWriteTimeout      time.Duration
 	HTTPIdleTimeout       time.Duration
+	TrustedProxyCIDRs     []string
+	FeedbackMaxTextChars  int
+	FeedbackMaxImages     int
+	FeedbackPerIPPerHour  int
 }
 
 // Load 只从环境变量读取 PostgreSQL/Redis 连接参数；其他服务配置由配置表服务补齐。

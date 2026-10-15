@@ -162,6 +162,33 @@ func (manager *Manager) Open(storekey string) (io.ReadCloser, int64, string, err
 	return file, info.Size(), contentType, nil
 }
 
+// Delete 按服务端格式校验后的 storekey 删除单个本地文件，用于数据库写入失败时回收新上传对象。
+func (manager *Manager) Delete(ctx context.Context, storekey string) error {
+	if manager == nil {
+		return ErrBackendUnavailable
+	}
+	key, err := ParseKey(storekey)
+	if err != nil {
+		return err
+	}
+	if key.Type == ossType {
+		return ErrBackendUnavailable
+	}
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	default:
+	}
+	err = os.Remove(manager.localPath(key))
+	if errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("删除本地文件失败: %w", err)
+	}
+	return nil
+}
+
 // Replace 原子覆盖已有本地 storekey 对应的文件，不创建新 key 或数据库元数据。
 func (manager *Manager) Replace(ctx context.Context, storekey string, content []byte) error {
 	if manager == nil || len(content) == 0 {

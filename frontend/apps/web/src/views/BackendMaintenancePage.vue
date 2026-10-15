@@ -36,7 +36,7 @@ async function retry() {
       <p class="maintenance-message">{{ t('maintenance.message') }}</p>
       <div class="maintenance-status" role="status"><span class="status-indicator"></span>{{ t('maintenance.status') }}</div>
       <p v-if="backendHealthState.version" class="maintenance-version">{{ t('maintenance.lastKnownVersion', { version: backendHealthState.version }) }}</p>
-      <button class="primary-button maintenance-retry" type="button" :disabled="checking" @click="retry">{{ checking ? t('maintenance.checking') : t('maintenance.retry') }}<span aria-hidden="true">↻</span></button>
+      <el-button class="primary-button maintenance-retry" type="primary" :loading="checking" @click="retry">{{ checking ? t('maintenance.checking') : t('maintenance.retry') }}<span aria-hidden="true">↻</span></el-button>
       <p class="maintenance-checked">{{ lastChecked }}</p>
       <p class="maintenance-help">{{ t('maintenance.help') }}</p>
     </section>

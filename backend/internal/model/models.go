@@ -32,7 +32,7 @@ func (AppConfig) TableName() string { return "app_configs" }
 type User struct {
 	BaseModel
 	Nickname     string  `gorm:"column:nickname;type:varchar(64);not null"`
-	Phone        string  `gorm:"column:phone;type:varchar(16);not null;uniqueIndex"`
+	Phone        string  `gorm:"column:phone;type:varchar(11);not null;uniqueIndex"`
 	PasswordHash string  `gorm:"column:password_hash;type:text;not null" json:"-"`
 	AvatarKey    *string `gorm:"column:avatar_key;type:text"`
 }
@@ -69,3 +69,14 @@ type Inspiration struct {
 
 // TableName 固定灵感图模型使用与版本化建表 SQL 相同的表名。
 func (Inspiration) TableName() string { return "inspirations" }
+
+// Feedback 映射用户反馈记录；图片只保存 storekey，文件内容仍由独立文件存储管理。
+type Feedback struct {
+	BaseModel
+	UserID    *uuid.UUID     `gorm:"column:user_id;type:uuid;index"`
+	Content   string         `gorm:"column:content;type:text;not null;default:''"`
+	ImageKeys pq.StringArray `gorm:"column:image_keys;type:text[];not null;default:ARRAY[]::text[]"`
+}
+
+// TableName 固定反馈模型使用与版本化建表 SQL 相同的表名。
+func (Feedback) TableName() string { return "feedbacks" }

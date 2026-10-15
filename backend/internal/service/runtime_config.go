@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"net"
 	"sort"
 	"strconv"
 	"strings"
@@ -52,6 +53,10 @@ func (service *RuntimeConfigService) Load(ctx context.Context, base config.Confi
 		"files.local_root",
 		"files.max_upload_bytes",
 		"files.active_store_type",
+		"http.trusted_proxy_cidrs",
+		"feedback.max_text_chars",
+		"feedback.max_images",
+		"feedback.rate_limit_per_ip_hour",
 	}
 	values, err := service.reader.ReadConfigValues(ctx, keys)
 	if err != nil {
@@ -87,6 +92,26 @@ func (service *RuntimeConfigService) Load(ctx context.Context, base config.Confi
 	if !supportedFileStoreType(base.ActiveStoreType) {
 		return config.Config{}, errors.New("配置项 files.active_store_type 只允许 local 或 oss")
 	}
+	base.TrustedProxyCIDRs = make([]string, 0)
+	for _, cidr := range strings.Split(values["http.trusted_proxy_cidrs"], ",") {
+		cidr = strings.TrimSpace(cidr)
+		if cidr == "" {
+			return config.Config{}, errors.New("配置项 http.trusted_proxy_cidrs 包含空 CIDR")
+		}
+		if _, _, parseErr := net.ParseCIDR(cidr); parseErr != nil {
+			return config.Config{}, errors.New("配置项 http.trusted_proxy_cidrs 必须是逗号分隔的有效 CIDR")
+		}
+		base.TrustedProxyCIDRs = append(base.TrustedProxyCIDRs, cidr)
+	}
+	if base.FeedbackMaxTextChars, err = parsePositiveConfigInt("feedback.max_text_chars", values["feedback.max_text_chars"], 10000); err != nil {
+		return config.Config{}, err
+	}
+	if base.FeedbackMaxImages, err = parsePositiveConfigInt("feedback.max_images", values["feedback.max_images"], 5); err != nil {
+		return config.Config{}, err
+	}
+	if base.FeedbackPerIPPerHour, err = parsePositiveConfigInt("feedback.rate_limit_per_ip_hour", values["feedback.rate_limit_per_ip_hour"], 1000); err != nil {
+		return config.Config{}, err
+	}
 	if base.HTTPReadHeaderTimeout, err = parseRuntimeDuration("http.read_header_timeout", values["http.read_header_timeout"]); err != nil {
 		return config.Config{}, err
 	}
@@ -109,6 +134,15 @@ func (service *RuntimeConfigService) Load(ctx context.Context, base config.Confi
 		return config.Config{}, errors.New("配置项 auth.refresh_token_ttl 必须长于 auth.access_token_ttl")
 	}
 	return base, nil
+}
+
+// parsePositiveConfigInt 校验 app_configs 中数量上限，错误不回显配置值。
+func parsePositiveConfigInt(key, value string, maximum int) (int, error) {
+	parsed, err := strconv.Atoi(strings.TrimSpace(value))
+	if err != nil || parsed < 1 || parsed > maximum {
+		return 0, fmt.Errorf("配置项 %s 必须是 1 至 %d 的整数", key, maximum)
+	}
+	return parsed, nil
 }
 
 // CurrentFileStoreType 在每次上传时重新读取当前存储类型，使配置表切换能影响后续写入而无需重启服务。

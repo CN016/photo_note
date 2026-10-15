@@ -61,12 +61,12 @@ onMounted(() => { void loadPage() })
     <main class="gallery-main">
       <section class="gallery-intro">
         <div><p class="eyebrow">{{ t('common.product') }}</p><h1>{{ t('gallery.title') }}</h1><p class="gallery-subtitle">{{ t('gallery.subtitle') }}</p></div>
-        <RouterLink class="primary-button add-button" to="/inspirations/new"><span aria-hidden="true">＋</span>{{ t('gallery.newImage') }}</RouterLink>
+        <RouterLink custom to="/inspirations/new" v-slot="{ navigate }"><el-button class="primary-button add-button" type="primary" @click="navigate"><span aria-hidden="true">＋</span>{{ t('gallery.newImage') }}</el-button></RouterLink>
       </section>
 
       <div v-if="items.length" class="gallery-meta"><span>{{ t('gallery.count', { count: total }) }}</span><span class="gallery-meta-line"></span></div>
 
-      <div v-if="error" class="inline-error" role="alert"><span>{{ error }}</span><button class="text-button" :disabled="loading" @click="loadPage(page)">{{ t('gallery.retry') }}</button></div>
+      <div v-if="error" class="inline-error" role="alert"><span>{{ error }}</span><el-button text :disabled="loading" @click="loadPage(page)">{{ t('gallery.retry') }}</el-button></div>
 
       <section v-if="items.length" class="inspiration-grid" :aria-label="t('gallery.title')">
         <article v-for="(item, index) in items" :key="item.business_id" class="inspiration-card" :style="{ '--card-index': index % 8 }">
@@ -86,11 +86,11 @@ onMounted(() => { void loadPage() })
       <section v-else-if="!loading && !error" class="gallery-empty">
         <div class="empty-art" aria-hidden="true"><span class="empty-sun"></span><span class="empty-swatch"></span><span class="empty-squiggle">〰</span></div>
         <p class="eyebrow">{{ t('gallery.emptyTitle') }}</p><h2>{{ t('gallery.emptyText') }}</h2>
-        <RouterLink class="secondary-button" to="/inspirations/new">{{ t('gallery.uploadFirst') }}<span aria-hidden="true">↗</span></RouterLink>
+        <RouterLink custom to="/inspirations/new" v-slot="{ navigate }"><el-button @click="navigate">{{ t('gallery.uploadFirst') }}<span aria-hidden="true">↗</span></el-button></RouterLink>
       </section>
 
       <div v-if="loading && !items.length" class="gallery-loading" role="status"><span class="loading-dot"></span>{{ t('common.loading') }}</div>
-      <div v-if="hasMore" class="load-more-wrap"><button class="secondary-button" type="button" :disabled="loading" @click="loadPage(page + 1)">{{ loading ? t('common.loading') : t('gallery.loadMore') }}</button></div>
+      <div v-if="hasMore" class="load-more-wrap"><el-button :disabled="loading" @click="loadPage(page + 1)">{{ loading ? t('common.loading') : t('gallery.loadMore') }}</el-button></div>
     </main>
     <footer class="workspace-footer"><span>{{ t('common.brand') }}</span><span>{{ t('common.footer') }}</span></footer>
   </div>

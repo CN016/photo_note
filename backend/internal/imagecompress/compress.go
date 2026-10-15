@@ -37,6 +37,25 @@ var (
 	ErrCompression = errors.New("图片压缩未能达到目标大小")
 )
 
+// Validate 确认上传内容是可完整解码且像素数受限的栅格图片，不保存图片字节或记录用户内容。
+func Validate(source []byte) error {
+	if len(source) == 0 {
+		return ErrUnsupportedImage
+	}
+	configuration, format, err := image.DecodeConfig(bytes.NewReader(source))
+	if err != nil || !supportedFormat(format) || configuration.Width < 1 || configuration.Height < 1 {
+		return ErrUnsupportedImage
+	}
+	if uint64(configuration.Width) > maxDecodedPixels/uint64(configuration.Height) {
+		return ErrImageDimensions
+	}
+	_, decodedFormat, err := image.Decode(bytes.NewReader(source))
+	if err != nil || decodedFormat != format {
+		return ErrUnsupportedImage
+	}
+	return nil
+}
+
 // Compress 在保留原 storekey 的前提下压缩图片；返回的 changed 用于决定是否覆盖存储文件。
 // 不超过目标大小的有效图片保持原始字节，避免重复保存时对已有 JPEG 反复有损编码。
 func Compress(source []byte) ([]byte, bool, error) {

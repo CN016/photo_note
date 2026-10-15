@@ -8,6 +8,8 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"math"
+	"mime/multipart"
 	"net/http"
 	"strconv"
 	"strings"
@@ -16,6 +18,8 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"github.com/photo-nini/backend/internal/domain/fault"
+	"github.com/photo-nini/backend/internal/filestore"
+	"github.com/photo-nini/backend/internal/imagecompress"
 	"github.com/photo-nini/backend/internal/model"
 	"github.com/photo-nini/backend/internal/service"
 	"github.com/photo-nini/backend/internal/store"
@@ -48,18 +52,26 @@ type Dependencies struct {
 	MaxUploadBytes       int64
 	CurrentFileStoreType func(context.Context) (string, error)
 	PublicConfigs        publicConfigReader
+	Feedback             *service.FeedbackService
+	TrustedProxyCIDRs    []string
 }
 
 // fileStorage 是 HTTP 上传和读取使用的文件存储能力，不包含用户归属或文件元数据管理。
 type fileStorage interface {
 	Store(context.Context, string, string, io.Reader, int64) (string, error)
 	Open(string) (io.ReadCloser, int64, string, error)
+	Delete(context.Context, string) error
 }
 
 // Router 创建 V1 HTTP 路由，并集中安装请求 ID、请求体限制和不泄露敏感数据的异常处理。
 func Router(dependencies Dependencies) *gin.Engine {
 	router := gin.New()
 	router.HandleMethodNotAllowed = true
+	// 只有配置表允许的代理网段可声明转发客户端 IP；不可信请求头由 Gin 忽略。
+	if err := router.SetTrustedProxies(dependencies.TrustedProxyCIDRs); err != nil {
+		log.Printf("event=trusted_proxy_config_invalid")
+		_ = router.SetTrustedProxies(nil)
+	}
 	router.Use(requestIDMiddleware(), bodyLimitMiddleware(dependencies.MaxBodyBytes), recoveryMiddleware())
 	router.NoRoute(func(c *gin.Context) {
 		writeError(c, fault.NotFound())
@@ -69,10 +81,13 @@ func Router(dependencies Dependencies) *gin.Engine {
 	})
 
 	api := router.Group(apiPrefix)
-	api.POST("/auth/register", registerHandler(dependencies.Auth))
+	api.POST("/auth/register", upgradeRequiredHandler())
 	api.POST("/auth/login", loginHandler(dependencies.Auth))
 	api.POST("/auth/refresh", refreshHandler(dependencies.Auth))
 	api.GET("/configs/public", publicConfigsHandler(dependencies.PublicConfigs))
+	api.POST("/feedback", optionalAuthenticationMiddleware(dependencies.Tokens), feedbackHandler(dependencies))
+	v2 := router.Group("/api/v2")
+	v2.POST("/auth/register", registerV2Handler(dependencies))
 
 	// readiness 只探测服务依赖，不访问用户数据，因此允许部署平台在无 token 时调用。
 	router.GET("/healthz", healthHandler(dependencies.PostgresPing, dependencies.RedisPing))
@@ -84,6 +99,7 @@ func Router(dependencies Dependencies) *gin.Engine {
 	protected.GET("/files/:storekey", downloadFileHandler(dependencies.Files))
 	protected.GET("/users/me", getCurrentUserHandler(dependencies.Users))
 	protected.PATCH("/users/me", patchCurrentUserHandler(dependencies.Users))
+	protected.POST("/users/me/password", changePasswordHandler(dependencies.Auth))
 	protected.GET("/tags", listTagsHandler(dependencies.Tags))
 	protected.POST("/tags", createTagHandler(dependencies.Tags))
 	protected.PATCH("/tags/:business_id", updateTagHandler(dependencies.Tags))
@@ -133,6 +149,29 @@ func recoveryMiddleware() gin.HandlerFunc {
 func authenticationMiddleware(tokens accessTokenValidator) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		parts := strings.Fields(c.GetHeader("Authorization"))
+		if len(parts) != 2 || !strings.EqualFold(parts[0], "Bearer") || tokens == nil {
+			writeError(c, fault.Unauthorized())
+			return
+		}
+		claims, err := tokens.ValidateAccess(c.Request.Context(), parts[1])
+		if err != nil {
+			writeError(c, err)
+			return
+		}
+		c.Request = c.Request.WithContext(context.WithValue(c.Request.Context(), claimsKey{}, claims))
+		c.Next()
+	}
+}
+
+// optionalAuthenticationMiddleware 为公开接口可选解析 Bearer；无令牌允许游客访问，错误令牌不降级为游客。
+func optionalAuthenticationMiddleware(tokens accessTokenValidator) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		header := strings.TrimSpace(c.GetHeader("Authorization"))
+		if header == "" {
+			c.Next()
+			return
+		}
+		parts := strings.Fields(header)
 		if len(parts) != 2 || !strings.EqualFold(parts[0], "Bearer") || tokens == nil {
 			writeError(c, fault.Unauthorized())
 			return
@@ -352,6 +391,272 @@ func registerHandler(auth *service.AuthService) gin.HandlerFunc {
 	}
 }
 
+// upgradeRequiredHandler 要求旧客户端升级到头像必传的 multipart 注册协议。
+func upgradeRequiredHandler() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		writeError(c, fault.New(http.StatusUpgradeRequired, "upgrade_required", "请升级客户端后再注册", nil, nil))
+	}
+}
+
+// registerV2Handler 校验头像后保存文件，再创建手机号账户并签发令牌；失败时回收未绑定文件。
+func registerV2Handler(dependencies Dependencies) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		if dependencies.Auth == nil || dependencies.Files == nil || dependencies.CurrentFileStoreType == nil {
+			writeError(c, fault.Unavailable(errors.New("注册服务未配置")))
+			return
+		}
+		if err := parseMultipartRequest(c, multipartBodyLimit(dependencies.MaxUploadBytes, 1)); err != nil {
+			writeError(c, err)
+			return
+		}
+		defer removeMultipartTempFiles(c)
+		form := c.Request.MultipartForm
+		if err := validateMultipartKeys(form, []string{"phone", "password", "nickname"}, []string{"avatar"}); err != nil {
+			writeError(c, err)
+			return
+		}
+		phone, err := oneMultipartValue(form, "phone", true)
+		if err != nil {
+			writeError(c, err)
+			return
+		}
+		password, err := oneMultipartValue(form, "password", true)
+		if err != nil {
+			writeError(c, err)
+			return
+		}
+		nickname, err := oneMultipartValue(form, "nickname", true)
+		if err != nil {
+			writeError(c, err)
+			return
+		}
+		if err := dependencies.Auth.ValidateRegistration(phone, password, nickname); err != nil {
+			writeError(c, err)
+			return
+		}
+		avatarFiles := form.File["avatar"]
+		if len(avatarFiles) != 1 {
+			writeError(c, fault.InvalidField("avatar", "注册必须上传一张头像"))
+			return
+		}
+		content, err := readValidatedImage(avatarFiles[0], dependencies.MaxUploadBytes)
+		if err != nil {
+			writeError(c, err)
+			return
+		}
+		storeType, err := dependencies.CurrentFileStoreType(c.Request.Context())
+		if err != nil {
+			writeError(c, fault.Unavailable(err))
+			return
+		}
+		avatarKey, err := dependencies.Files.Store(c.Request.Context(), storeType, avatarFiles[0].Filename, bytes.NewReader(content), dependencies.MaxUploadBytes)
+		if err != nil {
+			writeError(c, fileStoreError(err))
+			return
+		}
+		result, err := dependencies.Auth.RegisterWithAvatar(c.Request.Context(), phone, password, nickname, avatarKey)
+		if err != nil {
+			if result.User.BusinessID == uuid.Nil {
+				_ = dependencies.Files.Delete(context.Background(), avatarKey)
+			}
+			writeError(c, err)
+			return
+		}
+		writeData(c, http.StatusCreated, authResponse{User: userDTO(result.User), Tokens: result.Tokens})
+	}
+}
+
+// feedbackHandler 接收游客或 bearer 用户反馈；限流通过可信代理解析的 ClientIP 在写入前执行。
+func feedbackHandler(dependencies Dependencies) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		if dependencies.Feedback == nil || dependencies.Files == nil || dependencies.CurrentFileStoreType == nil {
+			writeError(c, fault.Unavailable(errors.New("反馈服务未配置")))
+			return
+		}
+		if err := parseMultipartRequest(c, multipartBodyLimit(dependencies.MaxUploadBytes, 5)); err != nil {
+			writeError(c, err)
+			return
+		}
+		defer removeMultipartTempFiles(c)
+		form := c.Request.MultipartForm
+		if err := validateMultipartKeys(form, []string{"content"}, []string{"images"}); err != nil {
+			writeError(c, err)
+			return
+		}
+		content, err := optionalMultipartValue(form, "content")
+		if err != nil {
+			writeError(c, err)
+			return
+		}
+		imageFiles := form.File["images"]
+		if err := dependencies.Feedback.Validate(content, len(imageFiles)); err != nil {
+			writeError(c, err)
+			return
+		}
+		if err := dependencies.Feedback.Reserve(c.Request.Context(), c.ClientIP()); err != nil {
+			writeError(c, err)
+			return
+		}
+
+		storeType := ""
+		if len(imageFiles) > 0 {
+			storeType, err = dependencies.CurrentFileStoreType(c.Request.Context())
+			if err != nil {
+				writeError(c, fault.Unavailable(err))
+				return
+			}
+		}
+		imageKeys := make([]string, 0, len(imageFiles))
+		cleanup := func() {
+			for _, key := range imageKeys {
+				_ = dependencies.Files.Delete(context.Background(), key)
+			}
+		}
+		for _, header := range imageFiles {
+			data, readErr := readValidatedImage(header, dependencies.MaxUploadBytes)
+			if readErr != nil {
+				cleanup()
+				writeError(c, readErr)
+				return
+			}
+			key, storeErr := dependencies.Files.Store(c.Request.Context(), storeType, header.Filename, bytes.NewReader(data), dependencies.MaxUploadBytes)
+			if storeErr != nil {
+				cleanup()
+				writeError(c, fileStoreError(storeErr))
+				return
+			}
+			imageKeys = append(imageKeys, key)
+		}
+		var userID *uuid.UUID
+		if claims, ok := c.Request.Context().Value(claimsKey{}).(store.TokenClaims); ok && claims.UserBusinessID != uuid.Nil {
+			id := claims.UserBusinessID
+			userID = &id
+		}
+		if err := dependencies.Feedback.Submit(c.Request.Context(), userID, content, imageKeys); err != nil {
+			cleanup()
+			writeError(c, err)
+			return
+		}
+		writeData(c, http.StatusCreated, gin.H{"received": true})
+	}
+}
+
+// parseMultipartRequest 限制 multipart 总体积，并把最大单图字节数留给单文件验证。
+func parseMultipartRequest(c *gin.Context, maxBodyBytes int64) error {
+	contentType := strings.ToLower(strings.TrimSpace(strings.Split(c.GetHeader("Content-Type"), ";")[0]))
+	if contentType != "multipart/form-data" {
+		return fault.InvalidRequest("请求 Content-Type 必须是 multipart/form-data")
+	}
+	if maxBodyBytes > 0 {
+		c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, maxBodyBytes)
+	}
+	if err := c.Request.ParseMultipartForm(32 << 20); err != nil {
+		var tooLarge *http.MaxBytesError
+		if errors.As(err, &tooLarge) {
+			return fault.New(http.StatusRequestEntityTooLarge, "request_too_large", "上传内容超过允许大小", nil, err)
+		}
+		return fault.InvalidRequest("multipart 请求格式无效")
+	}
+	if c.Request.MultipartForm == nil {
+		return fault.InvalidRequest("multipart 请求格式无效")
+	}
+	return nil
+}
+
+// removeMultipartTempFiles 回收标准库在大 multipart 请求中落盘的临时文件。
+func removeMultipartTempFiles(c *gin.Context) {
+	if c.Request.MultipartForm != nil {
+		_ = c.Request.MultipartForm.RemoveAll()
+	}
+}
+
+// multipartBodyLimit 为图片文件上限预留边界头与正文空间，并避免乘法溢出。
+func multipartBodyLimit(maxFileBytes int64, files int) int64 {
+	const overhead = int64(1 << 20)
+	if maxFileBytes < 1 || files < 1 || maxFileBytes > (math.MaxInt64-overhead)/int64(files) {
+		return math.MaxInt64
+	}
+	return maxFileBytes*int64(files) + overhead
+}
+
+// validateMultipartKeys 拒绝未知 multipart 字段，避免客户端误以为未支持的数据已被保存。
+func validateMultipartKeys(form *multipart.Form, valueKeys, fileKeys []string) error {
+	allowedValues := make(map[string]struct{}, len(valueKeys))
+	allowedFiles := make(map[string]struct{}, len(fileKeys))
+	for _, key := range valueKeys {
+		allowedValues[key] = struct{}{}
+	}
+	for _, key := range fileKeys {
+		allowedFiles[key] = struct{}{}
+	}
+	for key := range form.Value {
+		if _, ok := allowedValues[key]; !ok {
+			return fault.InvalidRequest("请求包含不支持的表单字段: " + key)
+		}
+	}
+	for key := range form.File {
+		if _, ok := allowedFiles[key]; !ok {
+			return fault.InvalidRequest("请求包含不支持的文件字段: " + key)
+		}
+	}
+	return nil
+}
+
+// oneMultipartValue 读取且只允许出现一次的必需 multipart 字段。
+func oneMultipartValue(form *multipart.Form, key string, required bool) (string, error) {
+	values := form.Value[key]
+	if len(values) != 1 || (required && strings.TrimSpace(values[0]) == "") {
+		return "", fault.InvalidField(key, "表单字段缺失或重复")
+	}
+	return values[0], nil
+}
+
+// optionalMultipartValue 允许反馈正文缺省，但拒绝重复字段。
+func optionalMultipartValue(form *multipart.Form, key string) (string, error) {
+	values := form.Value[key]
+	if len(values) > 1 {
+		return "", fault.InvalidField(key, "表单字段不能重复")
+	}
+	if len(values) == 0 {
+		return "", nil
+	}
+	return values[0], nil
+}
+
+// readValidatedImage 对单张图片执行字节上限和完整解码校验，返回的缓冲区仅在当前请求使用。
+func readValidatedImage(header *multipart.FileHeader, maxBytes int64) ([]byte, error) {
+	if header.Size > maxBytes {
+		return nil, fault.New(http.StatusRequestEntityTooLarge, "file_too_large", "图片超过服务端允许的大小", nil, nil)
+	}
+	file, err := header.Open()
+	if err != nil {
+		return nil, fault.InvalidField("images", "图片文件无法读取")
+	}
+	defer file.Close()
+	data, err := io.ReadAll(io.LimitReader(file, maxBytes+1))
+	if err != nil {
+		return nil, fault.InvalidField("images", "图片文件无法读取")
+	}
+	if int64(len(data)) > maxBytes {
+		return nil, fault.New(http.StatusRequestEntityTooLarge, "file_too_large", "图片超过服务端允许的大小", nil, nil)
+	}
+	if err := imagecompress.Validate(data); err != nil {
+		return nil, fault.New(http.StatusBadRequest, "invalid_image", "图片格式或内容无效", nil, err)
+	}
+	return data, nil
+}
+
+// fileStoreError 将文件存储边界错误映射为稳定公开业务错误。
+func fileStoreError(err error) error {
+	if errors.Is(err, filestore.ErrFileTooLarge) {
+		return fault.New(http.StatusRequestEntityTooLarge, "file_too_large", "图片超过服务端允许的大小", nil, err)
+	}
+	if errors.Is(err, filestore.ErrBackendUnavailable) {
+		return fault.Unavailable(err)
+	}
+	return fault.Unavailable(err)
+}
+
 // loginHandler 验证手机号和密码，并为当前设备创建独立 Redis 会话。
 func loginHandler(auth *service.AuthService) gin.HandlerFunc {
 	return func(c *gin.Context) {
@@ -519,6 +824,30 @@ type pageResponse[T any] struct {
 }
 
 // listTagsHandler 按当前用户隔离并返回标准分页标签集合。
+// changePasswordHandler 仅接受当前密码和新密码；当前用户与会话只能来自已验证令牌。
+func changePasswordHandler(auth *service.AuthService) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		claims, err := authContext(c)
+		if err != nil {
+			writeError(c, err)
+			return
+		}
+		var request struct {
+			CurrentPassword string `json:"current_password"`
+			NewPassword     string `json:"new_password"`
+		}
+		if err := decodeJSON(c, &request); err != nil {
+			writeError(c, err)
+			return
+		}
+		if err := auth.ChangePassword(c.Request.Context(), claims.UserBusinessID, claims.SessionID, request.CurrentPassword, request.NewPassword); err != nil {
+			writeError(c, err)
+			return
+		}
+		c.Status(http.StatusNoContent)
+	}
+}
+
 func listTagsHandler(tags *service.TagService) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		claims, err := authContext(c)

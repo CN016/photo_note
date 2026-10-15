@@ -11,6 +11,10 @@ import editorZh from './editor.zh-CN.json'
 import editorEn from './editor.en-US.json'
 import maintenanceZh from './maintenance.zh-CN.json'
 import maintenanceEn from './maintenance.en-US.json'
+import profileZh from './profile.zh-CN.json'
+import profileEn from './profile.en-US.json'
+import feedbackZh from './feedback.zh-CN.json'
+import feedbackEn from './feedback.en-US.json'
 
 /** 每个页面独立维护语言 JSON，统一在此处装配为 Vue I18n 命名空间。 */
 export const i18n = createI18n({
@@ -18,8 +22,8 @@ export const i18n = createI18n({
   locale: localStorage.getItem('photo-nini.locale') === 'en-US' ? 'en-US' : 'zh-CN',
   fallbackLocale: 'zh-CN',
   messages: {
-    'zh-CN': { common: commonZh, login: loginZh, register: registerZh, gallery: galleryZh, editor: editorZh, maintenance: maintenanceZh },
-    'en-US': { common: commonEn, login: loginEn, register: registerEn, gallery: galleryEn, editor: editorEn, maintenance: maintenanceEn },
+    'zh-CN': { common: commonZh, login: loginZh, register: registerZh, gallery: galleryZh, editor: editorZh, maintenance: maintenanceZh, profile: profileZh, feedback: feedbackZh },
+    'en-US': { common: commonEn, login: loginEn, register: registerEn, gallery: galleryEn, editor: editorEn, maintenance: maintenanceEn, profile: profileEn, feedback: feedbackEn },
   },
 })
 
