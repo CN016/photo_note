@@ -29,7 +29,7 @@ CREATE INDEX ix_error_logs_code_created ON error_logs (error_code, created_at DE
 INSERT INTO app_configs (business_id, config_key, config_value, description, is_public)
 VALUES
     (gen_random_uuid(), 'error_logs.notify_admin', 'true', '是否在新错误日志写入后向指定管理员发送站内通知；默认开启，可设为 false 暂停。', false),
-    (gen_random_uuid(), 'error_logs.admin_phone', '', '接收错误日志站内通知的管理员用户手机号；仅后台用于查找用户，不公开。', false)
+    (gen_random_uuid(), 'error_logs.admin_phone', '15677323590', '接收错误日志站内通知的管理员用户手机号；仅后台用于查找用户，不公开。', false)
 ON CONFLICT (config_key) DO NOTHING;
 
 COMMENT ON TABLE error_logs IS '服务端错误诊断日志表，保留服务端错误位置、安全原因摘要和一分钟内重复次数。';
