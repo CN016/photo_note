@@ -1,26 +1,34 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, shallowRef } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { useRoute, useRouter } from 'vue-router'
-import type { UploadFile } from 'element-plus'
+import { onBeforeRouteLeave, useRoute, useRouter } from 'vue-router'
+import { ElMessageBox, type UploadFile } from 'element-plus'
 import AppHeader from '../components/AppHeader.vue'
 import { api } from '../api/client'
 import { ApiError, type InspirationRecord } from '../api/types'
+import { useAnchorDisplayStore } from '../stores/anchorDisplay'
 import {
   anchorToView, createEditorDocument, cropOnRotatedCanvas, DocumentHistory, parseEditorDocument, viewSelectionToSourceRect,
   viewToSource, type EditorDocument, type ImageAnchor, type NormalizedRect,
 } from '../../../../packages/editor-core/src'
-import { decodeImagePreview, makeWorkingJpeg, releaseCanvas, renderDocumentPreview } from '../../../../packages/image-processing/src'
+import {
+  analyzeImageColors, decodeImagePreview, isColorAnalysis, makeWorkingJpeg, releaseCanvas, renderDocumentPreview,
+  type ColorAnalysis,
+} from '../../../../packages/image-processing/src'
 
 type TransformAction = 'rotate' | 'crop' | 'reset'
 type RGBChannel = 'red' | 'green' | 'blue'
 interface AnchorDraft { id: string | null; x: number; y: number; note: string }
+interface AnchorMoveDraft { anchorId: string; pointerId: number; startX: number; startY: number; x: number; y: number; moved: boolean }
 
-const { t } = useI18n()
+const { t, locale } = useI18n()
 const route = useRoute()
 const router = useRouter()
+const anchorDisplayStore = useAnchorDisplayStore()
 const itemId = computed(() => typeof route.params.id === 'string' ? route.params.id : '')
 const isExisting = computed(() => itemId.value.length > 0)
+const isEditing = ref(false)
+const editSnapshot = ref('')
 const documentData = ref<EditorDocument>(createEditorDocument())
 const sourceCanvas = shallowRef<HTMLCanvasElement | null>(null)
 const previewCanvas = ref<HTMLCanvasElement | null>(null)
@@ -35,11 +43,15 @@ const saving = ref(false)
 const busyPhase = ref('')
 const error = ref('')
 const status = ref('')
+const colorAnalysis = ref<ColorAnalysis | null>(null)
+const colorAnalysisError = ref('')
+const colorAnalysisSaving = ref(false)
 const anchorMode = ref(false)
 const cropMode = ref(false)
 const transformDialog = ref<TransformAction | null>(null)
 const anchorDialog = ref(false)
 const anchorDraft = ref<AnchorDraft | null>(null)
+const movingAnchor = ref<AnchorMoveDraft | null>(null)
 const historyRevision = ref(0)
 const cropSelection = ref<NormalizedRect | null>(null)
 const fitBox = ref({ width: 0, height: 0 })
@@ -51,9 +63,20 @@ let uploadWorkKey = ''
 let rgbBefore: string | null = null
 let resizeObserver: ResizeObserver | null = null
 let selectionStart: { x: number; y: number } | null = null
+let colorWritePromise: Promise<void> | null = null
+let suppressAnchorClick = false
 
 const canUndo = computed(() => { historyRevision.value; return history?.canUndo ?? false })
 const canRedo = computed(() => { historyRevision.value; return history?.canRedo ?? false })
+const hasUnsavedChanges = computed(() => {
+  if (editSnapshot.value === '') return false
+  const documentChanged = JSON.stringify(documentData.value) !== editSnapshot.value
+  const draft = anchorDraft.value
+  const draftChanged = draft !== null && (draft.id === null
+    ? draft.note.trim().length > 0
+    : documentData.value.anchors.find(anchor => anchor.id === draft.id)?.note !== draft.note)
+  return documentChanged || draftChanged || cropSelection.value !== null || !!transformDialog.value || !!movingAnchor.value?.moved
+})
 const displayDimensions = computed(() => {
   const source = sourceCanvas.value
   if (!source) return { width: 0, height: 0 }
@@ -62,12 +85,50 @@ const displayDimensions = computed(() => {
   const crop = cropOnRotatedCanvas(documentData.value)
   const width = Math.max(1, Math.round(rotatedWidth * crop.width))
   const height = Math.max(1, Math.round(rotatedHeight * crop.height))
-  const scale = Math.min(1, fitBox.value.width / width || 1, fitBox.value.height / height || 1)
+  // 预留 24px 环绕留白，让贴近图像边缘的锚点仍能完整显示圆点与触控区域。
+  const availableWidth = Math.max(1, fitBox.value.width - 48)
+  const availableHeight = Math.max(1, fitBox.value.height - 48)
+  const scale = Math.min(1, availableWidth / width || 1, availableHeight / height || 1)
   return { width: Math.max(1, Math.round(width * scale)), height: Math.max(1, Math.round(height * scale)) }
 })
+const anchorDisplayStyle = computed<Record<string, string>>(() => {
+  const scale = anchorDisplayStore.size / 100
+  return {
+    '--anchor-dot-half': `${12 * scale}px`,
+    '--anchor-dot-size': `${24 * scale}px`,
+    '--anchor-dot-core-size': `${10 * scale}px`,
+    '--anchor-gap': `${6 * scale}px`,
+    '--anchor-label-font-size': `${12 * scale}px`,
+    '--anchor-label-padding-y': `${6 * scale}px`,
+    '--anchor-label-padding-x': `${11 * scale}px`,
+    '--anchor-index-size': `${21 * scale}px`,
+    '--anchor-index-font-size': `${9 * scale}px`,
+    '--anchor-note-font-size': `${11 * scale}px`,
+  }
+})
 const visibleAnchors = computed(() => documentData.value.anchors.flatMap((anchor, index) => {
-  const position = anchorToView(anchor, documentData.value)
-  return position.visible ? [{ ...anchor, index, left: `${position.x * 100}%`, top: `${position.y * 100}%` }] : []
+  const draft = movingAnchor.value?.anchorId === anchor.id ? movingAnchor.value : null
+  const displayAnchor = draft ? { ...anchor, x: draft.x, y: draft.y } : anchor
+  const position = anchorToView(displayAnchor, documentData.value)
+  if (!position.visible) return []
+  const width = Math.max(1, displayDimensions.value.width)
+  const scale = anchorDisplayStore.size / 100
+  const desiredLabelWidth = Math.min(240 * scale, Math.max(80 * scale, Array.from(anchor.note).length * 12 * scale + 24 * scale))
+  const leftSpace = position.x * width
+  const rightSpace = (1 - position.x) * width
+  const markerOffset = 36 * scale
+  const leftLabelSpace = Math.max(0, leftSpace - markerOffset)
+  const rightLabelSpace = Math.max(0, rightSpace - markerOffset)
+  const side = leftLabelSpace >= desiredLabelWidth || leftLabelSpace >= rightLabelSpace ? 'anchor-left' : 'anchor-right'
+  const availableLabelWidth = side === 'anchor-left' ? leftLabelSpace : rightLabelSpace
+  return [{
+    ...displayAnchor,
+    index,
+    side,
+    labelMaxWidth: `${Math.max(52 * scale, Math.min(desiredLabelWidth, availableLabelWidth))}px`,
+    left: `${position.x * 100}%`,
+    top: `${position.y * 100}%`,
+  }]
 }))
 const cropDragStyle = computed(() => {
   const selection = cropSelection.value
@@ -84,6 +145,96 @@ function localError(cause: unknown, fallback: string): string {
     if (translated !== key) return translated
   }
   return fallback
+}
+
+/** 按当前界面语言显示颜色百分比，原始画像数值仍以数字保存在 JSONB 中。 */
+function displayPercent(value: number): string {
+  return `${new Intl.NumberFormat(locale.value, { maximumFractionDigits: 2 }).format(value)}%`
+}
+
+/** 构造完整编辑数据并合并自动画像，避免编辑保存覆盖尚未写回的颜色画像。 */
+function editorDataForSave(): Record<string, unknown> {
+  const data: Record<string, unknown> = { ...documentData.value }
+  if (colorAnalysis.value) data.color_analysis = colorAnalysis.value
+  return data
+}
+
+/** 进入编辑时记录轻量 JSON 快照；撤销历史仍只管理用户编辑字段。 */
+function beginEditing(): void {
+  editSnapshot.value = JSON.stringify(documentData.value)
+  history = new DocumentHistory(documentData.value)
+  historyRevision.value += 1
+  isEditing.value = true
+  error.value = ''
+  status.value = ''
+}
+
+/** 退出编辑前确认丢弃未保存修改，并将轻量文档和撤销历史恢复至进入时快照。 */
+async function cancelEditing(): Promise<void> {
+  finishRgbChange()
+  if (hasUnsavedChanges.value) {
+    try {
+      await ElMessageBox.confirm(t('editor.discardChangesText'), t('editor.discardChangesTitle'), {
+        confirmButtonText: t('editor.discardChangesConfirm'),
+        cancelButtonText: t('common.cancel'),
+        type: 'warning',
+      })
+    } catch { return }
+  }
+  if (editSnapshot.value) documentData.value = JSON.parse(editSnapshot.value) as EditorDocument
+  history = new DocumentHistory(documentData.value)
+  historyRevision.value += 1
+  editSnapshot.value = ''
+  isEditing.value = false
+  anchorMode.value = false
+  cropMode.value = false
+  cropSelection.value = null
+  transformDialog.value = null
+  anchorDialog.value = false
+  anchorDraft.value = null
+  error.value = ''
+  status.value = ''
+  scheduleRender()
+}
+
+/** 自动画像只合并到已保存数据；独立写入进行时，编辑保存会等待它完成再提交完整文档。 */
+async function persistColorAnalysis(profile: ColorAnalysis, baseData: Record<string, unknown>): Promise<void> {
+  if (!isExisting.value || !record.value) return
+  if (colorWritePromise) { await colorWritePromise; return }
+
+  colorAnalysisSaving.value = true
+  colorAnalysisError.value = ''
+  const pending = (async () => {
+    try {
+      const updated = await api.updateInspiration(itemId.value, { ...baseData, color_analysis: profile })
+      record.value = updated
+      colorAnalysisError.value = ''
+    } catch (cause) {
+      colorAnalysisError.value = localError(cause, t('editor.colorAnalysisSaveFailed'))
+    } finally {
+      colorAnalysisSaving.value = false
+    }
+  })()
+  colorWritePromise = pending
+  try { await pending }
+  finally { if (colorWritePromise === pending) colorWritePromise = null }
+}
+
+/** 重新读取缺失画像或重试保存失败的画像；错误只影响画像，不阻断图片详情。 */
+async function retryColorAnalysis(): Promise<void> {
+  if (!sourceCanvas.value || !record.value || saving.value || colorAnalysisSaving.value) return
+  colorAnalysisError.value = ''
+  let profile = colorAnalysis.value
+  if (!profile) {
+    try {
+      profile = analyzeImageColors(sourceCanvas.value)
+      colorAnalysis.value = profile
+    } catch {
+      colorAnalysisError.value = t('editor.colorAnalysisFailed')
+      return
+    }
+  }
+  await persistColorAnalysis(profile, record.value.data)
 }
 
 /** 每次提交建立一条轻量文档历史，不复制 canvas 像素或原图文件。 */
@@ -141,6 +292,8 @@ async function loadSelectedFile(file: File): Promise<void> {
   const version = ++decodeVersion
   error.value = ''
   status.value = ''
+  colorAnalysis.value = null
+  colorAnalysisError.value = ''
   imageReady.value = false
   resizeObserver?.disconnect()
   resizeObserver = null
@@ -173,6 +326,8 @@ async function loadSelectedFile(file: File): Promise<void> {
 async function loadExisting(): Promise<void> {
   loading.value = true
   error.value = ''
+  colorAnalysis.value = null
+  colorAnalysisError.value = ''
   try {
     const loaded = await api.inspiration(itemId.value)
     record.value = loaded
@@ -184,6 +339,17 @@ async function loadExisting(): Promise<void> {
     const decoded = await decodeImagePreview(original)
     sourceCanvas.value = decoded.canvas
     downsampled.value = decoded.wasDownsampled
+    const storedProfile = isColorAnalysis(loaded.data.color_analysis) ? loaded.data.color_analysis : null
+    colorAnalysis.value = storedProfile
+    if (!storedProfile) {
+      try {
+        const profile = analyzeImageColors(decoded.canvas)
+        colorAnalysis.value = profile
+        void persistColorAnalysis(profile, loaded.data)
+      } catch {
+        colorAnalysisError.value = t('editor.colorAnalysisFailed')
+      }
+    }
     imageReady.value = true
     scheduleRender()
     await nextTick()
@@ -266,6 +432,96 @@ function editAnchor(anchor: ImageAnchor): void {
   anchorDialog.value = true
 }
 
+/** 在预览画布上拖动锚点时即时更新叠层位置，抬起指针后只提交一条可撤销历史。 */
+function beginAnchorMove(event: PointerEvent, anchor: ImageAnchor): void {
+  if (!isEditing.value || anchorMode.value || cropMode.value || event.button !== 0) return
+  movingAnchor.value = {
+    anchorId: anchor.id,
+    pointerId: event.pointerId,
+    startX: event.clientX,
+    startY: event.clientY,
+    x: anchor.x,
+    y: anchor.y,
+    moved: false,
+  }
+  const target = event.currentTarget
+  if (target instanceof HTMLElement) {
+    try { target.setPointerCapture(event.pointerId) } catch { /* 浏览器失焦时交由 pointercancel 清除临时状态。 */ }
+  }
+}
+
+/** 将捕获到的指针坐标反算为原图坐标；最小拖动阈值避免把普通点按误判为移动。 */
+function updateAnchorMove(event: PointerEvent): void {
+  const draft = movingAnchor.value
+  const canvas = previewCanvas.value
+  if (!draft || draft.pointerId !== event.pointerId || !canvas) return
+  const moved = draft.moved || Math.hypot(event.clientX - draft.startX, event.clientY - draft.startY) >= 4
+  if (!moved) return
+  const bounds = canvas.getBoundingClientRect()
+  if (!bounds.width || !bounds.height) return
+  const point = {
+    x: Math.max(0, Math.min(1, (event.clientX - bounds.left) / bounds.width)),
+    y: Math.max(0, Math.min(1, (event.clientY - bounds.top) / bounds.height)),
+  }
+  const source = viewToSource(point, documentData.value)
+  movingAnchor.value = { ...draft, x: source.x, y: source.y, moved: true }
+}
+
+/** 提交已完成的拖动；不移动时保留原有点击编辑备注行为。 */
+function finishAnchorMove(event: PointerEvent): void {
+  updateAnchorMove(event)
+  const draft = movingAnchor.value
+  if (!draft || draft.pointerId !== event.pointerId) return
+  movingAnchor.value = null
+  if (!draft.moved) return
+
+  suppressAnchorClick = true
+  window.setTimeout(() => { suppressAnchorClick = false }, 0)
+  const anchors = documentData.value.anchors.map(anchor => anchor.id === draft.anchorId
+    ? { ...anchor, x: draft.x, y: draft.y }
+    : anchor)
+  if (JSON.stringify(anchors) !== JSON.stringify(documentData.value.anchors)) commit({ ...documentData.value, anchors })
+}
+
+/** 取消被系统打断的触控手势，不将不完整的锚点位置写入文档。 */
+function cancelAnchorMove(event: PointerEvent): void {
+  if (movingAnchor.value?.pointerId === event.pointerId) movingAnchor.value = null
+}
+
+/** 普通点击打开备注编辑；拖动结束产生的合成 click 只消费一次，避免意外打开对话框。 */
+function handleAnchorClick(anchor: ImageAnchor): void {
+  if (suppressAnchorClick) { suppressAnchorClick = false; return }
+  if (!anchorMode.value) editAnchor(anchor)
+}
+
+/** 键盘聚焦的锚点可用方向键微调，Shift 配合方向键按较大步幅移动。 */
+function moveAnchorByKeyboard(anchor: ImageAnchor, event: KeyboardEvent): void {
+  const step = event.shiftKey ? 0.05 : 0.01
+  const delta = event.key === 'ArrowLeft' ? { x: -step, y: 0 }
+    : event.key === 'ArrowRight' ? { x: step, y: 0 }
+      : event.key === 'ArrowUp' ? { x: 0, y: -step }
+        : { x: 0, y: step }
+  const current = documentData.value.anchors.find(item => item.id === anchor.id)
+  if (!current) return
+  const position = anchorToView(current, documentData.value)
+  const source = viewToSource({
+    x: Math.max(0, Math.min(1, position.x + delta.x)),
+    y: Math.max(0, Math.min(1, position.y + delta.y)),
+  }, documentData.value)
+  if (Math.abs(source.x - current.x) < 0.0001 && Math.abs(source.y - current.y) < 0.0001) return
+  const anchors = documentData.value.anchors.map(item => item.id === current.id ? { ...item, ...source } : item)
+  commit({ ...documentData.value, anchors })
+}
+
+/** 从锚点列表或备注对话框删除指定锚点，操作写入历史以支持撤销恢复。 */
+function deleteAnchorById(id: string): void {
+  commit({ ...documentData.value, anchors: documentData.value.anchors.filter(anchor => anchor.id !== id) })
+  if (anchorDraft.value?.id === id) {
+    anchorDialog.value = false
+    anchorDraft.value = null
+  }
+}
+
 /** 新增、更新、删除备注都写入同一份可撤销的编辑文档历史。 */
 function saveAnchor(): void {
   if (!anchorDraft.value?.note.trim()) { error.value = t('editor.anchorRequired'); return }
@@ -285,9 +541,7 @@ function saveAnchor(): void {
 function deleteAnchor(): void {
   const id = anchorDraft.value?.id
   if (!id) { anchorDialog.value = false; anchorDraft.value = null; return }
-  commit({ ...documentData.value, anchors: documentData.value.anchors.filter(anchor => anchor.id !== id) })
-  anchorDialog.value = false
-  anchorDraft.value = null
+  deleteAnchorById(id)
 }
 
 /** 生成锚点 ID；旧浏览器缺少 randomUUID 时使用本地随机回退。 */
@@ -339,11 +593,22 @@ async function save(): Promise<void> {
   error.value = ''
   status.value = ''
   if (!isExisting.value && (!imageFile.value || !sourceCanvas.value)) { error.value = t('editor.imageRequired'); return }
+  finishRgbChange()
   saving.value = true
   try {
     if (isExisting.value) {
+      if (colorWritePromise) await colorWritePromise
       busyPhase.value = t('editor.saving')
-      await api.updateInspiration(itemId.value, documentData.value as Record<string, unknown>)
+      const updated = await api.updateInspiration(itemId.value, editorDataForSave())
+      record.value = updated
+      documentData.value = parseEditorDocument(updated.data)
+      history = new DocumentHistory(documentData.value)
+      historyRevision.value += 1
+      editSnapshot.value = ''
+      isEditing.value = false
+      anchorMode.value = false
+      cropMode.value = false
+      cropSelection.value = null
     } else {
       const file = imageFile.value!
       if (!uploadSourceKey) {
@@ -383,7 +648,20 @@ function observeStage(): void {
 onMounted(() => {
   observeStage()
   if (isExisting.value) void loadExisting()
-  else { history = new DocumentHistory(documentData.value); historyRevision.value += 1 }
+  else { isEditing.value = true; history = new DocumentHistory(documentData.value); historyRevision.value += 1 }
+})
+
+/** 通过页内返回或浏览器导航离开时，同样确认是否丢弃已有灵感图的未保存调整。 */
+onBeforeRouteLeave(async () => {
+  if (!isExisting.value || !isEditing.value || !hasUnsavedChanges.value) return true
+  try {
+    await ElMessageBox.confirm(t('editor.discardChangesText'), t('editor.discardChangesTitle'), {
+      confirmButtonText: t('editor.discardChangesConfirm'),
+      cancelButtonText: t('common.cancel'),
+      type: 'warning',
+    })
+    return true
+  } catch { return false }
 })
 
 onBeforeUnmount(() => {
@@ -398,13 +676,17 @@ onBeforeUnmount(() => {
 <template>
   <div class="workspace-page editor-page">
     <AppHeader />
-    <main class="editor-main">
+    <main class="editor-main" :style="anchorDisplayStyle">
       <div class="editor-heading-row">
         <div class="editor-title-group">
           <RouterLink class="back-link" to="/inspirations"><span aria-hidden="true">←</span>{{ t('common.back') }}</RouterLink>
-          <div><p class="eyebrow">{{ t('common.product') }}</p><h1>{{ isExisting ? t('editor.editTitle') : t('editor.newTitle') }}</h1></div>
+          <div><p class="eyebrow">{{ t('common.product') }}</p><h1>{{ isExisting ? (isEditing ? t('editor.editTitle') : t('editor.detailTitle')) : t('editor.newTitle') }}</h1></div>
         </div>
-        <p class="editor-subtitle">{{ t('editor.subtitle') }}</p>
+        <div class="editor-heading-actions">
+          <p class="editor-subtitle">{{ t('editor.subtitle') }}</p>
+          <el-button v-if="isExisting && !isEditing" class="primary-button detail-edit-button" type="primary" :disabled="loading || !imageReady" @click="beginEditing">{{ t('editor.edit') }}</el-button>
+          <el-button v-else-if="isExisting && isEditing" class="cancel-edit-button heading-cancel-button" @click="cancelEditing">{{ t('editor.cancelEdit') }}</el-button>
+        </div>
       </div>
 
       <section v-if="!isExisting && !imageReady" class="upload-welcome">
@@ -418,59 +700,124 @@ onBeforeUnmount(() => {
         <section class="editor-canvas-column" :aria-label="t('editor.previewLabel')">
           <div class="canvas-toolbar">
             <span class="filename-chip"><span aria-hidden="true">▧</span>{{ filename }}</span>
-            <div class="history-actions">
+            <div v-if="isEditing" class="history-actions">
               <el-button class="icon-button" :disabled="!canUndo" :aria-label="t('editor.undo')" :title="t('editor.undo')" @click="undo">↶</el-button>
               <el-button class="icon-button" :disabled="!canRedo" :aria-label="t('editor.redo')" :title="t('editor.redo')" @click="redo">↷</el-button>
             </div>
           </div>
           <div ref="stageBox" class="canvas-stage" :class="{ 'anchor-active': anchorMode, 'crop-active': cropMode }" @click="onStageClick">
             <div v-if="imageReady" class="editor-canvas-wrap" :style="{ width: `${displayDimensions.width}px`, height: `${displayDimensions.height}px` }">
-              <canvas ref="previewCanvas" class="editor-canvas" role="img" tabindex="0" :aria-label="anchorMode ? t('editor.anchorModeOn') : t('editor.previewLabel')" @keydown.enter.prevent="addAnchorAtCenter" @keydown.space.prevent="addAnchorAtCenter" @pointerdown="beginCropSelection" @pointermove="moveCropSelection" @pointerup="endCropSelection" @pointercancel="endCropSelection"></canvas>
+              <canvas ref="previewCanvas" class="editor-canvas" role="img" :tabindex="isEditing ? 0 : -1" :aria-label="anchorMode ? t('editor.anchorModeOn') : t('editor.previewLabel')" @keydown.enter.prevent="addAnchorAtCenter" @keydown.space.prevent="addAnchorAtCenter" @pointerdown="beginCropSelection" @pointermove="moveCropSelection" @pointerup="endCropSelection" @pointercancel="endCropSelection"></canvas>
               <div v-if="cropMode && cropSelection" class="crop-selection" :style="cropDragStyle" aria-hidden="true"></div>
-              <button v-for="anchor in visibleAnchors" :key="anchor.id" class="image-anchor" type="button" :style="{ left: anchor.left, top: anchor.top }" :aria-label="t('editor.anchorLabel', { number: anchor.index + 1, note: anchor.note })" @click.stop="editAnchor(anchor)">{{ anchor.index + 1 }}</button>
+              <component
+                :is="isEditing ? 'button' : 'span'"
+                v-for="anchor in visibleAnchors"
+                :key="anchor.id"
+                :class="['image-anchor', anchor.side, { 'is-moving': movingAnchor?.anchorId === anchor.id }]"
+                :type="isEditing ? 'button' : undefined"
+                :tabindex="isEditing ? 0 : undefined"
+                :role="isEditing ? undefined : 'img'"
+                :style="{ left: anchor.left, top: anchor.top, '--anchor-label-max-width': anchor.labelMaxWidth }"
+                :aria-label="t('editor.anchorLabel', { number: anchor.index + 1, note: anchor.note })"
+                :aria-description="isEditing ? t('editor.anchorMoveHelp') : undefined"
+                @pointerdown.stop="isEditing && beginAnchorMove($event, anchor)"
+                @pointermove.stop="isEditing && updateAnchorMove($event)"
+                @pointerup.stop="isEditing && finishAnchorMove($event)"
+                @pointercancel.stop="isEditing && cancelAnchorMove($event)"
+                @keydown.left.prevent="isEditing && moveAnchorByKeyboard(anchor, $event)"
+                @keydown.right.prevent="isEditing && moveAnchorByKeyboard(anchor, $event)"
+                @keydown.up.prevent="isEditing && moveAnchorByKeyboard(anchor, $event)"
+                @keydown.down.prevent="isEditing && moveAnchorByKeyboard(anchor, $event)"
+                @click.stop="isEditing && handleAnchorClick(anchor)"
+              >
+                <span class="image-anchor-label">{{ anchor.note }}</span>
+                <span class="image-anchor-dot" aria-hidden="true"><span></span></span>
+              </component>
             </div>
             <div v-else class="loading-inline" role="status"><span class="loading-dot"></span>{{ t('common.loading') }}</div>
           </div>
           <div v-if="cropMode" class="crop-action-row"><span>{{ t('editor.cropHint') }}</span><el-button class="compact-button" @click="cancelCrop">{{ t('common.cancel') }}</el-button><el-button class="primary-button compact-button" type="primary" :disabled="!cropSelection" @click="applyCrop">{{ t('editor.cropApply') }}</el-button></div>
           <p v-else-if="anchorMode" class="stage-hint">{{ t('editor.anchorModeOn') }}</p>
+          <p v-else-if="isEditing && documentData.anchors.length" class="stage-hint">{{ t('editor.anchorMoveHelp') }}</p>
           <p v-if="downsampled" class="stage-note">{{ t('editor.largeImage') }}</p>
         </section>
 
-        <aside class="editor-controls" :aria-label="t('editor.editTitle')">
-          <section class="control-section transform-section">
-            <div class="section-title-row"><h2>{{ t('editor.editTitle') }}</h2><span class="section-step">01</span></div>
-            <div class="transform-buttons">
-              <el-button class="tool-button" :disabled="cropMode" @click="prepareTransform('rotate')"><span aria-hidden="true">⟳</span>{{ t('editor.rotate') }}</el-button>
-              <el-button class="tool-button" :disabled="cropMode" @click="prepareTransform('crop')"><span aria-hidden="true">⌗</span>{{ t('editor.crop') }}</el-button>
-              <el-button class="tool-button" :disabled="cropMode" @click="prepareTransform('reset')"><span aria-hidden="true">⤢</span>{{ t('editor.resetCrop') }}</el-button>
+        <aside class="editor-controls" :class="{ 'detail-panel': !isEditing }" :aria-label="isEditing ? t('editor.editTitle') : t('editor.detailTitle')">
+          <section class="control-section color-profile-section" :aria-label="t('editor.colorProfile')">
+            <div class="section-title-row"><h2>{{ t('editor.colorProfile') }}</h2><span v-if="colorAnalysisSaving" class="profile-saving" role="status">{{ t('editor.colorAnalysisSaving') }}</span></div>
+            <template v-if="colorAnalysis">
+              <div class="palette-bar" role="img" :aria-label="t('editor.paletteSummary')">
+                <span v-for="color in colorAnalysis.palette" :key="color.hex" :style="{ width: `${color.percentage}%`, backgroundColor: color.hex }"></span>
+                <span class="other-palette-segment" :style="{ width: `${colorAnalysis.other_percentage}%` }"></span>
+              </div>
+              <ul class="palette-list">
+                <li v-for="color in colorAnalysis.palette" :key="color.hex"><span class="color-swatch" :style="{ backgroundColor: color.hex }" aria-hidden="true"></span><span>{{ color.hex }}</span><strong>{{ displayPercent(color.percentage) }}</strong></li>
+                <li><span class="color-swatch other-color-swatch" aria-hidden="true"></span><span>{{ t('editor.otherColors') }}</span><strong>{{ displayPercent(colorAnalysis.other_percentage) }}</strong></li>
+              </ul>
+              <dl class="color-metrics">
+                <div><dt>{{ t('editor.averageBrightness') }}</dt><dd>{{ displayPercent(colorAnalysis.average_brightness) }}</dd></div>
+                <div><dt>{{ t('editor.averageSaturation') }}</dt><dd>{{ displayPercent(colorAnalysis.average_saturation) }}</dd></div>
+              </dl>
+              <p v-if="colorAnalysisError" class="profile-error" role="alert">{{ colorAnalysisError }}</p>
+            </template>
+            <p v-else-if="colorAnalysisError" class="profile-error" role="alert">{{ colorAnalysisError }}</p>
+            <p v-else class="profile-saving" role="status">{{ t('editor.colorAnalysisPending') }}</p>
+            <div v-if="colorAnalysisError" class="profile-retry-row">
+              <el-button text :disabled="colorAnalysisSaving || saving" @click="retryColorAnalysis">{{ t('editor.colorAnalysisRetry') }}</el-button>
             </div>
           </section>
 
-          <section class="control-section color-section">
-            <div class="section-title-row"><h2>{{ t('editor.rgb') }}</h2><span class="section-step">02</span></div>
-            <label class="color-slider red-slider"><span>{{ t('editor.red') }}</span><el-slider :model-value="documentData.rgb.red" :min="-100" :max="100" :aria-label="t('editor.red')" @input="updateRgb('red', String($event))" @change="finishRgbChange" /><output>{{ documentData.rgb.red }}</output></label>
-            <label class="color-slider green-slider"><span>{{ t('editor.green') }}</span><el-slider :model-value="documentData.rgb.green" :min="-100" :max="100" :aria-label="t('editor.green')" @input="updateRgb('green', String($event))" @change="finishRgbChange" /><output>{{ documentData.rgb.green }}</output></label>
-            <label class="color-slider blue-slider"><span>{{ t('editor.blue') }}</span><el-slider :model-value="documentData.rgb.blue" :min="-100" :max="100" :aria-label="t('editor.blue')" @input="updateRgb('blue', String($event))" @change="finishRgbChange" /><output>{{ documentData.rgb.blue }}</output></label>
+          <section class="control-section anchor-size-section">
+            <div class="section-title-row"><h2>{{ t('editor.anchorDisplaySize') }}</h2><output class="anchor-size-value">{{ anchorDisplayStore.size }}%</output></div>
+            <el-slider :model-value="anchorDisplayStore.size" :min="70" :max="150" :step="5" :aria-label="t('editor.anchorDisplaySize')" @input="anchorDisplayStore.setSize(Number($event))" />
+            <p class="anchor-size-help">{{ t('editor.anchorDisplaySizeHelp') }}</p>
           </section>
 
-          <section class="control-section notes-section">
-            <div class="section-title-row"><div><h2>{{ t('editor.anchors') }}</h2><span class="notes-count">{{ documentData.anchors.length }}</span></div><span class="section-step">03</span></div>
-            <el-button class="note-mode-button" :class="{ active: anchorMode }" :disabled="cropMode" @click="anchorMode = !anchorMode"><span aria-hidden="true">＋</span>{{ anchorMode ? t('editor.anchorModeOn') : t('editor.anchorMode') }}</el-button>
-            <p v-if="!documentData.anchors.length" class="notes-empty">{{ t('editor.anchorEmpty') }}</p>
-            <div v-else class="note-list">
-              <el-button v-for="(anchor, index) in documentData.anchors" :key="anchor.id" class="note-list-item" @click="editAnchor(anchor)"><span class="note-index">{{ index + 1 }}</span><span>{{ anchor.note }}</span><span class="note-arrow" aria-hidden="true">↗</span></el-button>
-            </div>
+          <template v-if="isEditing">
+            <section class="control-section transform-section">
+              <div class="section-title-row"><h2>{{ t('editor.editTitle') }}</h2><span class="section-step">01</span></div>
+              <div class="transform-buttons">
+                <el-button class="tool-button" :disabled="cropMode" @click="prepareTransform('rotate')"><span aria-hidden="true">⟳</span>{{ t('editor.rotate') }}</el-button>
+                <el-button class="tool-button" :disabled="cropMode" @click="prepareTransform('crop')"><span aria-hidden="true">⌗</span>{{ t('editor.crop') }}</el-button>
+                <el-button class="tool-button" :disabled="cropMode" @click="prepareTransform('reset')"><span aria-hidden="true">⤢</span>{{ t('editor.resetCrop') }}</el-button>
+              </div>
+            </section>
+
+            <section class="control-section color-section">
+              <div class="section-title-row"><h2>{{ t('editor.rgb') }}</h2><span class="section-step">02</span></div>
+              <label class="color-slider red-slider"><span>{{ t('editor.red') }}</span><el-slider :model-value="documentData.rgb.red" :min="-100" :max="100" :aria-label="t('editor.red')" @input="updateRgb('red', String($event))" @change="finishRgbChange" /><output>{{ documentData.rgb.red }}</output></label>
+              <label class="color-slider green-slider"><span>{{ t('editor.green') }}</span><el-slider :model-value="documentData.rgb.green" :min="-100" :max="100" :aria-label="t('editor.green')" @input="updateRgb('green', String($event))" @change="finishRgbChange" /><output>{{ documentData.rgb.green }}</output></label>
+              <label class="color-slider blue-slider"><span>{{ t('editor.blue') }}</span><el-slider :model-value="documentData.rgb.blue" :min="-100" :max="100" :aria-label="t('editor.blue')" @input="updateRgb('blue', String($event))" @change="finishRgbChange" /><output>{{ documentData.rgb.blue }}</output></label>
+            </section>
+
+            <section class="control-section notes-section">
+              <div class="section-title-row"><div><h2>{{ t('editor.anchors') }}</h2><span class="notes-count">{{ documentData.anchors.length }}</span></div><span class="section-step">03</span></div>
+              <el-button class="note-mode-button" :class="{ active: anchorMode }" :disabled="cropMode" @click="anchorMode = !anchorMode"><span aria-hidden="true">＋</span>{{ anchorMode ? t('editor.anchorModeOn') : t('editor.anchorMode') }}</el-button>
+              <p v-if="!documentData.anchors.length" class="notes-empty">{{ t('editor.anchorEmpty') }}</p>
+              <div v-else class="note-list">
+                <div v-for="(anchor, index) in documentData.anchors" :key="anchor.id" class="note-list-item-row">
+                  <el-button class="note-list-item" @click="editAnchor(anchor)"><span class="note-index">{{ index + 1 }}</span><span>{{ anchor.note }}</span><span class="note-arrow" aria-hidden="true">↗</span></el-button>
+                  <el-button class="note-delete-button" text :aria-label="t('editor.anchorDeleteLabel', { number: index + 1 })" :title="t('editor.anchorDeleteLabel', { number: index + 1 })" @click="deleteAnchorById(anchor.id)">×</el-button>
+                </div>
+              </div>
+            </section>
+            <p class="source-preserved"><span aria-hidden="true">◌</span>{{ t('editor.sourcePreserved') }}</p>
+            <p v-if="error" class="form-error editor-error" role="alert">{{ error }}</p>
+            <p v-if="status" class="success-message" role="status">{{ status }}</p>
+            <el-button class="primary-button save-button desktop-save" type="primary" :disabled="saving || loading || cropMode || anchorDialog || !!transformDialog" :loading="saving" @click="save">{{ saving ? t('editor.saving') : !isExisting && uploadSourceKey ? t('editor.retry') : t('editor.saveEdit') }}<span aria-hidden="true">↗</span></el-button>
+            <p v-if="busyPhase" class="save-progress" role="status"><span class="loading-dot"></span>{{ busyPhase }}</p>
+          </template>
+
+          <section v-else-if="documentData.anchors.length" class="control-section detail-notes-section">
+            <div class="section-title-row"><div><h2>{{ t('editor.anchors') }}</h2><span class="notes-count">{{ documentData.anchors.length }}</span></div></div>
+            <ul class="detail-note-list"><li v-for="(anchor, index) in documentData.anchors" :key="anchor.id"><span class="note-index">{{ index + 1 }}</span><span>{{ anchor.note }}</span></li></ul>
           </section>
-          <p class="source-preserved"><span aria-hidden="true">◌</span>{{ t('editor.sourcePreserved') }}</p>
-          <p v-if="error" class="form-error editor-error" role="alert">{{ error }}</p>
-          <p v-if="status" class="success-message" role="status">{{ status }}</p>
-          <el-button class="primary-button save-button desktop-save" type="primary" :disabled="saving || loading || cropMode || anchorDialog || !!transformDialog" :loading="saving" @click="save">{{ saving ? t('editor.saving') : !isExisting && uploadSourceKey ? t('editor.retry') : isExisting ? t('editor.saveEdit') : t('editor.saveNew') }}<span aria-hidden="true">↗</span></el-button>
-          <p v-if="busyPhase" class="save-progress" role="status"><span class="loading-dot"></span>{{ busyPhase }}</p>
+          <p v-if="status && !isEditing" class="success-message" role="status">{{ status }}</p>
         </aside>
       </div>
 
       <div v-if="error && !imageReady" class="editor-load-error" role="alert"><p>{{ error }}</p><RouterLink class="secondary-button" to="/inspirations">{{ t('common.back') }}</RouterLink></div>
-      <div v-if="imageReady" class="mobile-save-bar"><span v-if="error" class="mobile-save-error" role="alert">{{ error }}</span><span v-else-if="busyPhase" class="mobile-save-progress" role="status">{{ busyPhase }}</span><el-button class="primary-button save-button" type="primary" :disabled="saving || loading || cropMode || anchorDialog || !!transformDialog" :loading="saving" @click="save">{{ saving ? t('editor.saving') : !isExisting && uploadSourceKey ? t('editor.retry') : isExisting ? t('editor.saveEdit') : t('editor.saveNew') }}<span aria-hidden="true">↗</span></el-button></div>
+      <div v-if="imageReady && isEditing" class="mobile-save-bar"><span v-if="error" class="mobile-save-error" role="alert">{{ error }}</span><span v-else-if="busyPhase" class="mobile-save-progress" role="status">{{ busyPhase }}</span><el-button v-if="isExisting" class="cancel-edit-button mobile-cancel-button" :disabled="saving" @click="cancelEditing">{{ t('editor.cancelEdit') }}</el-button><el-button class="primary-button save-button" type="primary" :disabled="saving || loading || cropMode || anchorDialog || !!transformDialog" :loading="saving" @click="save">{{ saving ? t('editor.saving') : !isExisting && uploadSourceKey ? t('editor.retry') : isExisting ? t('editor.saveEdit') : t('editor.saveNew') }}<span aria-hidden="true">↗</span></el-button></div>
     </main>
 
     <el-dialog :model-value="!!transformDialog" :title="t('editor.transformTitle')" width="min(500px, calc(100vw - 32px))" @close="transformDialog = null">
