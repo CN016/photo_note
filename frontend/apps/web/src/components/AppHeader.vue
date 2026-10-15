@@ -32,6 +32,7 @@ function active(path: string): boolean {
     <nav class="desktop-nav">
       <RouterLink class="nav-item" :class="{ active: active('/inspirations') }" to="/inspirations"><span aria-hidden="true">▦</span>{{ t('common.inspirations') }}</RouterLink>
       <RouterLink class="nav-item" :class="{ active: route.path === '/inspirations/new' }" to="/inspirations/new"><span aria-hidden="true">＋</span>{{ t('common.create') }}</RouterLink>
+      <RouterLink class="nav-item" :class="{ active: active('/ledger') }" to="/ledger"><span aria-hidden="true">◷</span>{{ t('common.ledger') }}</RouterLink>
       <RouterLink class="nav-item" :class="{ active: active('/profile') }" to="/profile"><span aria-hidden="true">◉</span>{{ t('common.profile') }}</RouterLink>
     </nav>
     <div class="navigation-account">
@@ -42,6 +43,7 @@ function active(path: string): boolean {
     <nav class="mobile-nav" :aria-label="t('common.navigation')">
       <RouterLink class="mobile-nav-item" :class="{ active: active('/inspirations') }" to="/inspirations"><span aria-hidden="true">▦</span><small>{{ t('common.inspirations') }}</small></RouterLink>
       <RouterLink class="mobile-nav-item" :class="{ active: route.path === '/inspirations/new' }" to="/inspirations/new"><span aria-hidden="true">＋</span><small>{{ t('common.create') }}</small></RouterLink>
+      <RouterLink class="mobile-nav-item" :class="{ active: active('/ledger') }" to="/ledger"><span aria-hidden="true">◷</span><small>{{ t('common.ledger') }}</small></RouterLink>
       <RouterLink class="mobile-nav-item" :class="{ active: active('/profile') }" to="/profile"><span aria-hidden="true">◉</span><small>{{ t('common.profile') }}</small></RouterLink>
     </nav>
   </aside>

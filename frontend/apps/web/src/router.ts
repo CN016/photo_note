@@ -13,6 +13,7 @@ export const router = createRouter({
     { path: '/inspirations', name: 'gallery', component: () => import('./views/GalleryPage.vue') },
     { path: '/inspirations/new', name: 'new-inspiration', component: () => import('./views/EditorPage.vue') },
     { path: '/inspirations/:id', name: 'edit-inspiration', component: () => import('./views/EditorPage.vue') },
+    { path: '/ledger', name: 'ledger', component: () => import('./views/LedgerPage.vue') },
     { path: '/profile', name: 'profile', component: () => import('./views/ProfilePage.vue') },
     { path: '/:pathMatch(.*)*', redirect: '/inspirations' },
   ],

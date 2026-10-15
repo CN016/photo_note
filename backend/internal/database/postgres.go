@@ -67,12 +67,16 @@ func postgresDSN(cfg config.Config) string {
 // checkSchema 只读取数据库目录，不自动建表；缺表或发现外键时让进程启动失败并提示修复 SQL。
 func checkSchema(ctx context.Context, connection *gorm.DB) error {
 	for name, table := range map[string]any{
-		"app_configs":  &model.AppConfig{},
-		"users":        &model.User{},
-		"tags":         &model.Tag{},
-		"inspirations": &model.Inspiration{},
+		"app_configs":    &model.AppConfig{},
+		"users":          &model.User{},
+		"tags":           &model.Tag{},
+		"inspirations":   &model.Inspiration{},
+		"ledger_records": &model.LedgerRecord{},
 	} {
 		if !connection.WithContext(ctx).Migrator().HasTable(table) {
+			if name == "ledger_records" {
+				return fmt.Errorf("PostgreSQL schema 缺少表 ledger_records，请先执行 backend/migrations/000009_create_ledger_records.sql")
+			}
 			return fmt.Errorf("PostgreSQL schema 缺少表 %s，请先执行 backend/migrations 中的版本化 SQL", name)
 		}
 		// 新 API 启动前检查公开标记列已由增量迁移创建，避免服务运行后才在公开读取请求中暴露迁移遗漏。

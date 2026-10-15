@@ -80,3 +80,23 @@ type Feedback struct {
 
 // TableName 固定反馈模型使用与版本化建表 SQL 相同的表名。
 func (Feedback) TableName() string { return "feedbacks" }
+
+// LedgerRecord 保存当前用户的一笔收入或支出；草稿 JSON 与已完成金额分开，编辑时不影响正式统计。
+type LedgerRecord struct {
+	BaseModel
+	UserID        uuid.UUID  `gorm:"column:user_id;type:uuid;not null;index:ix_ledger_records_user_date,priority:1"`
+	RecordDate    time.Time  `gorm:"column:record_date;type:date;not null;index:ix_ledger_records_user_date,priority:2"`
+	RecordTime    *time.Time `gorm:"column:record_time;type:time"`
+	RecordType    string     `gorm:"column:record_type;type:varchar(8);not null"`
+	AmountFen     int64      `gorm:"column:amount_fen;type:bigint;not null;default:0"`
+	Category      string     `gorm:"column:category;type:text;not null;default:''"`
+	PaymentMethod string     `gorm:"column:payment_method;type:text;not null;default:''"`
+	Flag          string     `gorm:"column:flag;type:varchar(24);not null;default:''"`
+	Note          string     `gorm:"column:note;type:text;not null;default:''"`
+	Status        string     `gorm:"column:record_status;type:varchar(16);not null;default:'draft'"`
+	DraftData     *JSONB     `gorm:"column:draft_data;type:jsonb"`
+	DraftVersion  int64      `gorm:"column:draft_version;type:bigint;not null;default:0"`
+}
+
+// TableName 固定账本记录模型使用与版本化迁移相同的表名。
+func (LedgerRecord) TableName() string { return "ledger_records" }

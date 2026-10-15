@@ -1,4 +1,4 @@
-import { ApiError, type ApiEnvelope, type ApiErrorEnvelope, type AuthResponse, type InspirationRecord, type PageResult, type TokenPair, type UserProfile } from './types'
+import { ApiError, type ApiEnvelope, type ApiErrorEnvelope, type AuthResponse, type InspirationRecord, type LedgerFields, type LedgerImportItem, type LedgerImportResult, type LedgerRecord, type PageResult, type TokenPair, type UserProfile } from './types'
 import { API_REQUEST_ORIGIN } from './config'
 
 /** V1 业务路由统一加版本前缀；环境变量只提供服务主机。 */
@@ -179,6 +179,24 @@ export const api = {
   /** 带鉴权下载原始图片字节，不将 storekey 拼接为公开可访问 URL。 */
   async download(storekey: string): Promise<Blob> {
     return requestBlob(`/files/${encodeURIComponent(storekey)}`)
+  },
+  /** 按日历日期范围读取正式账目，并恢复当前用户未完成的账本草稿。 */
+  ledgerRecords(from: string, to: string) { return request<{ items: LedgerRecord[] }>(`/ledger/records?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`) },
+  /** 打开新增记录时立即在服务端建立可恢复草稿。 */
+  createLedgerDraft(fields: LedgerFields) { return request<LedgerRecord>('/ledger/records', { method: 'POST', body: JSON.stringify(fields) }) },
+  /** 保存整笔草稿快照并用修订号阻止迟到请求覆盖新输入。 */
+  saveLedgerDraft(id: string, revision: number, fields: LedgerFields) {
+    return request<LedgerRecord>(`/ledger/records/${encodeURIComponent(id)}/draft`, { method: 'PATCH', body: JSON.stringify({ revision, ...fields }) })
+  },
+  /** 将有效草稿应用为正式账目。 */
+  completeLedgerRecord(id: string, revision: number) {
+    return request<LedgerRecord>(`/ledger/records/${encodeURIComponent(id)}/complete`, { method: 'POST', body: JSON.stringify({ revision }) })
+  },
+  /** 删除当前用户指定的账目或尚未完成的草稿。 */
+  deleteLedgerRecord(id: string) { return request<void>(`/ledger/records/${encodeURIComponent(id)}`, { method: 'DELETE' }) },
+  /** 原子合并已预览的有效导入条目。 */
+  importLedgerRecords(records: LedgerImportItem[]) {
+    return request<LedgerImportResult>('/ledger/import', { method: 'POST', body: JSON.stringify({ records }) })
   },
   /** 创建灵感图；image_key 指向服务端可能压缩的工作副本。 */
   createInspiration(imageKey: string, filename: string, data: Record<string, unknown>) {

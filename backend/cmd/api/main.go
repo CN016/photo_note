@@ -91,6 +91,7 @@ func run() error {
 		CurrentFileStoreType: runtimeConfigService.CurrentFileStoreType,
 		PublicConfigs:        runtimeConfigService,
 		Feedback:             service.NewFeedbackService(repository, tokens, runtimeConfig.FeedbackMaxTextChars, runtimeConfig.FeedbackMaxImages, runtimeConfig.FeedbackPerIPPerHour),
+		Ledger:               service.NewLedgerService(repository),
 		TrustedProxyCIDRs:    runtimeConfig.TrustedProxyCIDRs,
 	}
 	router := httpapi.Router(dependencies)

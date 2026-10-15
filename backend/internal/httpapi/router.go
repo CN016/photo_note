@@ -53,6 +53,7 @@ type Dependencies struct {
 	CurrentFileStoreType func(context.Context) (string, error)
 	PublicConfigs        publicConfigReader
 	Feedback             *service.FeedbackService
+	Ledger               *service.LedgerService
 	TrustedProxyCIDRs    []string
 }
 
@@ -109,6 +110,12 @@ func Router(dependencies Dependencies) *gin.Engine {
 	protected.GET("/inspirations/:business_id", getInspirationHandler(dependencies.Inspirations))
 	protected.PATCH("/inspirations/:business_id", patchInspirationHandler(dependencies.Inspirations))
 	protected.DELETE("/inspirations/:business_id", deleteInspirationHandler(dependencies.Inspirations))
+	protected.GET("/ledger/records", listLedgerRecordsHandler(dependencies.Ledger))
+	protected.POST("/ledger/records", createLedgerDraftHandler(dependencies.Ledger))
+	protected.PATCH("/ledger/records/:business_id/draft", saveLedgerDraftHandler(dependencies.Ledger))
+	protected.POST("/ledger/records/:business_id/complete", completeLedgerRecordHandler(dependencies.Ledger))
+	protected.DELETE("/ledger/records/:business_id", deleteLedgerRecordHandler(dependencies.Ledger))
+	protected.POST("/ledger/import", importLedgerRecordsHandler(dependencies.Ledger))
 	return router
 }
 

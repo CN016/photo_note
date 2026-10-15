@@ -1,0 +1,1206 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>营收日历</title>
+  <style>
+    :root {
+      --bg: #f6f7fb;
+      --card: #fff;
+      --text: #172033;
+      --muted: #6b7280;
+      --line: #e5e7eb;
+      --primary: #2563eb;
+      --primary-soft: #dbeafe;
+      --green: #16a34a;
+      --red: #dc2626;
+      --orange: #ea580c;
+      --purple: #7c3aed;
+      --shadow: 0 12px 30px rgba(15, 23, 42, .08);
+      --radius: 16px;
+    }
+
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans SC", sans-serif;
+      background: var(--bg);
+      color: var(--text);
+    }
+
+    .app { max-width: 1280px; margin: 0 auto; padding: 24px; }
+    header { display: flex; gap: 16px; justify-content: space-between; align-items: center; margin-bottom: 20px; }
+    h1 { margin: 0; font-size: 28px; }
+    .sub { margin-top: 6px; color: var(--muted); font-size: 14px; }
+    .toolbar, .month-actions, .left-actions, .right-actions, .quick-row, .filters { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+    .toolbar { justify-content: flex-end; }
+
+    button, input, select, textarea {
+      font: inherit;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: #fff;
+      color: var(--text);
+    }
+    button { cursor: pointer; padding: 10px 14px; transition: .18s ease; }
+    button:hover { transform: translateY(-1px); box-shadow: 0 8px 18px rgba(15, 23, 42, .08); }
+    .primary { background: var(--primary); color: #fff; border-color: var(--primary); }
+    .danger { color: var(--red); }
+    .ghost { background: transparent; }
+    input, select, textarea { padding: 10px 12px; }
+    textarea { min-height: 86px; resize: vertical; }
+
+    .layout { display: grid; grid-template-columns: minmax(0, 1fr) 360px; gap: 18px; }
+    .card { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow); }
+    .calendar-card, .panel { padding: 18px; }
+    .filters {
+      margin-bottom: 14px;
+      padding: 12px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: #f8fafc;
+    }
+    .filters input, .filters select { min-width: 128px; }
+    .monthbar { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-bottom: 14px; }
+    .month-title { font-size: 22px; font-weight: 800; }
+    .weekdays, .grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 8px; }
+    .weekdays div { color: var(--muted); font-size: 13px; font-weight: 700; text-align: center; padding: 8px 0; }
+
+    .day {
+      min-height: 116px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      padding: 10px;
+      background: #fff;
+      position: relative;
+      display: flex;
+      flex-direction: column;
+      gap: 7px;
+      overflow: hidden;
+      text-align: left;
+    }
+    .day.other { opacity: .38; background: #f8fafc; }
+    .day.today { outline: 2px solid var(--primary); }
+    .day:hover { border-color: #93c5fd; }
+    .day-head { display: flex; justify-content: space-between; align-items: center; gap: 6px; }
+    .date-num { font-weight: 900; }
+    .tag { font-size: 11px; border-radius: 999px; padding: 3px 7px; background: #f1f5f9; color: var(--muted); }
+    .money { font-weight: 900; font-size: 18px; color: var(--green); word-break: break-all; }
+    .mini-list { display: flex; flex-direction: column; gap: 3px; min-height: 32px; }
+    .mini-item { display: flex; justify-content: space-between; gap: 6px; color: var(--muted); font-size: 12px; line-height: 1.25; }
+    .mini-item span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .bar { margin-top: auto; height: 6px; border-radius: 999px; background: var(--primary-soft); overflow: hidden; }
+    .bar i { display: block; height: 100%; background: var(--primary); border-radius: 999px; }
+
+    aside { display: flex; flex-direction: column; gap: 18px; }
+    .panel h2 { margin: 0 0 14px; font-size: 18px; }
+    .stats { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    .stat { padding: 14px; border-radius: var(--radius); background: #f8fafc; border: 1px solid var(--line); }
+    .stat .label { color: var(--muted); font-size: 12px; }
+    .stat .value { margin-top: 6px; font-size: 19px; font-weight: 900; }
+    .list { display: flex; flex-direction: column; gap: 10px; max-height: 300px; overflow: auto; }
+    .row { display: flex; justify-content: space-between; gap: 10px; padding: 10px 0; border-bottom: 1px dashed var(--line); font-size: 14px; }
+    .row:last-child { border-bottom: none; }
+    .row b { white-space: nowrap; }
+    .row small { color: var(--muted); }
+
+    dialog { width: min(620px, calc(100vw - 30px)); border: none; border-radius: 22px; box-shadow: 0 30px 80px rgba(15, 23, 42, .28); padding: 0; }
+    dialog::backdrop { background: rgba(15, 23, 42, .45); }
+    .modal { padding: 22px; }
+    .modal h3 { margin: 0 0 16px; font-size: 22px; }
+    .field { display: flex; flex-direction: column; gap: 7px; margin-bottom: 14px; }
+    .field label { color: var(--muted); font-size: 13px; font-weight: 700; }
+    .field input, .field textarea, .field select { width: 100%; }
+    .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0 12px; }
+    .modal-actions { display: flex; justify-content: space-between; gap: 10px; margin-top: 18px; }
+    .detail-head { display: flex; justify-content: space-between; gap: 12px; align-items: flex-start; margin-bottom: 12px; }
+    .detail-total { color: var(--green); font-size: 26px; font-weight: 900; }
+    .record { display: grid; grid-template-columns: 1fr auto; gap: 12px; padding: 12px; border: 1px solid var(--line); border-radius: var(--radius); background: #f8fafc; margin-bottom: 10px; }
+    .record-title { display: flex; gap: 8px; align-items: center; font-weight: 800; }
+    .pill { font-size: 12px; border-radius: 999px; padding: 3px 8px; background: #eef2ff; color: #3730a3; }
+    .record-note { color: var(--muted); font-size: 13px; margin-top: 6px; white-space: pre-wrap; }
+    .empty { color: var(--muted); padding: 18px; text-align: center; border: 1px dashed var(--line); border-radius: var(--radius); }
+
+    .chart { display: flex; align-items: end; gap: 7px; height: 130px; border-bottom: 1px solid var(--line); padding-top: 10px; }
+    .col { flex: 1; min-width: 12px; border-radius: 8px 8px 0 0; background: var(--primary-soft); position: relative; }
+    .col i { position: absolute; left: 0; right: 0; bottom: 0; background: var(--primary); border-radius: 8px 8px 0 0; }
+    .chart-labels { display: grid; grid-template-columns: repeat(7, 1fr); gap: 7px; color: var(--muted); font-size: 11px; margin-top: 8px; text-align: center; }
+    .status { color: var(--muted); font-size: 13px; margin-top: 10px; }
+    .spark { width: 100%; height: 130px; display: block; }
+    .progress-row { display: grid; grid-template-columns: minmax(70px, 1fr) 2fr auto; gap: 10px; align-items: center; font-size: 13px; }
+    .progress-track { height: 8px; border-radius: 999px; background: #e0e7ff; overflow: hidden; }
+    .progress-fill { height: 100%; border-radius: 999px; background: var(--primary); }
+    .insights { display: flex; flex-direction: column; gap: 10px; }
+    .insight { padding: 12px; border: 1px solid var(--line); border-radius: var(--radius); background: #f8fafc; font-size: 14px; line-height: 1.45; }
+    .analysis-panel { margin-top: 18px; padding: 18px; }
+    .compare-controls { display: grid; grid-template-columns: repeat(4, minmax(120px, 1fr)); gap: 10px; margin-bottom: 14px; }
+    .compare-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+    .compare-card { padding: 14px; border: 1px solid var(--line); border-radius: var(--radius); background: #f8fafc; }
+    .compare-card .label { color: var(--muted); font-size: 12px; }
+    .compare-card .value { margin-top: 6px; font-size: 18px; font-weight: 900; }
+    .delta-up { color: var(--green); }
+    .delta-down { color: var(--red); }
+    .compare-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    .compare-table th, .compare-table td { padding: 8px 6px; border-bottom: 1px dashed var(--line); text-align: right; }
+    .compare-table th:first-child, .compare-table td:first-child { text-align: left; }
+    .heatmap { display: grid; grid-template-columns: repeat(12, 1fr); gap: 6px; }
+    .heat-cell { min-height: 46px; border-radius: 10px; padding: 7px; color: #172033; background: #eff6ff; font-size: 12px; }
+    .heat-cell b { display: block; font-size: 13px; margin-top: 4px; }
+    .report-canvas { display: none; }
+    .ok { color: var(--green); }
+    .warn { color: var(--orange); }
+    .err { color: var(--red); }
+
+    @media (max-width: 980px) {
+      .layout { grid-template-columns: 1fr; }
+      header { align-items: flex-start; flex-direction: column; }
+      .toolbar { justify-content: flex-start; }
+    }
+    @media (max-width: 640px) {
+      .app { padding: 14px; }
+      .weekdays, .grid { gap: 5px; }
+      .day { min-height: 92px; padding: 7px; border-radius: 12px; }
+      .money { font-size: 14px; }
+      .mini-list, .tag { display: none; }
+      .stats, .form-grid { grid-template-columns: 1fr; }
+      .compare-controls, .compare-grid { grid-template-columns: 1fr; }
+      .heatmap { grid-template-columns: repeat(3, 1fr); }
+      .modal-actions, .detail-head { flex-direction: column; }
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <header>
+      <div>
+        <h1>营收日历</h1>
+        <div class="sub">一天可记录多笔营收。点击日期查看明细、新增、编辑或删除单条记录。</div>
+      </div>
+      <div class="toolbar">
+        <input id="searchInput" placeholder="搜索备注 / 分类 / 方式" />
+        <button id="exportJsonBtn">导出 JSON</button>
+        <button id="exportCsvBtn">导出 CSV</button>
+        <button id="exportImageBtn">导出月报图片</button>
+        <label><input id="importFile" type="file" accept=".json,.csv" hidden><button id="importBtn" type="button">导入</button></label>
+        <button class="primary" id="saveServerBtn">保存到服务器</button>
+      </div>
+    </header>
+
+    <main class="layout">
+      <section class="card calendar-card">
+        <div class="monthbar">
+          <div class="month-actions">
+            <button id="prevBtn">上个月</button>
+            <button id="todayBtn">今天</button>
+            <button id="nextBtn">下个月</button>
+          </div>
+          <div class="month-title" id="monthTitle"></div>
+          <div class="month-actions">
+            <select id="yearSelect"></select>
+            <select id="monthSelect"></select>
+          </div>
+        </div>
+        <div class="filters">
+          <select id="categoryFilter"><option value="">全部分类</option></select>
+          <select id="methodFilter"><option value="">全部支付方式</option></select>
+          <select id="flagFilter"><option value="">全部标记</option><option value="重点">重点</option><option value="异常">异常</option><option value="待核对">待核对</option></select>
+          <input id="minAmountFilter" type="number" min="0" step="1" placeholder="最低金额" />
+          <button id="resetFilterBtn" type="button">重置筛选</button>
+        </div>
+        <div class="weekdays"><div>一</div><div>二</div><div>三</div><div>四</div><div>五</div><div>六</div><div>日</div></div>
+        <div class="grid" id="calendarGrid"></div>
+        <div class="status" id="statusText"></div>
+        <section class="card analysis-panel">
+          <h2>对比分析台</h2>
+          <div class="filters">
+            <select id="compareMode">
+              <option value="month">月份对比</option>
+              <option value="year">年份对比</option>
+            </select>
+            <input id="compareA" type="month" />
+            <input id="compareB" type="month" />
+            <button id="swapCompareBtn" type="button">交换</button>
+            <button id="exportCompareImageBtn" type="button">导出对比图片</button>
+          </div>
+          <div class="compare-grid" id="compareSummary"></div>
+          <div class="list" style="max-height:none;margin-top:14px" id="compareDetail"></div>
+        </section>
+      </section>
+
+      <aside>
+        <section class="card panel">
+          <h2>本月统计</h2>
+          <div class="stats" id="statsBox"></div>
+        </section>
+        <section class="card panel">
+          <h2>按星期统计</h2>
+          <div class="chart" id="weekChart"></div>
+          <div class="chart-labels"><span>一</span><span>二</span><span>三</span><span>四</span><span>五</span><span>六</span><span>日</span></div>
+        </section>
+        <section class="card panel">
+          <h2>月内趋势</h2>
+          <canvas class="spark" id="trendCanvas" width="640" height="220"></canvas>
+        </section>
+        <section class="card panel">
+          <h2>分类洞察</h2>
+          <div class="list" id="categoryList"></div>
+        </section>
+        <section class="card panel">
+          <h2>支付方式</h2>
+          <div class="list" id="methodList"></div>
+        </section>
+        <section class="card panel">
+          <h2>年度月对比</h2>
+          <div class="list" id="monthCompareList"></div>
+        </section>
+        <section class="card panel">
+          <h2>年度热力</h2>
+          <div class="heatmap" id="yearHeatmap"></div>
+        </section>
+        <section class="card panel">
+          <h2>年度对比</h2>
+          <div class="list" id="yearCompareList"></div>
+        </section>
+        <section class="card panel">
+          <h2>最佳月份排行</h2>
+          <div class="list" id="bestMonthList"></div>
+        </section>
+        <section class="card panel">
+          <h2>经营洞察</h2>
+          <div class="insights" id="insightList"></div>
+        </section>
+        <section class="card panel">
+          <h2>最近记录</h2>
+          <div class="list" id="recentList"></div>
+        </section>
+      </aside>
+    </main>
+  </div>
+
+  <dialog id="dayDialog">
+    <div class="modal">
+      <div class="detail-head">
+        <div>
+          <h3 id="dayTitle">日期明细</h3>
+          <div class="sub" id="daySummary"></div>
+        </div>
+        <div class="detail-total" id="dayTotal"></div>
+      </div>
+      <div class="quick-row">
+        <button class="primary" id="addRecordBtn" type="button">新增记录</button>
+        <button id="copyYesterdayBtn" type="button">复制昨日结构</button>
+        <button id="closeDayBtn" type="button">关闭</button>
+      </div>
+      <div class="list" id="dayRecords" style="max-height:420px;margin-top:14px"></div>
+    </div>
+  </dialog>
+
+  <dialog id="editDialog">
+    <form class="modal" method="dialog" id="editForm">
+      <h3 id="dialogTitle">编辑营收</h3>
+      <div class="form-grid">
+        <div class="field">
+          <label>日期</label>
+          <input id="dateInput" type="date" />
+        </div>
+        <div class="field">
+          <label>时间</label>
+          <input id="timeInput" type="time" />
+        </div>
+        <div class="field">
+          <label>营收金额</label>
+          <input id="amountInput" type="number" min="0" step="0.01" placeholder="例如 1288.88" />
+        </div>
+        <div class="field">
+          <label>分类</label>
+          <input id="categoryInput" list="categoryOptions" placeholder="例如 门店、外卖、活动" />
+          <datalist id="categoryOptions">
+            <option value="门店"><option value="外卖"><option value="活动"><option value="会员"><option value="其他">
+          </datalist>
+        </div>
+        <div class="field">
+          <label>支付方式</label>
+          <select id="methodInput">
+            <option value="微信">微信</option>
+            <option value="支付宝">支付宝</option>
+            <option value="现金">现金</option>
+            <option value="银行卡">银行卡</option>
+            <option value="其他">其他</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>标记</label>
+          <select id="flagInput">
+            <option value="">普通</option>
+            <option value="重点">重点</option>
+            <option value="异常">异常</option>
+            <option value="待核对">待核对</option>
+          </select>
+        </div>
+      </div>
+      <div class="field">
+        <label>备注</label>
+        <textarea id="noteInput" placeholder="例如：活动、渠道、异常说明"></textarea>
+      </div>
+      <div class="modal-actions">
+        <div class="left-actions"><button type="button" class="danger" id="deleteBtn">删除</button></div>
+        <div class="right-actions"><button type="button" id="cancelBtn">取消</button><button type="submit" class="primary">保存</button></div>
+      </div>
+    </form>
+  </dialog>
+  <canvas class="report-canvas" id="reportCanvas" width="1200" height="1600"></canvas>
+
+  <script>
+    const DATA_URL = '/data/revenue.json';
+    const LOCAL_KEY = 'revenue-calendar-data-v2';
+    const OLD_LOCAL_KEY = 'revenue-calendar-data-v1';
+    const fmt = new Intl.NumberFormat('zh-CN', { style: 'currency', currency: 'CNY', maximumFractionDigits: 2 });
+    const dateFmt = new Intl.DateTimeFormat('zh-CN', { year: 'numeric', month: 'long' });
+    const $ = id => document.getElementById(id);
+
+    let data = {};
+    let viewDate = new Date();
+    let selectedDate = '';
+    let editing = { date: '', id: '' };
+    let lastSaveMode = 'local';
+
+    function ymd(d) {
+      return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    }
+
+    function parseYmd(s) {
+      const [y, m, d] = s.split('-').map(Number);
+      return new Date(y, m - 1, d);
+    }
+
+    function monthKey(d) {
+      return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+    }
+
+    function uid() {
+      return Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+    }
+
+    function setStatus(text, cls = '') {
+      $('statusText').className = 'status ' + cls;
+      $('statusText').textContent = text;
+    }
+
+    function normalizeRecord(record = {}) {
+      return {
+        id: record.id || uid(),
+        amount: Number(record.amount || 0),
+        note: String(record.note || ''),
+        category: String(record.category || '未分类'),
+        method: String(record.method || '其他'),
+        time: String(record.time || ''),
+        flag: String(record.flag || ''),
+        createdAt: record.createdAt || new Date().toISOString(),
+        updatedAt: record.updatedAt || record.createdAt || new Date().toISOString()
+      };
+    }
+
+    function normalizeData() {
+      const normalized = {};
+      for (const [date, value] of Object.entries(data || {})) {
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) continue;
+        const records = Array.isArray(value)
+          ? value
+          : (typeof value === 'number' ? [{ amount: value, note: '' }] : [value]);
+        normalized[date] = records.map(normalizeRecord).filter(item => item.amount > 0 || item.note || item.category !== '未分类');
+        if (!normalized[date].length) delete normalized[date];
+      }
+      data = normalized;
+    }
+
+    function recordsOf(date) {
+      return data[date] || [];
+    }
+
+    function dayTotal(date) {
+      return recordsOf(date).reduce((sum, item) => sum + Number(item.amount || 0), 0);
+    }
+
+    function activeFilters() {
+      return {
+        keyword: $('searchInput').value.trim().toLowerCase(),
+        category: $('categoryFilter')?.value || '',
+        method: $('methodFilter')?.value || '',
+        flag: $('flagFilter')?.value || '',
+        minAmount: Number($('minAmountFilter')?.value || 0)
+      };
+    }
+
+    function recordMatches(item, date, filters = activeFilters()) {
+      const text = `${date} ${item.note} ${item.category} ${item.method} ${item.flag}`.toLowerCase();
+      return (!filters.keyword || text.includes(filters.keyword))
+        && (!filters.category || item.category === filters.category)
+        && (!filters.method || item.method === filters.method)
+        && (!filters.flag || item.flag === filters.flag)
+        && (!filters.minAmount || Number(item.amount || 0) >= filters.minAmount);
+    }
+
+    function filteredRecordsOf(date, filters = activeFilters()) {
+      return recordsOf(date).filter(item => recordMatches(item, date, filters));
+    }
+
+    function filteredDayTotal(date, filters = activeFilters()) {
+      return filteredRecordsOf(date, filters).reduce((sum, item) => sum + Number(item.amount || 0), 0);
+    }
+
+    function dayText(records) {
+      return records.map(item => `${item.note} ${item.category} ${item.method} ${item.flag}`).join(' ').toLowerCase();
+    }
+
+    function renderFilterOptions() {
+      const currentCategory = $('categoryFilter').value;
+      const currentMethod = $('methodFilter').value;
+      const categories = [...new Set(allRecords(false).map(item => item.category || '未分类'))].sort();
+      const methods = [...new Set(allRecords(false).map(item => item.method || '其他'))].sort();
+      $('categoryFilter').innerHTML = '<option value="">全部分类</option>' + categories.map(v => `<option value="${escapeHtml(v)}">${escapeHtml(v)}</option>`).join('');
+      $('methodFilter').innerHTML = '<option value="">全部支付方式</option>' + methods.map(v => `<option value="${escapeHtml(v)}">${escapeHtml(v)}</option>`).join('');
+      $('categoryFilter').value = categories.includes(currentCategory) ? currentCategory : '';
+      $('methodFilter').value = methods.includes(currentMethod) ? currentMethod : '';
+    }
+
+    async function loadData() {
+      try {
+        const res = await fetch(DATA_URL + '?t=' + Date.now(), { cache: 'no-store' });
+        if (!res.ok) throw new Error('server json not found');
+        data = await res.json();
+        lastSaveMode = 'server';
+        setStatus('已从服务器读取 /data/revenue.json', 'ok');
+      } catch (e) {
+        data = JSON.parse(localStorage.getItem(LOCAL_KEY) || localStorage.getItem(OLD_LOCAL_KEY) || '{}');
+        lastSaveMode = 'local';
+        setStatus('未读取到服务器数据，当前使用浏览器本地存储。配置 Nginx WebDAV 后可保存到服务器。', 'warn');
+      }
+      normalizeData();
+      localStorage.setItem(LOCAL_KEY, JSON.stringify(data));
+      render();
+    }
+
+    async function saveData() {
+      normalizeData();
+      localStorage.setItem(LOCAL_KEY, JSON.stringify(data));
+      try {
+        const res = await fetch(DATA_URL, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(data, null, 2)
+        });
+        if (!res.ok) throw new Error('PUT failed: ' + res.status);
+        lastSaveMode = 'server';
+        setStatus('已保存到服务器 /data/revenue.json', 'ok');
+      } catch (e) {
+        lastSaveMode = 'local';
+        setStatus('保存到服务器失败，已保存到浏览器本地。请检查 Nginx WebDAV、权限和 HTTPS。', 'err');
+      }
+    }
+
+    function renderSelectors() {
+      const y = viewDate.getFullYear();
+      const m = viewDate.getMonth();
+      $('yearSelect').innerHTML = '';
+      for (let year = y - 5; year <= y + 5; year++) $('yearSelect').appendChild(new Option(year + ' 年', year, year === y, year === y));
+      $('monthSelect').innerHTML = '';
+      for (let i = 0; i < 12; i++) $('monthSelect').appendChild(new Option((i + 1) + ' 月', i, i === m, i === m));
+    }
+
+    function renderCalendar() {
+      $('monthTitle').textContent = dateFmt.format(viewDate);
+      const grid = $('calendarGrid');
+      grid.innerHTML = '';
+      const first = new Date(viewDate.getFullYear(), viewDate.getMonth(), 1);
+      const start = new Date(first);
+      const day = first.getDay() || 7;
+      start.setDate(first.getDate() - day + 1);
+      const filters = activeFilters();
+      const maxAmount = Math.max(1, ...Object.keys(data).map(date => filteredDayTotal(date, filters)));
+      const today = ymd(new Date());
+
+      for (let i = 0; i < 42; i++) {
+        const d = new Date(start);
+        d.setDate(start.getDate() + i);
+        const key = ymd(d);
+        const records = filteredRecordsOf(key, filters);
+        const amount = filteredDayTotal(key, filters);
+        const inMonth = d.getMonth() === viewDate.getMonth();
+        const matches = !filters.keyword || key.includes(filters.keyword) || dayText(records).includes(filters.keyword);
+        const cell = document.createElement('button');
+        cell.type = 'button';
+        cell.className = 'day' + (inMonth ? '' : ' other') + (key === today ? ' today' : '');
+        cell.style.display = matches ? 'flex' : 'none';
+        const preview = records.slice(0, 3).map(item => `
+          <div class="mini-item"><span>${escapeHtml(item.time || item.category || '记录')}</span><b>${fmt.format(item.amount)}</b></div>
+        `).join('');
+        cell.innerHTML = `
+          <div class="day-head"><span class="date-num">${d.getDate()}</span>${records.length ? `<span class="tag">${records.length} 笔</span>` : ''}</div>
+          <div class="money">${amount ? fmt.format(amount) : ''}</div>
+          <div class="mini-list">${preview}${records.length > 3 ? `<div class="mini-item"><span>还有 ${records.length - 3} 笔</span></div>` : ''}</div>
+          <div class="bar"><i style="width:${Math.min(100, amount / maxAmount * 100)}%"></i></div>
+        `;
+        cell.addEventListener('click', () => openDay(key));
+        grid.appendChild(cell);
+      }
+    }
+
+    function getMonthEntries() {
+      const mk = monthKey(viewDate);
+      const filters = activeFilters();
+      return Object.entries(data)
+        .filter(([date]) => date.startsWith(mk))
+        .map(([date]) => {
+          const records = filteredRecordsOf(date, filters);
+          return [date, records, filteredDayTotal(date, filters)];
+        })
+        .filter(([, records, total]) => records.length && total > 0)
+        .sort(([a], [b]) => a.localeCompare(b));
+    }
+
+    function allRecords(applyFilters = true) {
+      const filters = activeFilters();
+      return Object.entries(data).flatMap(([date, records]) => records
+        .filter(item => !applyFilters || recordMatches(item, date, filters))
+        .map(item => ({ ...item, date })));
+    }
+
+    function periodRecords(kind, key) {
+      return allRecords().filter(item => kind === 'year' ? item.date.startsWith(key + '-') : item.date.startsWith(key));
+    }
+
+    function periodStats(kind, key) {
+      const records = periodRecords(kind, key);
+      const days = new Set(records.map(item => item.date));
+      const dayTotals = new Map();
+      for (const item of records) dayTotals.set(item.date, (dayTotals.get(item.date) || 0) + item.amount);
+      const total = records.reduce((sum, item) => sum + item.amount, 0);
+      const maxDay = [...dayTotals.entries()].sort((a, b) => b[1] - a[1])[0];
+      return {
+        key,
+        total,
+        records: records.length,
+        activeDays: days.size,
+        avgDay: days.size ? total / days.size : 0,
+        avgRecord: records.length ? total / records.length : 0,
+        maxDayDate: maxDay?.[0] || '',
+        maxDayAmount: maxDay?.[1] || 0
+      };
+    }
+
+    function pctDelta(a, b) {
+      if (!a && !b) return '0.0%';
+      if (!a) return '+100.0%';
+      return `${((b - a) / a * 100).toFixed(1)}%`;
+    }
+
+    function deltaClass(value) {
+      return value >= 0 ? 'delta-up' : 'delta-down';
+    }
+
+    function renderStats() {
+      const entries = getMonthEntries();
+      const totals = entries.map(([, , total]) => total);
+      const monthRecords = entries.flatMap(([date, records]) => records.map(item => ({ ...item, date })));
+      const total = totals.reduce((a, b) => a + b, 0);
+      const activeDays = totals.length;
+      const recordCount = monthRecords.length;
+      const avgDay = activeDays ? total / activeDays : 0;
+      const avgRecord = recordCount ? total / recordCount : 0;
+      const maxDay = activeDays ? Math.max(...totals) : 0;
+      const daysInMonth = new Date(viewDate.getFullYear(), viewDate.getMonth() + 1, 0).getDate();
+
+      $('statsBox').innerHTML = [
+        ['总营收', fmt.format(total)],
+        ['记录笔数', `${recordCount} 笔`],
+        ['已记录天数', `${activeDays} / ${daysInMonth}`],
+        ['日均营收', fmt.format(avgDay)],
+        ['单笔均值', fmt.format(avgRecord)],
+        ['最高单日', fmt.format(maxDay)]
+      ].map(([label, value]) => `<div class="stat"><div class="label">${label}</div><div class="value">${value}</div></div>`).join('');
+
+      renderWeekChart(entries);
+      renderTrend(entries);
+      renderLists(monthRecords);
+      renderMonthCompare();
+      renderYearHeatmap();
+      renderYearCompare();
+      renderBestMonths();
+      renderComparePanel();
+      renderInsights(entries, monthRecords);
+    }
+
+    function renderWeekChart(entries) {
+      const sums = Array(7).fill(0);
+      for (const [date, , total] of entries) sums[(parseYmd(date).getDay() + 6) % 7] += total;
+      const max = Math.max(1, ...sums);
+      $('weekChart').innerHTML = sums.map(v => `<div class="col" title="${fmt.format(v)}"><i style="height:${Math.max(2, v / max * 100)}%"></i></div>`).join('');
+    }
+
+    function renderLists(monthRecords) {
+      const categoryMap = new Map();
+      for (const item of monthRecords) categoryMap.set(item.category || '未分类', (categoryMap.get(item.category || '未分类') || 0) + item.amount);
+      const categories = [...categoryMap.entries()].sort((a, b) => b[1] - a[1]).slice(0, 8);
+      $('categoryList').innerHTML = renderProgressRows(categories);
+
+      const methodMap = new Map();
+      for (const item of monthRecords) methodMap.set(item.method || '其他', (methodMap.get(item.method || '其他') || 0) + item.amount);
+      const methods = [...methodMap.entries()].sort((a, b) => b[1] - a[1]).slice(0, 8);
+      $('methodList').innerHTML = renderProgressRows(methods);
+
+      const recent = allRecords().filter(item => item.amount > 0).sort((a, b) => ((b.date + b.time) || '').localeCompare((a.date + a.time) || '')).slice(0, 10);
+      $('recentList').innerHTML = recent.length ? recent.map(item => `<div class="row"><span>${item.date} ${escapeHtml(item.time || '')}<br><small>${escapeHtml(item.category)} · ${escapeHtml(item.note || item.method)}</small></span><b>${fmt.format(item.amount)}</b></div>`).join('') : '<div class="sub">暂无记录</div>';
+    }
+
+    function renderProgressRows(entries) {
+      if (!entries.length) return '<div class="sub">暂无记录</div>';
+      const max = Math.max(1, ...entries.map(([, amount]) => amount));
+      return entries.map(([name, amount]) => `
+        <div class="progress-row">
+          <span>${escapeHtml(name)}</span>
+          <span class="progress-track"><i class="progress-fill" style="display:block;width:${Math.max(2, amount / max * 100)}%"></i></span>
+          <b>${fmt.format(amount)}</b>
+        </div>
+      `).join('');
+    }
+
+    function renderTrend(entries) {
+      const canvas = $('trendCanvas');
+      const ctx = canvas.getContext('2d');
+      const w = canvas.width;
+      const h = canvas.height;
+      const days = new Date(viewDate.getFullYear(), viewDate.getMonth() + 1, 0).getDate();
+      const values = Array(days).fill(0);
+      for (const [date, , total] of entries) values[parseYmd(date).getDate() - 1] = total;
+      drawTrend(ctx, values, w, h, '#2563eb', '#16a34a');
+    }
+
+    function drawTrend(ctx, values, w, h, lineColor, fillColor) {
+      ctx.clearRect(0, 0, w, h);
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(0, 0, w, h);
+      const pad = 28;
+      const max = Math.max(1, ...values);
+      ctx.strokeStyle = '#e5e7eb';
+      ctx.lineWidth = 1;
+      for (let i = 0; i < 4; i++) {
+        const y = pad + (h - pad * 2) * i / 3;
+        ctx.beginPath(); ctx.moveTo(pad, y); ctx.lineTo(w - pad, y); ctx.stroke();
+      }
+      const point = (v, i) => [pad + (w - pad * 2) * i / Math.max(1, values.length - 1), h - pad - (h - pad * 2) * v / max];
+      ctx.beginPath();
+      values.forEach((v, i) => {
+        const [x, y] = point(v, i);
+        if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+      });
+      ctx.strokeStyle = lineColor;
+      ctx.lineWidth = 4;
+      ctx.stroke();
+      ctx.fillStyle = fillColor;
+      values.forEach((v, i) => {
+        if (!v) return;
+        const [x, y] = point(v, i);
+        ctx.beginPath(); ctx.arc(x, y, 4, 0, Math.PI * 2); ctx.fill();
+      });
+    }
+
+    function renderMonthCompare() {
+      const year = viewDate.getFullYear();
+      const values = Array(12).fill(0);
+      for (const item of allRecords()) {
+        const d = parseYmd(item.date);
+        if (d.getFullYear() === year) values[d.getMonth()] += item.amount;
+      }
+      const entries = values.map((amount, i) => [`${i + 1} 月`, amount]).filter(([, amount]) => amount > 0);
+      $('monthCompareList').innerHTML = renderProgressRows(entries);
+    }
+
+    function renderYearHeatmap() {
+      const year = viewDate.getFullYear();
+      const values = Array(12).fill(0);
+      for (const item of allRecords()) {
+        const d = parseYmd(item.date);
+        if (d.getFullYear() === year) values[d.getMonth()] += item.amount;
+      }
+      const max = Math.max(1, ...values);
+      $('yearHeatmap').innerHTML = values.map((amount, i) => {
+        const alpha = amount ? 0.18 + amount / max * 0.55 : 0.08;
+        return `<div class="heat-cell" style="background:rgba(37,99,235,${alpha})">${i + 1}月<b>${amount ? fmt.format(amount) : '-'}</b></div>`;
+      }).join('');
+    }
+
+    function renderYearCompare() {
+      const map = new Map();
+      for (const item of allRecords()) {
+        const year = item.date.slice(0, 4);
+        map.set(year, (map.get(year) || 0) + item.amount);
+      }
+      const entries = [...map.entries()].sort(([a], [b]) => a.localeCompare(b));
+      $('yearCompareList').innerHTML = renderProgressRows(entries);
+    }
+
+    function renderBestMonths() {
+      const map = new Map();
+      for (const item of allRecords()) {
+        const key = item.date.slice(0, 7);
+        map.set(key, (map.get(key) || 0) + item.amount);
+      }
+      const entries = [...map.entries()].sort((a, b) => b[1] - a[1]).slice(0, 10);
+      $('bestMonthList').innerHTML = renderProgressRows(entries);
+    }
+
+    function ensureCompareDefaults() {
+      const current = monthKey(viewDate);
+      const prev = new Date(viewDate);
+      prev.setMonth(prev.getMonth() - 1);
+      if ($('compareMode').value === 'year') {
+        if (!$('compareA').value) $('compareA').value = String(viewDate.getFullYear() - 1);
+        if (!$('compareB').value) $('compareB').value = String(viewDate.getFullYear());
+      } else {
+        if (!$('compareA').value) $('compareA').value = monthKey(prev);
+        if (!$('compareB').value) $('compareB').value = current;
+      }
+    }
+
+    function renderComparePanel() {
+      ensureCompareDefaults();
+      const mode = $('compareMode').value;
+      const kind = mode === 'year' ? 'year' : 'month';
+      const keyA = kind === 'year' ? $('compareA').value.slice(0, 4) : $('compareA').value;
+      const keyB = kind === 'year' ? $('compareB').value.slice(0, 4) : $('compareB').value;
+      const a = periodStats(kind, keyA);
+      const b = periodStats(kind, keyB);
+      const diff = b.total - a.total;
+      const recordDiff = b.records - a.records;
+      const activeDayDiff = b.activeDays - a.activeDays;
+
+      $('compareSummary').innerHTML = [
+        ['对比口径', kind === 'year' ? `${keyA} 年 vs ${keyB} 年` : `${keyA} vs ${keyB}`, ''],
+        ['营收差额', `${diff >= 0 ? '+' : ''}${fmt.format(diff)}`, deltaClass(diff)],
+        ['涨跌幅', pctDelta(a.total, b.total), deltaClass(diff)],
+        ['记录笔数差', `${recordDiff >= 0 ? '+' : ''}${recordDiff} 笔`, deltaClass(recordDiff)],
+        ['记录天数差', `${activeDayDiff >= 0 ? '+' : ''}${activeDayDiff} 天`, deltaClass(activeDayDiff)],
+        ['日均差额', `${b.avgDay - a.avgDay >= 0 ? '+' : ''}${fmt.format(b.avgDay - a.avgDay)}`, deltaClass(b.avgDay - a.avgDay)]
+      ].map(([label, value, cls]) => `<div class="compare-card"><div class="label">${label}</div><div class="value ${cls}">${value}</div></div>`).join('');
+
+      $('compareDetail').innerHTML = `
+        <table class="compare-table">
+          <thead><tr><th>指标</th><th>${escapeHtml(keyA)}</th><th>${escapeHtml(keyB)}</th><th>变化</th></tr></thead>
+          <tbody>
+            ${compareRow('总营收', fmt.format(a.total), fmt.format(b.total), fmt.format(diff), diff)}
+            ${compareRow('记录笔数', `${a.records} 笔`, `${b.records} 笔`, `${recordDiff >= 0 ? '+' : ''}${recordDiff}`, recordDiff)}
+            ${compareRow('记录天数', `${a.activeDays} 天`, `${b.activeDays} 天`, `${activeDayDiff >= 0 ? '+' : ''}${activeDayDiff}`, activeDayDiff)}
+            ${compareRow('日均营收', fmt.format(a.avgDay), fmt.format(b.avgDay), fmt.format(b.avgDay - a.avgDay), b.avgDay - a.avgDay)}
+            ${compareRow('单笔均值', fmt.format(a.avgRecord), fmt.format(b.avgRecord), fmt.format(b.avgRecord - a.avgRecord), b.avgRecord - a.avgRecord)}
+            ${compareRow('最高单日', a.maxDayDate ? `${a.maxDayDate} ${fmt.format(a.maxDayAmount)}` : '-', b.maxDayDate ? `${b.maxDayDate} ${fmt.format(b.maxDayAmount)}` : '-', fmt.format(b.maxDayAmount - a.maxDayAmount), b.maxDayAmount - a.maxDayAmount)}
+          </tbody>
+        </table>
+      `;
+    }
+
+    function compareRow(label, a, b, delta, deltaValue) {
+      return `<tr><td>${label}</td><td>${a}</td><td>${b}</td><td class="${deltaClass(deltaValue)}">${delta}</td></tr>`;
+    }
+
+    function renderInsights(entries, monthRecords) {
+      const total = monthRecords.reduce((sum, item) => sum + item.amount, 0);
+      const bestDay = [...entries].sort((a, b) => b[2] - a[2])[0];
+      const avg = entries.length ? total / entries.length : 0;
+      const categoryMap = new Map();
+      const methodMap = new Map();
+      for (const item of monthRecords) {
+        categoryMap.set(item.category || '未分类', (categoryMap.get(item.category || '未分类') || 0) + item.amount);
+        methodMap.set(item.method || '其他', (methodMap.get(item.method || '其他') || 0) + item.amount);
+      }
+      const topCategory = [...categoryMap.entries()].sort((a, b) => b[1] - a[1])[0];
+      const topMethod = [...methodMap.entries()].sort((a, b) => b[1] - a[1])[0];
+      const aboveAvg = entries.filter(([, , amount]) => amount >= avg).length;
+      const insights = [];
+      if (!monthRecords.length) insights.push('当前筛选条件下暂无数据。');
+      if (bestDay) insights.push(`最高营收日是 ${bestDay[0]}，当天 ${fmt.format(bestDay[2])}。`);
+      if (topCategory) insights.push(`主力分类是「${topCategory[0]}」，贡献 ${fmt.format(topCategory[1])}。`);
+      if (topMethod) insights.push(`最常用支付方式是「${topMethod[0]}」，对应 ${fmt.format(topMethod[1])}。`);
+      if (entries.length) insights.push(`有 ${aboveAvg} 天达到或超过本月已记录日均 ${fmt.format(avg)}。`);
+      $('insightList').innerHTML = insights.map(text => `<div class="insight">${escapeHtml(text)}</div>`).join('');
+    }
+
+    function render() {
+      renderFilterOptions();
+      renderSelectors();
+      renderCalendar();
+      renderStats();
+      if ($('dayDialog').open && selectedDate) renderDayDialog();
+    }
+
+    function openDay(date) {
+      selectedDate = date;
+      renderDayDialog();
+      $('dayDialog').showModal();
+    }
+
+    function renderDayDialog() {
+      const records = [...recordsOf(selectedDate)].sort((a, b) => (a.time || '').localeCompare(b.time || ''));
+      $('dayTitle').textContent = selectedDate + ' 明细';
+      $('dayTotal').textContent = fmt.format(dayTotal(selectedDate));
+      $('daySummary').textContent = records.length ? `${records.length} 笔记录 · 点击单条可编辑` : '暂无记录，可新增当天营收';
+      $('dayRecords').innerHTML = records.length ? records.map(item => `
+        <div class="record">
+          <div>
+            <div class="record-title">
+              <span>${escapeHtml(item.time || '全天')}</span>
+              <span class="pill">${escapeHtml(item.category || '未分类')}</span>
+              ${item.flag ? `<span class="pill">${escapeHtml(item.flag)}</span>` : ''}
+            </div>
+            <div class="record-note">${escapeHtml(item.method || '其他')}${item.note ? ' · ' + escapeHtml(item.note) : ''}</div>
+          </div>
+          <div>
+            <b>${fmt.format(item.amount)}</b><br>
+            <button type="button" data-edit="${item.id}">编辑</button>
+          </div>
+        </div>
+      `).join('') : '<div class="empty">这一天还没有记录</div>';
+      $('dayRecords').querySelectorAll('[data-edit]').forEach(btn => btn.addEventListener('click', () => openRecord(selectedDate, btn.dataset.edit)));
+    }
+
+    function openRecord(date, id = '') {
+      const item = id ? recordsOf(date).find(x => x.id === id) : null;
+      editing = { date, id };
+      $('dialogTitle').textContent = id ? '编辑记录' : '新增记录';
+      $('dateInput').value = date;
+      $('timeInput').value = item?.time || '';
+      $('amountInput').value = item?.amount || '';
+      $('categoryInput').value = item?.category || '未分类';
+      $('methodInput').value = item?.method || '微信';
+      $('flagInput').value = item?.flag || '';
+      $('noteInput').value = item?.note || '';
+      $('deleteBtn').style.visibility = id ? 'visible' : 'hidden';
+      $('editDialog').showModal();
+      setTimeout(() => $('amountInput').focus(), 80);
+    }
+
+    function escapeHtml(str) {
+      return String(str).replace(/[&<>"]/g, s => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[s]));
+    }
+
+    function download(filename, text, type) {
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(new Blob([text], { type }));
+      a.download = filename;
+      a.click();
+      URL.revokeObjectURL(a.href);
+    }
+
+    function exportCsv() {
+      const rows = [['date', 'id', 'time', 'amount', 'category', 'method', 'flag', 'note'], ...allRecords().sort((a, b) => (a.date + a.time).localeCompare(b.date + b.time)).map(item => [item.date, item.id, item.time, item.amount, item.category, item.method, item.flag, item.note])];
+      const csv = rows.map(row => row.map(v => '"' + String(v || '').replaceAll('"', '""') + '"').join(',')).join('\n');
+      download('revenue.csv', csv, 'text/csv;charset=utf-8');
+    }
+
+    function exportMonthlyImage() {
+      const canvas = $('reportCanvas');
+      const ctx = canvas.getContext('2d');
+      const entries = getMonthEntries();
+      const records = entries.flatMap(([date, dayRecords]) => dayRecords.map(item => ({ ...item, date })));
+      const total = records.reduce((sum, item) => sum + item.amount, 0);
+      const days = new Date(viewDate.getFullYear(), viewDate.getMonth() + 1, 0).getDate();
+      const values = Array(days).fill(0);
+      for (const [date, , amount] of entries) values[parseYmd(date).getDate() - 1] = amount;
+      const categoryMap = new Map();
+      const methodMap = new Map();
+      for (const item of records) {
+        categoryMap.set(item.category || '未分类', (categoryMap.get(item.category || '未分类') || 0) + item.amount);
+        methodMap.set(item.method || '其他', (methodMap.get(item.method || '其他') || 0) + item.amount);
+      }
+      const categories = [...categoryMap.entries()].sort((a, b) => b[1] - a[1]).slice(0, 5);
+      const methods = [...methodMap.entries()].sort((a, b) => b[1] - a[1]).slice(0, 5);
+      const bestDay = [...entries].sort((a, b) => b[2] - a[2])[0];
+
+      ctx.fillStyle = '#f6f7fb';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.fillStyle = '#172033';
+      ctx.font = '700 48px "Microsoft YaHei", Arial';
+      ctx.fillText(`${dateFmt.format(viewDate)}营收月报`, 70, 95);
+      ctx.font = '24px "Microsoft YaHei", Arial';
+      ctx.fillStyle = '#6b7280';
+      ctx.fillText(`生成时间：${new Date().toLocaleString('zh-CN')}`, 70, 135);
+
+      drawReportCard(ctx, 70, 180, 500, 160, '总营收', fmt.format(total), '#16a34a');
+      drawReportCard(ctx, 630, 180, 220, 160, '记录笔数', `${records.length} 笔`, '#2563eb');
+      drawReportCard(ctx, 900, 180, 230, 160, '已记录天数', `${entries.length} / ${days}`, '#7c3aed');
+      drawReportCard(ctx, 70, 370, 330, 150, '日均营收', fmt.format(entries.length ? total / entries.length : 0), '#172033');
+      drawReportCard(ctx, 435, 370, 330, 150, '最高单日', bestDay ? fmt.format(bestDay[2]) : fmt.format(0), '#ea580c');
+      drawReportCard(ctx, 800, 370, 330, 150, '单笔均值', fmt.format(records.length ? total / records.length : 0), '#172033');
+
+      ctx.fillStyle = '#ffffff';
+      roundRect(ctx, 70, 560, 1060, 350, 24);
+      ctx.fill();
+      ctx.fillStyle = '#172033';
+      ctx.font = '700 30px "Microsoft YaHei", Arial';
+      ctx.fillText('月内趋势', 110, 620);
+      const trendCanvas = document.createElement('canvas');
+      trendCanvas.width = 980;
+      trendCanvas.height = 240;
+      drawTrend(trendCanvas.getContext('2d'), values, 980, 240, '#2563eb', '#16a34a');
+      ctx.drawImage(trendCanvas, 110, 650);
+
+      drawReportList(ctx, 70, 960, 500, 420, '分类 Top', categories);
+      drawReportList(ctx, 630, 960, 500, 420, '支付方式', methods);
+
+      const a = document.createElement('a');
+      a.href = canvas.toDataURL('image/png');
+      a.download = `${monthKey(viewDate)}-营收月报.png`;
+      a.click();
+    }
+
+    function exportCompareImage() {
+      ensureCompareDefaults();
+      const canvas = $('reportCanvas');
+      const ctx = canvas.getContext('2d');
+      const mode = $('compareMode').value;
+      const kind = mode === 'year' ? 'year' : 'month';
+      const keyA = kind === 'year' ? $('compareA').value.slice(0, 4) : $('compareA').value;
+      const keyB = kind === 'year' ? $('compareB').value.slice(0, 4) : $('compareB').value;
+      const a = periodStats(kind, keyA);
+      const b = periodStats(kind, keyB);
+      const diff = b.total - a.total;
+      ctx.fillStyle = '#f6f7fb';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.fillStyle = '#172033';
+      ctx.font = '700 50px "Microsoft YaHei", Arial';
+      ctx.fillText(`${kind === 'year' ? '年度' : '月份'}营收对比`, 70, 95);
+      ctx.font = '28px "Microsoft YaHei", Arial';
+      ctx.fillStyle = '#6b7280';
+      ctx.fillText(`${keyA}  vs  ${keyB}`, 70, 140);
+
+      drawReportCard(ctx, 70, 190, 500, 165, keyA, fmt.format(a.total), '#172033');
+      drawReportCard(ctx, 630, 190, 500, 165, keyB, fmt.format(b.total), diff >= 0 ? '#16a34a' : '#dc2626');
+      drawReportCard(ctx, 70, 390, 330, 150, '营收差额', `${diff >= 0 ? '+' : ''}${fmt.format(diff)}`, diff >= 0 ? '#16a34a' : '#dc2626');
+      drawReportCard(ctx, 435, 390, 330, 150, '涨跌幅', pctDelta(a.total, b.total), diff >= 0 ? '#16a34a' : '#dc2626');
+      drawReportCard(ctx, 800, 390, 330, 150, '记录笔数差', `${b.records - a.records >= 0 ? '+' : ''}${b.records - a.records} 笔`, b.records - a.records >= 0 ? '#16a34a' : '#dc2626');
+
+      const rows = [
+        ['记录天数', `${a.activeDays} 天`, `${b.activeDays} 天`, `${b.activeDays - a.activeDays >= 0 ? '+' : ''}${b.activeDays - a.activeDays}`],
+        ['日均营收', fmt.format(a.avgDay), fmt.format(b.avgDay), fmt.format(b.avgDay - a.avgDay)],
+        ['单笔均值', fmt.format(a.avgRecord), fmt.format(b.avgRecord), fmt.format(b.avgRecord - a.avgRecord)],
+        ['最高单日', a.maxDayDate ? `${a.maxDayDate} ${fmt.format(a.maxDayAmount)}` : '-', b.maxDayDate ? `${b.maxDayDate} ${fmt.format(b.maxDayAmount)}` : '-', fmt.format(b.maxDayAmount - a.maxDayAmount)]
+      ];
+      ctx.fillStyle = '#ffffff';
+      roundRect(ctx, 70, 590, 1060, 520, 24);
+      ctx.fill();
+      ctx.fillStyle = '#172033';
+      ctx.font = '700 32px "Microsoft YaHei", Arial';
+      ctx.fillText('详细指标', 110, 655);
+      ctx.font = '24px "Microsoft YaHei", Arial';
+      rows.forEach((row, i) => {
+        const y = 725 + i * 80;
+        ctx.fillStyle = '#6b7280'; ctx.fillText(row[0], 110, y);
+        ctx.fillStyle = '#172033'; ctx.fillText(row[1], 320, y);
+        ctx.fillText(row[2], 610, y);
+        ctx.fillStyle = row[3].startsWith('-') ? '#dc2626' : '#16a34a';
+        ctx.fillText(row[3], 900, y);
+      });
+
+      const link = document.createElement('a');
+      link.href = canvas.toDataURL('image/png');
+      link.download = `${keyA}-vs-${keyB}-营收对比.png`;
+      link.click();
+    }
+
+    function drawReportCard(ctx, x, y, w, h, label, value, color) {
+      ctx.fillStyle = '#ffffff';
+      roundRect(ctx, x, y, w, h, 24);
+      ctx.fill();
+      ctx.fillStyle = '#6b7280';
+      ctx.font = '24px "Microsoft YaHei", Arial';
+      ctx.fillText(label, x + 28, y + 48);
+      ctx.fillStyle = color;
+      ctx.font = '700 38px "Microsoft YaHei", Arial';
+      ctx.fillText(value, x + 28, y + 105);
+    }
+
+    function drawReportList(ctx, x, y, w, h, title, entries) {
+      ctx.fillStyle = '#ffffff';
+      roundRect(ctx, x, y, w, h, 24);
+      ctx.fill();
+      ctx.fillStyle = '#172033';
+      ctx.font = '700 30px "Microsoft YaHei", Arial';
+      ctx.fillText(title, x + 32, y + 58);
+      const max = Math.max(1, ...entries.map(([, amount]) => amount));
+      entries.forEach(([name, amount], i) => {
+        const yy = y + 115 + i * 58;
+        ctx.fillStyle = '#172033';
+        ctx.font = '24px "Microsoft YaHei", Arial';
+        ctx.fillText(name, x + 32, yy);
+        ctx.fillStyle = '#e0e7ff';
+        roundRect(ctx, x + 150, yy - 20, 190, 16, 8);
+        ctx.fill();
+        ctx.fillStyle = '#2563eb';
+        roundRect(ctx, x + 150, yy - 20, Math.max(4, 190 * amount / max), 16, 8);
+        ctx.fill();
+        ctx.fillStyle = '#172033';
+        ctx.font = '700 22px "Microsoft YaHei", Arial';
+        ctx.fillText(fmt.format(amount), x + 355, yy);
+      });
+      if (!entries.length) {
+        ctx.fillStyle = '#6b7280';
+        ctx.font = '24px "Microsoft YaHei", Arial';
+        ctx.fillText('暂无记录', x + 32, y + 120);
+      }
+    }
+
+    function roundRect(ctx, x, y, w, h, r) {
+      ctx.beginPath();
+      ctx.moveTo(x + r, y);
+      ctx.arcTo(x + w, y, x + w, y + h, r);
+      ctx.arcTo(x + w, y + h, x, y + h, r);
+      ctx.arcTo(x, y + h, x, y, r);
+      ctx.arcTo(x, y, x + w, y, r);
+      ctx.closePath();
+    }
+
+    function parseCsvLine(line) {
+      const cols = [];
+      line.replace(/("(?:""|[^"])*"|[^,]*)(,|$)/g, (_, value) => {
+        cols.push(value.replace(/^"|"$/g, '').replaceAll('""', '"'));
+        return '';
+      });
+      return cols;
+    }
+
+    function parseCsv(text) {
+      const lines = text.trim().split(/\r?\n/);
+      const headers = parseCsvLine(lines.shift() || '').map(x => x.toLowerCase());
+      const result = {};
+      for (const line of lines) {
+        const cols = parseCsvLine(line);
+        const row = Object.fromEntries(headers.map((h, i) => [h, cols[i] || '']));
+        const date = row.date;
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) continue;
+        if (!result[date]) result[date] = [];
+        result[date].push(normalizeRecord(row));
+      }
+      return result;
+    }
+
+    $('prevBtn').onclick = () => { viewDate.setMonth(viewDate.getMonth() - 1); render(); };
+    $('nextBtn').onclick = () => { viewDate.setMonth(viewDate.getMonth() + 1); render(); };
+    $('todayBtn').onclick = () => { viewDate = new Date(); render(); };
+    $('yearSelect').onchange = e => { viewDate.setFullYear(Number(e.target.value)); render(); };
+    $('monthSelect').onchange = e => { viewDate.setMonth(Number(e.target.value)); render(); };
+    $('searchInput').oninput = render;
+    $('categoryFilter').onchange = render;
+    $('methodFilter').onchange = render;
+    $('flagFilter').onchange = render;
+    $('minAmountFilter').oninput = render;
+    $('compareMode').onchange = () => {
+      const yearMode = $('compareMode').value === 'year';
+      $('compareA').type = yearMode ? 'number' : 'month';
+      $('compareB').type = yearMode ? 'number' : 'month';
+      $('compareA').min = yearMode ? '2000' : '';
+      $('compareB').min = yearMode ? '2000' : '';
+      $('compareA').max = yearMode ? '2100' : '';
+      $('compareB').max = yearMode ? '2100' : '';
+      if (yearMode) {
+        $('compareA').value = String(viewDate.getFullYear() - 1);
+        $('compareB').value = String(viewDate.getFullYear());
+      } else {
+        const prev = new Date(viewDate);
+        prev.setMonth(prev.getMonth() - 1);
+        $('compareA').value = monthKey(prev);
+        $('compareB').value = monthKey(viewDate);
+      }
+      render();
+    };
+    $('compareA').onchange = render;
+    $('compareB').onchange = render;
+    $('swapCompareBtn').onclick = () => {
+      const a = $('compareA').value;
+      $('compareA').value = $('compareB').value;
+      $('compareB').value = a;
+      render();
+    };
+    $('resetFilterBtn').onclick = () => {
+      $('searchInput').value = '';
+      $('categoryFilter').value = '';
+      $('methodFilter').value = '';
+      $('flagFilter').value = '';
+      $('minAmountFilter').value = '';
+      render();
+    };
+    $('saveServerBtn').onclick = saveData;
+    $('exportJsonBtn').onclick = () => download('revenue.json', JSON.stringify(data, null, 2), 'application/json;charset=utf-8');
+    $('exportCsvBtn').onclick = exportCsv;
+    $('exportImageBtn').onclick = exportMonthlyImage;
+    $('exportCompareImageBtn').onclick = exportCompareImage;
+    $('importBtn').onclick = () => $('importFile').click();
+    $('closeDayBtn').onclick = () => $('dayDialog').close();
+    $('addRecordBtn').onclick = () => openRecord(selectedDate);
+    $('copyYesterdayBtn').onclick = async () => {
+      const yesterday = parseYmd(selectedDate);
+      yesterday.setDate(yesterday.getDate() - 1);
+      const source = recordsOf(ymd(yesterday));
+      if (!source.length) return alert('昨日没有可复制的记录结构');
+      data[selectedDate] = [...recordsOf(selectedDate), ...source.map(item => normalizeRecord({ ...item, id: uid(), amount: 0, note: '', createdAt: new Date().toISOString() }))];
+      await saveData();
+      render();
+    };
+
+    $('importFile').onchange = async e => {
+      const file = e.target.files[0];
+      if (!file) return;
+      const text = await file.text();
+      try {
+        const imported = file.name.endsWith('.csv') ? parseCsv(text) : JSON.parse(text);
+        data = { ...data, ...imported };
+        normalizeData();
+        await saveData();
+        render();
+      } catch (err) {
+        alert('导入失败：文件格式不正确');
+      } finally {
+        e.target.value = '';
+      }
+    };
+
+    $('cancelBtn').onclick = () => $('editDialog').close();
+    $('deleteBtn').onclick = async () => {
+      if (editing.id) {
+        data[editing.date] = recordsOf(editing.date).filter(item => item.id !== editing.id);
+        if (!data[editing.date].length) delete data[editing.date];
+      }
+      $('editDialog').close();
+      await saveData();
+      render();
+    };
+
+    $('editForm').onsubmit = async e => {
+      e.preventDefault();
+      const date = $('dateInput').value;
+      const record = normalizeRecord({
+        id: editing.id || uid(),
+        amount: Number($('amountInput').value || 0),
+        time: $('timeInput').value,
+        category: $('categoryInput').value.trim() || '未分类',
+        method: $('methodInput').value,
+        flag: $('flagInput').value,
+        note: $('noteInput').value.trim(),
+        createdAt: editing.id ? recordsOf(editing.date).find(item => item.id === editing.id)?.createdAt : new Date().toISOString(),
+        updatedAt: new Date().toISOString()
+      });
+      if (editing.id) {
+        data[editing.date] = recordsOf(editing.date).filter(item => item.id !== editing.id);
+        if (!data[editing.date].length) delete data[editing.date];
+      }
+      if (!data[date]) data[date] = [];
+      data[date].push(record);
+      selectedDate = date;
+      $('editDialog').close();
+      await saveData();
+      render();
+    };
+
+    loadData();
+  </script>
+</body>
+</html>

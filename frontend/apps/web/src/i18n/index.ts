@@ -15,6 +15,8 @@ import profileZh from './profile.zh-CN.json'
 import profileEn from './profile.en-US.json'
 import feedbackZh from './feedback.zh-CN.json'
 import feedbackEn from './feedback.en-US.json'
+import ledgerZh from './ledger.zh-CN.json'
+import ledgerEn from './ledger.en-US.json'
 
 /** 每个页面独立维护语言 JSON，统一在此处装配为 Vue I18n 命名空间。 */
 export const i18n = createI18n({
@@ -22,8 +24,8 @@ export const i18n = createI18n({
   locale: localStorage.getItem('photo-nini.locale') === 'en-US' ? 'en-US' : 'zh-CN',
   fallbackLocale: 'zh-CN',
   messages: {
-    'zh-CN': { common: commonZh, login: loginZh, register: registerZh, gallery: galleryZh, editor: editorZh, maintenance: maintenanceZh, profile: profileZh, feedback: feedbackZh },
-    'en-US': { common: commonEn, login: loginEn, register: registerEn, gallery: galleryEn, editor: editorEn, maintenance: maintenanceEn, profile: profileEn, feedback: feedbackEn },
+    'zh-CN': { common: commonZh, login: loginZh, register: registerZh, gallery: galleryZh, editor: editorZh, maintenance: maintenanceZh, profile: profileZh, feedback: feedbackZh, ledger: ledgerZh },
+    'en-US': { common: commonEn, login: loginEn, register: registerEn, gallery: galleryEn, editor: editorEn, maintenance: maintenanceEn, profile: profileEn, feedback: feedbackEn, ledger: ledgerEn },
   },
 })
 

@@ -52,6 +52,38 @@ export interface PageResult<T> {
   total: number
 }
 
+/** 账本草稿和正式记录共用的完整编辑快照；金额以两位小数字符串传输。 */
+export interface LedgerFields {
+  date: string
+  time: string
+  type: 'income' | 'expense'
+  amount: string
+  category: string
+  payment_method: string
+  flag: '' | 'important' | 'anomaly' | 'pending_check'
+  note: string
+}
+
+/** 当前登录用户的收支记录；draft 仅在编辑中时存在，正式字段在完成前保持不变。 */
+export interface LedgerRecord extends LedgerFields {
+  business_id: string
+  status: 'draft' | 'complete'
+  draft: LedgerFields | null
+  draft_version: number
+  created_at: string
+  updated_at: string
+}
+
+/** 导入支持导出文件中的业务 UUID；旧营收日历文件没有该字段时由服务端分配新 UUID。 */
+export interface LedgerImportItem extends LedgerFields {
+  business_id?: string
+}
+
+export interface LedgerImportResult {
+  created: number
+  updated: number
+}
+
 /** 可按接口 code 选择本地化提示的请求错误类型。 */
 export class ApiError extends Error {
   constructor(
