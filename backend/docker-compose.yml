@@ -11,7 +11,6 @@ services:
       - "127.0.0.1:5432:5432"
     volumes:
       - ./postgres17_data:/var/lib/postgresql/data
-      - ./uploads:/var/lib/photo-nini/uploads
       - ./migrations:/docker-entrypoint-initdb.d:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U \"$$POSTGRES_USER\" -d \"$$POSTGRES_DB\""]
@@ -62,8 +61,7 @@ services:
     ports:
       - "127.0.0.1:8089:8080"
     volumes:
-      - uploaded_files_data:/var/lib/photo-nini/uploads
+      - ./uploaded_files_data:/var/lib/photo-nini/uploads
 
 volumes:
   redis7_data:
-  uploaded_files_data:
