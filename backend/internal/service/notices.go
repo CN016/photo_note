@@ -17,6 +17,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/google/uuid"
 	"github.com/photo-nini/backend/internal/domain/fault"
@@ -121,6 +122,121 @@ func (service *NoticeService) PublishErrorLog(ctx context.Context, userID uuid.U
 	return repository.CreateErrorLogNotification(ctx, userID, entry.BusinessID, eventKey, model.JSONB(payload))
 }
 
+const feedbackWebhookPartLimit = 3800
+
+// PublishFeedbackSubmitted 以稳定事件键创建完整站内反馈，并为启用的每个 webhook 配置生成安全分段。
+func (service *NoticeService) PublishFeedbackSubmitted(ctx context.Context, userID, feedbackID uuid.UUID, content string, imageURLs []string) error {
+	markdown, err := feedbackMarkdown(content, imageURLs)
+	if err != nil {
+		return err
+	}
+	parts, err := splitFeedbackMarkdown(markdown, feedbackWebhookPartLimit)
+	if err != nil {
+		return err
+	}
+	if len(parts) == 0 {
+		return errors.New("反馈通知内容为空")
+	}
+	if imageURLs == nil {
+		imageURLs = []string{}
+	}
+	payload, err := json.Marshal(map[string]any{
+		"title": "收到新的用户反馈", "text": content, "markdown": markdown, "image_urls": imageURLs,
+	})
+	if err != nil {
+		return err
+	}
+	repository, ok := service.repository.(interface {
+		CreateFeedbackNotification(context.Context, uuid.UUID, uuid.UUID, string, model.JSONB, []string) error
+	})
+	if !ok {
+		return errors.New("feedback notification repository is not configured")
+	}
+	eventKey := fmt.Sprintf("feedback.submitted:%s", feedbackID)
+	return repository.CreateFeedbackNotification(ctx, userID, feedbackID, eventKey, model.JSONB(payload), parts)
+}
+
+// feedbackMarkdown 将用户正文作为转义后的纯文本，并仅为服务端生成的图片 URL 构造 Markdown 图片引用。
+func feedbackMarkdown(content string, imageURLs []string) (string, error) {
+	sections := make([]string, 0, 1+len(imageURLs))
+	if content != "" {
+		sections = append(sections, escapeFeedbackMarkdown(content))
+	}
+	for index, imageURL := range imageURLs {
+		parsed, err := url.Parse(imageURL)
+		if err != nil || parsed.Scheme != "https" || parsed.Hostname() == "" || parsed.User != nil || parsed.RawQuery != "" || parsed.Fragment != "" {
+			return "", errors.New("反馈图片地址无效")
+		}
+		sections = append(sections, fmt.Sprintf("![反馈图片%d](%s)", index+1, imageURL))
+	}
+	return strings.Join(sections, "\n\n"), nil
+}
+
+// escapeFeedbackMarkdown 转义可能触发 Markdown、链接或机器人提及的输入字符，保持用户文字按纯文本展示。
+func escapeFeedbackMarkdown(value string) string {
+	var escaped strings.Builder
+	escaped.Grow(len(value))
+	for _, character := range value {
+		if strings.ContainsRune("\\`*_{}[]()#+-.!|>~@<", character) {
+			escaped.WriteByte('\\')
+		}
+		escaped.WriteRune(character)
+	}
+	return escaped.String()
+}
+
+// splitFeedbackMarkdown 按字节上限分段，逐 Unicode 字符复制并保持图片引用和 Markdown 转义对完整。
+func splitFeedbackMarkdown(markdown string, maximumBytes int) ([]string, error) {
+	if maximumBytes < 1 {
+		return nil, errors.New("反馈通知分段大小无效")
+	}
+	if !utf8.ValidString(markdown) {
+		return nil, errors.New("反馈通知包含无效 UTF-8 字符")
+	}
+	parts := make([]string, 0, len(markdown)/maximumBytes+1)
+	var current strings.Builder
+	flush := func() {
+		if current.Len() > 0 {
+			parts = append(parts, current.String())
+			current.Reset()
+		}
+	}
+	for offset := 0; offset < len(markdown); {
+		unit := ""
+		if strings.HasPrefix(markdown[offset:], "![反馈图片") {
+			end := strings.IndexByte(markdown[offset:], ')')
+			if end < 0 {
+				return nil, errors.New("反馈图片 Markdown 格式无效")
+			}
+			unit = markdown[offset : offset+end+1]
+		} else if markdown[offset] == '\\' {
+			// 用户正文经过转义后，反斜杠与其转义字符必须处于同一分段，避免分段后重新解释 Markdown。
+			_, firstSize := utf8.DecodeRuneInString(markdown[offset:])
+			unit = markdown[offset : offset+firstSize]
+			if offset+firstSize < len(markdown) {
+				_, nextSize := utf8.DecodeRuneInString(markdown[offset+firstSize:])
+				unit = markdown[offset : offset+firstSize+nextSize]
+			}
+		} else {
+			_, size := utf8.DecodeRuneInString(markdown[offset:])
+			if size < 1 {
+				return nil, errors.New("反馈通知包含无效 UTF-8 字符")
+			}
+			unit = markdown[offset : offset+size]
+		}
+		if len(unit) > maximumBytes {
+			return nil, errors.New("单个反馈图片引用超过 webhook 消息限制")
+		}
+		if current.Len()+len(unit) > maximumBytes {
+			flush()
+		}
+		current.WriteString(unit)
+		offset += len(unit)
+	}
+	flush()
+	return parts, nil
+}
+
 // NoticeConfigInput 是新增 webhook 配置的业务输入，不包含用户 ID 或数据库自增 ID。
 type NoticeConfigInput struct {
 	Provider      string `json:"provider"`
@@ -163,6 +279,8 @@ type NoticeDeliveryView struct {
 	BusinessID    string    `json:"business_id"`
 	Provider      string    `json:"provider"`
 	ConfigName    string    `json:"config_name"`
+	PartIndex     int       `json:"part_index"`
+	PartCount     int       `json:"part_count"`
 	Status        string    `json:"status"`
 	AttemptCount  int       `json:"attempt_count"`
 	LastErrorCode string    `json:"last_error_code"`
@@ -516,6 +634,7 @@ func noticeConfigView(config model.NoticeConfig) NoticeConfigView {
 func deliveryView(delivery model.NoticeDelivery) NoticeDeliveryView {
 	return NoticeDeliveryView{
 		BusinessID: delivery.BusinessID.String(), Provider: delivery.Provider, ConfigName: delivery.ConfigName,
+		PartIndex: delivery.PartIndex, PartCount: delivery.PartCount,
 		Status: delivery.Status, AttemptCount: delivery.AttemptCount, LastErrorCode: delivery.LastErrorCode,
 		CanRetry: delivery.Status == "failed", UpdatedAt: delivery.UpdatedAt,
 	}
@@ -543,9 +662,12 @@ func providerRequest(config model.NoticeConfig, delivery model.NoticeDelivery) (
 			parsed.RawQuery = query.Encode()
 		}
 	case "feishu":
-		payload = map[string]any{"msg_type": "post", "content": map[string]any{"post": map[string]any{"zh_cn": map[string]any{
-			"title": title, "content": [][]map[string]string{{{"tag": "text", "text": message}}},
-		}}}}
+		payload = map[string]any{"msg_type": "interactive", "card": map[string]any{
+			"schema": "2.0",
+			"config": map[string]any{"update_multi": true, "style": map[string]any{"text_size": map[string]any{"normal_v2": map[string]string{"default": "normal", "pc": "normal", "mobile": "heading"}}}},
+			"body":   map[string]any{"direction": "vertical", "padding": "12px 12px 12px 12px", "elements": []map[string]string{{"tag": "markdown", "content": message, "text_align": "left", "text_size": "normal_v2", "margin": "0px 0px 0px 0px"}}},
+			"header": map[string]any{"title": map[string]string{"tag": "plain_text", "content": title}, "subtitle": map[string]string{"tag": "plain_text", "content": ""}, "template": "blue", "padding": "12px 12px 12px 12px"},
+		}}
 	default:
 		return "", nil, errors.New("unsupported provider")
 	}
@@ -577,10 +699,18 @@ func noticeMessage(delivery model.NoticeDelivery) (string, string) {
 		return "Photo Nini webhook 测试", "webhook 配置已成功接收测试投递请求。"
 	}
 	var payload struct {
-		Message string `json:"message"`
+		Message  string `json:"message"`
+		Title    string `json:"title"`
+		Markdown string `json:"markdown"`
 	}
-	if err := json.Unmarshal(delivery.Payload, &payload); err == nil && payload.Message != "" {
-		if delivery.EventType == "inspiration.compression.succeeded" || delivery.EventType == "inspiration.compression.failed" {
+	if err := json.Unmarshal(delivery.Payload, &payload); err == nil {
+		if delivery.EventType == "feedback.submitted" && payload.Markdown != "" {
+			if payload.Title == "" {
+				payload.Title = "收到新的用户反馈"
+			}
+			return payload.Title, payload.Markdown
+		}
+		if payload.Message != "" && (delivery.EventType == "inspiration.compression.succeeded" || delivery.EventType == "inspiration.compression.failed") {
 			return "灵感图处理通知", payload.Message
 		}
 	}

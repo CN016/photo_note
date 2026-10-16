@@ -16,6 +16,9 @@
   "compressionSucceeded": "灵感图图片处理已完成",
   "compressionFailed": "灵感图图片处理失败，请检查图片后重新上传。",
   "errorLogCreated": "新增服务端错误",
+  "feedbackSubmitted": "收到新的用户反馈",
+  "feedbackImagesOnly": "反馈仅包含图片，见下方。",
+  "feedbackImage": "反馈图片 {index}",
   "errorLogBody": "错误码 {code}，发生位置 {source}:{line}。",
   "errorLogUnknownSource": "未知位置",
   "errorLogInternalOnly": "此错误通知仅保存在站内消息中。",
@@ -24,6 +27,7 @@
   "noWebhookStatus": "没有为此消息配置外部 webhook。",
   "retry": "重试",
   "retryQueued": "已重新加入发送队列。",
+  "part": "第 {index}/{count} 段",
   "retryFailed": "无法重试此投递，请检查渠道配置。",
   "delivery": {
     "pending": "等待发送",

@@ -63,6 +63,7 @@ type Dependencies struct {
 // fileStorage 是 HTTP 上传和读取使用的文件存储能力，不包含用户归属或文件元数据管理。
 type fileStorage interface {
 	Store(context.Context, string, string, io.Reader, int64) (string, error)
+	StorePublic(context.Context, string, string, io.Reader, int64) (string, error)
 	Open(string) (io.ReadCloser, int64, string, error)
 	Delete(context.Context, string) error
 }
@@ -94,6 +95,7 @@ func Router(dependencies Dependencies) *gin.Engine {
 	api.POST("/auth/refresh", refreshHandler(dependencies.Auth))
 	api.GET("/configs/public", publicConfigsHandler(dependencies.PublicConfigs))
 	api.POST("/feedback", optionalAuthenticationMiddleware(dependencies.Tokens), feedbackHandler(dependencies))
+	api.GET("/public-feedback-images/:storekey", publicFeedbackImageHandler(dependencies.Files))
 	api.GET("/book/:share_token/slots", publicScheduleSlotsHandler(dependencies.Schedule))
 	api.POST("/book/:share_token/requests", scheduleBookingHandler(dependencies.Schedule))
 	v2 := router.Group("/api/v2")
@@ -576,7 +578,7 @@ func feedbackHandler(dependencies Dependencies) gin.HandlerFunc {
 				writeError(c, readErr)
 				return
 			}
-			key, storeErr := dependencies.Files.Store(c.Request.Context(), storeType, header.Filename, bytes.NewReader(data), dependencies.MaxUploadBytes)
+			key, storeErr := dependencies.Files.StorePublic(c.Request.Context(), storeType, header.Filename, bytes.NewReader(data), dependencies.MaxUploadBytes)
 			if storeErr != nil {
 				cleanup()
 				writeError(c, fileStoreError(storeErr))

@@ -1,9 +1,11 @@
 package httpapi
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"mime"
 	"net/http"
 	"strings"
@@ -127,6 +129,68 @@ func downloadFileHandler(files fileStorage) gin.HandlerFunc {
 			"Content-Security-Policy": "sandbox",
 			"Referrer-Policy":         "no-referrer",
 		})
+	}
+}
+
+// publicFeedbackImageHandler 无需 token 读取反馈专用 public key；普通 key、无效 key 和非图片内容统一拒绝。
+func publicFeedbackImageHandler(files fileStorage) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		if files == nil {
+			writeError(c, fault.NotFound())
+			return
+		}
+		storekey := c.Param("storekey")
+		parsedKey, err := filestore.ParseKey(storekey)
+		if err != nil || !parsedKey.Public {
+			writeError(c, fault.NotFound())
+			return
+		}
+		reader, size, _, err := files.Open(storekey)
+		if err != nil {
+			if errors.Is(err, filestore.ErrInvalidStoreKey) || errors.Is(err, filestore.ErrFileNotFound) || errors.Is(err, filestore.ErrBackendUnavailable) {
+				writeError(c, fault.NotFound())
+				return
+			}
+			writeError(c, fault.Internal(err))
+			return
+		}
+		// 使用读取到的真实文件头检测 MIME，而不采用常规下载路径可能根据扩展名回退的类型。
+		prefix, readErr := io.ReadAll(io.LimitReader(reader, 512))
+		if readErr != nil || len(prefix) == 0 {
+			_ = reader.Close()
+			if readErr != nil {
+				writeError(c, fault.Internal(readErr))
+			} else {
+				writeError(c, fault.NotFound())
+			}
+			return
+		}
+		contentType := http.DetectContentType(prefix)
+		mediaType, _, parseErr := mime.ParseMediaType(contentType)
+		if parseErr != nil || !isPublicFeedbackImageType(mediaType) {
+			_ = reader.Close()
+			writeError(c, fault.NotFound())
+			return
+		}
+		defer reader.Close()
+		filename := parsedKey.UUID.String() + "." + downloadExtension(mediaType, parsedKey.Extension)
+		c.DataFromReader(http.StatusOK, size, contentType, io.MultiReader(bytes.NewReader(prefix), reader), map[string]string{
+			"Content-Disposition":     fmt.Sprintf("inline; filename=%q", filename),
+			"Cache-Control":           "public, max-age=31536000, immutable",
+			"X-Content-Type-Options":  "nosniff",
+			"Content-Security-Policy": "sandbox",
+			"Referrer-Policy":         "no-referrer",
+		})
+	}
+}
+
+// isPublicFeedbackImageType 只允许浏览器可安全内嵌的实际位图类型，不接受 SVG 或客户端声明的类型。
+func isPublicFeedbackImageType(mediaType string) bool {
+	switch strings.ToLower(mediaType) {
+	case "image/jpeg", "image/png", "image/gif", "image/webp":
+		return true
+	default:
+		return false
 	}
 }
 

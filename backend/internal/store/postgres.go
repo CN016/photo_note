@@ -103,12 +103,20 @@ func (store *PostgresStore) UpdateUserPasswordHash(ctx context.Context, business
 	return nil
 }
 
-// CreateFeedback 持久化游客或已认证用户的反馈；图片只保存受服务端验证的 storekey 数组。
-func (store *PostgresStore) CreateFeedback(ctx context.Context, feedback *model.Feedback) error {
-	if err := store.db.WithContext(ctx).Create(feedback).Error; err != nil {
-		return persistenceError(err)
+// CreateFeedbackAndNotificationJob 在同一事务中写入反馈和持久化通知任务，避免成功反馈丢失异步通知。
+func (store *PostgresStore) CreateFeedbackAndNotificationJob(ctx context.Context, feedback *model.Feedback, job *model.FeedbackNotificationJob) error {
+	if feedback == nil || job == nil || feedback.BusinessID == uuid.Nil || job.FeedbackBusinessID != feedback.BusinessID {
+		return errors.New("反馈及通知任务参数无效")
 	}
-	return nil
+	return persistenceError(store.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if err := tx.Create(feedback).Error; err != nil {
+			return err
+		}
+		if err := tx.Create(job).Error; err != nil {
+			return err
+		}
+		return nil
+	}))
 }
 
 // CreateUser 保存服务器生成业务 UUID 和 Argon2id 密码哈希后的新用户。

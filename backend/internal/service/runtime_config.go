@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"math"
 	"net"
+	"net/url"
 	"sort"
 	"strconv"
 	"strings"
@@ -206,6 +207,40 @@ func (service *RuntimeConfigService) ErrorLogNotificationSettings(ctx context.Co
 		}
 	}
 	return true, phone, nil
+}
+
+// FeedbackNotificationSettings 读取反馈通知专用开关、手机号和 HTTPS 公共基础地址；地址可带代理路径前缀。
+func (service *RuntimeConfigService) FeedbackNotificationSettings(ctx context.Context) (bool, string, string, error) {
+	values, err := service.reader.ReadConfigValues(ctx, []string{"feedback.notify_admin", "feedback.admin_phone", "http.public_base_url"})
+	if err != nil {
+		return false, "", "", fmt.Errorf("读取反馈通知配置失败: %w", err)
+	}
+	enabledValue := strings.TrimSpace(values["feedback.notify_admin"])
+	if enabledValue == "" {
+		return false, "", "", nil
+	}
+	enabled, err := strconv.ParseBool(enabledValue)
+	if err != nil {
+		return false, "", "", feedbackNotificationSettingsError()
+	}
+	if !enabled {
+		return false, "", "", nil
+	}
+	phone := strings.TrimSpace(values["feedback.admin_phone"])
+	if len(phone) != 11 {
+		return false, "", "", feedbackNotificationSettingsError()
+	}
+	for _, digit := range phone {
+		if digit < '0' || digit > '9' {
+			return false, "", "", feedbackNotificationSettingsError()
+		}
+	}
+	publicBaseURL := strings.TrimSpace(values["http.public_base_url"])
+	parsed, parseErr := url.Parse(publicBaseURL)
+	if parseErr != nil || parsed == nil || !strings.EqualFold(parsed.Scheme, "https") || parsed.Hostname() == "" || parsed.User != nil || parsed.RawQuery != "" || parsed.ForceQuery || parsed.Fragment != "" {
+		return false, "", "", feedbackNotificationSettingsError()
+	}
+	return true, phone, strings.TrimRight(publicBaseURL, "/"), nil
 }
 
 // ListPublicConfigValues 从统一配置 repository 读取已开放配置，并按 key 排序以提供稳定响应顺序。

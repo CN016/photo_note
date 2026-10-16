@@ -2,7 +2,9 @@ package store
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"fmt"
 	"time"
 
 	"github.com/google/uuid"
@@ -45,7 +47,7 @@ func (store *PostgresStore) CreateInspirationNotification(ctx context.Context, u
 				BaseModel: model.BaseModel{BusinessID: uuid.New(), CreatedAt: now, UpdatedAt: now},
 				UserID:    userID, DeliveryKind: "notification", NotificationBusinessID: &notification.BusinessID,
 				NoticeConfigBusinessID: config.BusinessID, Provider: config.Provider, ConfigName: config.Name,
-				EventType: eventType, Payload: append(model.JSONB(nil), payload...), Status: "pending", NextAttemptAt: now,
+				EventType: eventType, Payload: append(model.JSONB(nil), payload...), PartIndex: 1, PartCount: 1, Status: "pending", NextAttemptAt: now,
 			}
 			if err := tx.Create(&delivery).Error; err != nil {
 				return persistenceError(err)
@@ -62,6 +64,62 @@ func (store *PostgresStore) CreateInspirationNotification(ctx context.Context, u
 		}
 	}
 	return notification, created, nil
+}
+
+// CreateFeedbackNotification 在事务中按稳定事件键创建站内消息，并为每个启用渠道和 Markdown 分段创建独立 outbox。
+func (store *PostgresStore) CreateFeedbackNotification(ctx context.Context, userID, feedbackID uuid.UUID, eventKey string, payload model.JSONB, parts []string) error {
+	if len(parts) == 0 || !json.Valid(payload) {
+		return errors.New("反馈通知载荷无效")
+	}
+	return persistenceError(store.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		now := time.Now().UTC()
+		notification := model.Notification{
+			BaseModel:          model.BaseModel{BusinessID: uuid.New(), CreatedAt: now, UpdatedAt: now},
+			UserID:             userID,
+			EventType:          "feedback.submitted",
+			EventKey:           eventKey,
+			ResourceType:       "feedback",
+			ResourceBusinessID: &feedbackID,
+			Payload:            payload,
+		}
+		result := tx.Clauses(clause.OnConflict{
+			Columns:   []clause.Column{{Name: "user_id"}, {Name: "event_key"}},
+			DoNothing: true,
+		}).Create(&notification)
+		if result.Error != nil {
+			return result.Error
+		}
+		if result.RowsAffected == 0 {
+			return nil
+		}
+		var configs []model.NoticeConfig
+		if err := tx.Where("user_id = ? AND enabled = TRUE AND deleted_at IS NULL", userID).Order("created_at ASC").Find(&configs).Error; err != nil {
+			return err
+		}
+		for _, config := range configs {
+			for index, part := range parts {
+				partIndex := index + 1
+				partTitle := fmt.Sprintf("收到新的用户反馈（%d/%d）", partIndex, len(parts))
+				partPayload, err := json.Marshal(map[string]any{
+					"title": partTitle, "markdown": part, "part_index": partIndex, "part_count": len(parts),
+				})
+				if err != nil {
+					return err
+				}
+				delivery := model.NoticeDelivery{
+					BaseModel: model.BaseModel{BusinessID: uuid.New(), CreatedAt: now, UpdatedAt: now},
+					UserID:    userID, DeliveryKind: "notification", NotificationBusinessID: &notification.BusinessID,
+					NoticeConfigBusinessID: config.BusinessID, Provider: config.Provider, ConfigName: config.Name,
+					EventType: "feedback.submitted", Payload: model.JSONB(partPayload), PartIndex: partIndex, PartCount: len(parts),
+					Status: "pending", NextAttemptAt: now,
+				}
+				if err := tx.Create(&delivery).Error; err != nil {
+					return err
+				}
+			}
+		}
+		return nil
+	}))
 }
 
 // CountNoticeConfigs 统计用户未软删除的配置；停用配置也计入可配置数量上限。
@@ -153,7 +211,7 @@ func (store *PostgresStore) CreateNoticeTestDelivery(ctx context.Context, userID
 		BaseModel: model.BaseModel{BusinessID: uuid.New(), CreatedAt: now, UpdatedAt: now},
 		UserID:    userID, DeliveryKind: "test", NoticeConfigBusinessID: config.BusinessID,
 		Provider: config.Provider, ConfigName: config.Name, EventType: "notice.webhook_test",
-		Payload: payload, Status: "pending", NextAttemptAt: now,
+		Payload: payload, PartIndex: 1, PartCount: 1, Status: "pending", NextAttemptAt: now,
 	}
 	if err := store.db.WithContext(ctx).Create(&delivery).Error; err != nil {
 		return model.NoticeDelivery{}, persistenceError(err)
@@ -197,7 +255,7 @@ func (store *PostgresStore) ListNotificationDeliveries(ctx context.Context, user
 	}
 	var deliveries []model.NoticeDelivery
 	err := store.db.WithContext(ctx).Where("user_id = ? AND notification_business_id IN ?", userID, notificationIDs).
-		Order("created_at ASC").Find(&deliveries).Error
+		Order("created_at ASC, notice_config_business_id ASC, part_index ASC").Find(&deliveries).Error
 	return deliveries, persistenceError(err)
 }
 

@@ -67,19 +67,21 @@ func postgresDSN(cfg config.Config) string {
 // checkSchema 只读取数据库目录，不自动建表；缺表或发现外键时让进程启动失败并提示修复 SQL。
 func checkSchema(ctx context.Context, connection *gorm.DB) error {
 	for name, table := range map[string]any{
-		"app_configs":         &model.AppConfig{},
-		"users":               &model.User{},
-		"tags":                &model.Tag{},
-		"inspirations":        &model.Inspiration{},
-		"ledger_records":      &model.LedgerRecord{},
-		"schedule_items":      &model.ScheduleItem{},
-		"schedule_exceptions": &model.ScheduleException{},
-		"schedule_bookings":   &model.ScheduleBooking{},
-		"schedule_shares":     &model.ScheduleShare{},
-		"notifications":       &model.Notification{},
-		"notice_config":       &model.NoticeConfig{},
-		"notice_deliveries":   &model.NoticeDelivery{},
-		"error_logs":          &model.ErrorLog{},
+		"app_configs":                &model.AppConfig{},
+		"users":                      &model.User{},
+		"tags":                       &model.Tag{},
+		"inspirations":               &model.Inspiration{},
+		"feedbacks":                  &model.Feedback{},
+		"feedback_notification_jobs": &model.FeedbackNotificationJob{},
+		"ledger_records":             &model.LedgerRecord{},
+		"schedule_items":             &model.ScheduleItem{},
+		"schedule_exceptions":        &model.ScheduleException{},
+		"schedule_bookings":          &model.ScheduleBooking{},
+		"schedule_shares":            &model.ScheduleShare{},
+		"notifications":              &model.Notification{},
+		"notice_config":              &model.NoticeConfig{},
+		"notice_deliveries":          &model.NoticeDelivery{},
+		"error_logs":                 &model.ErrorLog{},
 	} {
 		if !connection.WithContext(ctx).Migrator().HasTable(table) {
 			if name == "ledger_records" {
@@ -90,6 +92,12 @@ func checkSchema(ctx context.Context, connection *gorm.DB) error {
 			}
 			if name == "error_logs" {
 				return fmt.Errorf("PostgreSQL schema 缺少错误日志表 error_logs，请先执行 backend/migrations/000012_create_error_logs.sql")
+			}
+			if name == "feedbacks" {
+				return fmt.Errorf("PostgreSQL schema 缺少反馈表 feedbacks，请先执行 backend/migrations/000008_user_phone_feedback.sql")
+			}
+			if name == "feedback_notification_jobs" {
+				return fmt.Errorf("PostgreSQL schema 缺少反馈通知任务表 feedback_notification_jobs，请先执行 backend/migrations/000013_feedback_notifications.sql")
 			}
 			return fmt.Errorf("PostgreSQL schema 缺少表 %s，请先执行 backend/migrations 中的版本化 SQL", name)
 		}
@@ -105,6 +113,12 @@ func checkSchema(ctx context.Context, connection *gorm.DB) error {
 			}
 			if !migrator.HasColumn(table, "AsyncVersion") {
 				return fmt.Errorf("PostgreSQL schema 缺少 inspirations.async_version，请先执行 backend/migrations/000007_add_inspiration_async_version.sql")
+			}
+		}
+		if name == "notice_deliveries" {
+			migrator := connection.WithContext(ctx).Migrator()
+			if !migrator.HasColumn(table, "PartIndex") || !migrator.HasColumn(table, "PartCount") {
+				return fmt.Errorf("PostgreSQL schema 缺少 webhook 消息分段列，请先执行 backend/migrations/000013_feedback_notifications.sql")
 			}
 		}
 	}

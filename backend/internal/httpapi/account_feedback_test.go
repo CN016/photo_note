@@ -11,6 +11,7 @@ import (
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -126,6 +127,14 @@ type testFileStorage struct {
 func newTestFileStorage() *testFileStorage { return &testFileStorage{files: make(map[string][]byte)} }
 
 func (storage *testFileStorage) Store(_ context.Context, _, _ string, reader io.Reader, maximum int64) (string, error) {
+	return storage.store(reader, maximum, false)
+}
+
+func (storage *testFileStorage) StorePublic(_ context.Context, _, _ string, reader io.Reader, maximum int64) (string, error) {
+	return storage.store(reader, maximum, true)
+}
+
+func (storage *testFileStorage) store(reader io.Reader, maximum int64, public bool) (string, error) {
 	content, err := io.ReadAll(io.LimitReader(reader, maximum+1))
 	if err != nil {
 		return "", err
@@ -133,7 +142,11 @@ func (storage *testFileStorage) Store(_ context.Context, _, _ string, reader io.
 	if int64(len(content)) > maximum {
 		return "", fault.InvalidRequest("too large")
 	}
-	key := "local_20261015_" + uuid.NewString() + ".png"
+	prefix := "local"
+	if public {
+		prefix = "public_local"
+	}
+	key := prefix + "_20261015_" + uuid.NewString() + ".png"
 	storage.mu.Lock()
 	storage.files[key] = content
 	storage.mu.Unlock()
@@ -147,7 +160,7 @@ func (storage *testFileStorage) Open(key string) (io.ReadCloser, int64, string, 
 	if !ok {
 		return nil, 0, "", fault.NotFound()
 	}
-	return io.NopCloser(bytes.NewReader(content)), int64(len(content)), "image/png", nil
+	return io.NopCloser(bytes.NewReader(content)), int64(len(content)), http.DetectContentType(content), nil
 }
 
 func (storage *testFileStorage) Delete(_ context.Context, key string) error {
@@ -160,10 +173,12 @@ func (storage *testFileStorage) Delete(_ context.Context, key string) error {
 
 type testFeedbackRepository struct {
 	records []model.Feedback
+	jobs    []model.FeedbackNotificationJob
 }
 
-func (repository *testFeedbackRepository) CreateFeedback(_ context.Context, record *model.Feedback) error {
+func (repository *testFeedbackRepository) CreateFeedbackAndNotificationJob(_ context.Context, record *model.Feedback, job *model.FeedbackNotificationJob) error {
 	repository.records = append(repository.records, *record)
+	repository.jobs = append(repository.jobs, *job)
 	return nil
 }
 
@@ -344,11 +359,48 @@ func TestFeedbackTextImageAndRateBoundaries(t *testing.T) {
 	if len(repository.records) != 3 {
 		t.Fatalf("persisted feedback count = %d, want 3", len(repository.records))
 	}
+	if len(repository.jobs) != len(repository.records) {
+		t.Fatalf("persisted feedback notification jobs = %d, want %d", len(repository.jobs), len(repository.records))
+	}
+	for index, job := range repository.jobs {
+		if job.FeedbackBusinessID != repository.records[index].BusinessID || job.Status != "pending" {
+			t.Fatalf("feedback notification job %d does not match its feedback", index)
+		}
+	}
 	if repository.records[1].UserID == nil || *repository.records[1].UserID != userID {
 		t.Fatal("signed-in feedback must use the validated token user")
 	}
 	if repository.records[0].UserID != nil || repository.records[2].UserID != nil {
 		t.Fatal("guest feedback must remain unassociated")
+	}
+	if len(repository.records[1].ImageKeys) != 5 || !strings.HasPrefix(repository.records[1].ImageKeys[0], "public_local_") {
+		t.Fatal("feedback images must be stored with the public feedback key marker")
+	}
+	publicKey := string(repository.records[1].ImageKeys[0])
+	publicImage := httptest.NewRecorder()
+	router.ServeHTTP(publicImage, httptest.NewRequest(http.MethodGet, "/api/v1/public-feedback-images/"+publicKey, nil))
+	if publicImage.Code != http.StatusOK || publicImage.Header().Get("Content-Type") != "image/png" {
+		t.Fatalf("public feedback image status/content type = %d/%s, want 200/image/png", publicImage.Code, publicImage.Header().Get("Content-Type"))
+	}
+	privateKey := strings.TrimPrefix(publicKey, "public_")
+	privateImage := httptest.NewRecorder()
+	router.ServeHTTP(privateImage, httptest.NewRequest(http.MethodGet, "/api/v1/public-feedback-images/"+privateKey, nil))
+	if privateImage.Code != http.StatusNotFound {
+		t.Fatalf("ordinary private key public read status = %d, want 404", privateImage.Code)
+	}
+	invalidImage := httptest.NewRecorder()
+	router.ServeHTTP(invalidImage, httptest.NewRequest(http.MethodGet, "/api/v1/public-feedback-images/invalid", nil))
+	if invalidImage.Code != http.StatusNotFound {
+		t.Fatalf("invalid public image key status = %d, want 404", invalidImage.Code)
+	}
+	nonImageKey := "public_local_20261015_" + uuid.NewString() + ".txt"
+	files.mu.Lock()
+	files.files[nonImageKey] = []byte("plain text")
+	files.mu.Unlock()
+	nonImage := httptest.NewRecorder()
+	router.ServeHTTP(nonImage, httptest.NewRequest(http.MethodGet, "/api/v1/public-feedback-images/"+nonImageKey, nil))
+	if nonImage.Code != http.StatusNotFound {
+		t.Fatalf("non-image public key status = %d, want 404", nonImage.Code)
 	}
 
 	rateRepository := &testFeedbackRepository{}

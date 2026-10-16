@@ -84,7 +84,9 @@ GORM 迁移设置 `DisableForeignKeyConstraintWhenMigrating: true`，模型避�
 | `content` | `text` | 非空，默认空字符串；最多 2000 个 Unicode 字符，至少与一张图片提供其一 |
 | `image_keys` | `text[]` | 非空，默认空数组；保存服务端验证的图片 storekey，最多 5 个 |
 
-反馈接口允许游客提交；登录请求的用户归属始终从有效 token 得出。正文与图片至少提供一项，图片受文件单体积配置约束。该批只负责提交和持久化，不提供反馈后台、回复或用户历史页。
+反馈接口允许游客提交；登录请求的用户归属始终从有效 token 得出。正文与图片至少提供一项，图片受文件单体积配置约束。提交事务同时写入 `feedbacks` 与 `feedback_notification_jobs`，由持久化 worker 按专用配置查找已有接收用户并发布 `feedback.submitted` 通知；通知关闭或接收用户缺失时反馈仍成功保留。不提供反馈后台、回复或用户历史页。
+
+反馈图片使用独立 `public_` key 和物理存储目录。无需鉴权的图片读取接口只接受该标记且实际类型为 JPEG、PNG、GIF 或 WebP 的文件；普通文件 key 不可通过该接口读取。通知的 Markdown 和纯文本由后台从完整反馈正文生成，图片绝对链接使用私有 `http.public_base_url` 配置。该 HTTPS 地址可包含反向代理路径前缀，不使用请求 Host。
 
 ### 3.6 索引清单
 
@@ -160,6 +162,7 @@ GORM 关联迁移默认可能创建外键；配置 `DisableForeignKeyConstraintW
 | `GET /healthz` | 否 | 检查 PostgreSQL 和 Redis 连通性 | `data.status` 与当前服务 `data.version` |
 | `GET /configs/public` | 否 | 可重复传 `keys` 筛选；只查询 `is_public=true` | `items` 中仅包含 `key`、`value` |
 | `POST /feedback` | 可选 AT | multipart：`content`，重复的 `images` 文件字段；允许游客 | `received: true` |
+| `GET /public-feedback-images/{storekey}` | 否 | 仅接受带反馈公共标记的图片 key | 实际图片二进制流 |
 | `GET /users/me` | AT | 无 | 当前用户 `business_id`、昵称、手机号、头像 key 和时间字段 |
 | `PATCH /users/me` | AT | 可选 `nickname`, `avatar_key` | 更新后的当前用户资料 |
 | `POST /users/me/password` | AT | `current_password`, `new_password` | `204`；保留当前设备并撤销其他设备会话 |
@@ -183,7 +186,7 @@ JSON 请求和响应使用 UTF-8；日期时间以 RFC 3339 格式返回。创�
 
 当前已部署契约为后端 2.0.0；此处较早的 V1 设计描述已由后续规则替代。注册仅使用 `POST /api/v2/auth/register` multipart，手机号为 11 位数字、密码为 8 至 128 个字符、昵称最多 64 个字符且头像必传；旧 `POST /api/v1/auth/register` 返回 `426 upgrade_required`。登录只接受 11 位数字，兼容旧客户端输入的 `+86` 加 11 位号码并映射到数据库中的 11 位值；手机号不存在和密码错误继续使用相同的 `401` 语义。
 
-反馈正文最多 2000 个 Unicode 字符，最多 5 张图片，至少提交正文或一张图片；单图受 `files.max_upload_bytes` 限制。每个客户端 IP 每小时最多提交 5 次。IP 仅从配置的可信代理链解析，Redis 键保存 IP 摘要。反馈图片 storekey 与正文写入 `feedbacks`，反馈内容不写入日志。
+反馈正文最多 2000 个 Unicode 字符，最多 5 张图片，至少提交正文或一张图片；单图受 `files.max_upload_bytes` 限制。每个客户端 IP 每小时最多提交 5 次。IP 仅从配置的可信代理链解析，Redis 键保存 IP 摘要。反馈图片 storekey 与正文写入 `feedbacks`，反馈内容不写入日志。新迁移 `000013_feedback_notifications.sql` 建立持久化通知任务并为 webhook 投递增加分段序号；长正文按安全字节上限拆分，UTF-8 字符和图片引用保持完整，每段独立显示投递状态并可单独重试。通知开关默认关闭，不接入短信；启用时使用独立 `feedback.admin_phone` 查找现有账户。
 
 注册和登录的 `data` 包含当前用户资料和 `tokens`：
 

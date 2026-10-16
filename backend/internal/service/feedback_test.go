@@ -23,4 +23,7 @@ func TestFeedbackLimits(t *testing.T) {
 	if err := service.Validate("  ", 0); err == nil {
 		t.Fatal("empty text and image feedback should be rejected")
 	}
+	if err := service.Validate(string([]byte{0xff}), 0); err == nil {
+		t.Fatal("invalid UTF-8 feedback should be rejected")
+	}
 }

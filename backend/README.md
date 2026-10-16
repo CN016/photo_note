@@ -12,7 +12,11 @@ API 默认通过宿主机 `127.0.0.1:8089` 提供服务，监听地址、请求�
 
 文件上传使用 `POST /api/v1/files`，请求为单文件 `multipart/form-data`，字段名为 `file`；上传大小由配置表中的 `files.max_upload_bytes` 控制，默认 50 MiB。当前 `files.active_store_type` 默认为 `local`，上传时每次读取该配置；文件 key 的类型前缀用于后续下载分发。下载使用 `GET /api/v1/files/{storekey}`，上传和下载均需 Bearer Access Token。V1 不建立文件元数据、不绑定用户，也不提供文件列表、删除和自动清理接口；拥有有效 storekey 的已鉴权用户都能获取对应文件。`oss` 类型已保留 key 路由分支，但当前尚未接入 OSS 后端，切换到 `oss` 后上传和读取会返回 501。
 
+反馈上传的图片使用 `public_` 标记和单独的本地物理目录；只有带标记且实际 MIME 为 JPEG、PNG、GIF 或 WebP 的 key 能通过无需 token 的 `GET /api/v1/public-feedback-images/{storekey}` 读取。普通文件仍只由原有 Bearer 鉴权下载接口读取；给普通 key 添加 `public_` 前缀不会指向同一文件。
+
 本地文件默认写入 `/var/lib/photo-nini/uploads/<yyyymmdd>/<uuid前三位>/<uuid>.<ext>`，由 Compose 命名卷 `uploaded_files_data` 持久化。`files.local_root` 修改后需重启 API；单文件大小限制 `files.max_upload_bytes` 也是启动时读取。新上传的存储类型每次上传时从配置表重新读取，变更后立即对下一次上传生效。
+
+反馈公共图片单独写入 `/var/lib/photo-nini/uploads/public/<yyyymmdd>/<uuid前三位>/<uuid>.<ext>`；普通 storekey 仍映射到原有目录。
 
 灵感图 `POST`/`PATCH` 请求可传 `file_name` 保存原始图片文件名。创建记录或通过 `image_key` 更换有效 storekey 后，接口先保存记录并快速返回，再由固定并发数的后台工作线程读取 JPEG、PNG、GIF 或 WebP 图片并压缩；任务完成前响应中的 `file_hash` 和 `file_size` 为 `null`。超过 1 MB 的静态图片会压缩并原位覆盖同一 storekey，不生成新 key；不透明图片转为 JPEG，有透明通道的图片保留为 PNG。超过 1 MB 的动画 GIF 或 WebP、无效图片、文件缺失或超过服务端处理上限时，异步任务失败，不会作为本次 `POST`/`PATCH` 的 HTTP 错误返回，`file_hash` 和 `file_size` 会保持为空；重新提交图片 key 可触发新任务。处理成功后，后端基于最终存储字节保存 SHA-256（小写 64 位十六进制）到 `file_hash`，并将实际字节数保存到 `file_size`，单位为字节。小于或等于 1 MB 的图片保持原始内容。读取时按文件实际内容返回 MIME 类型和下载扩展名，因此压缩后即使编码格式变化，原 storekey 仍可使用。每条记录的 `async_version` 在带图片的异步更新时递增，后台任务仅在图片 key 和代次仍与任务一致时写回元数据；新增记录的代次为 0。同一记录尚未执行的旧任务会被最新代次替换。该队列保存在 API 进程内，正常收到退出信号后会在关闭超时内等待已接收任务，进程异常终止时仍可能丢失未完成任务。更换为非 storekey 的 `image_key` 时哈希和大小会清空。现有数据库升级需确认并按顺序补跑尚未应用的 `backend/migrations/000005_add_inspiration_file_metadata.sql`、`backend/migrations/000006_add_inspiration_file_size.sql` 和 `backend/migrations/000007_add_inspiration_async_version.sql`；如果 `000005`、`000006` 已应用，则仅需应用 `000007`。历史记录的异步代次默认为 0。
 
@@ -20,13 +24,13 @@ API 默认通过宿主机 `127.0.0.1:8089` 提供服务，监听地址、请求�
 
 ### 消息中心与 webhook 通知
 
-登录用户可在共享 Web 应用 `/messages` 页查看灵感图图片处理成功或失败通知、筛选未读消息、标记已读并打开关联灵感图。应用打开期间导航角标约每 30 秒刷新一次，并在应用内提示新消息；不提供浏览器关闭后的系统推送。
+登录用户可在共享 Web 应用 `/messages` 页查看灵感图处理、服务端错误和用户反馈通知，筛选未读消息、标记已读并打开关联灵感图。反馈正文以纯文本显示，反馈图片以内嵌图片显示。应用打开期间导航角标约每 30 秒刷新一次，并在应用内提示新消息；不提供浏览器关闭后的系统推送。
 
 用户可在“Webhook 渠道”中创建多个企业微信、钉钉或飞书自定义机器人配置，停用的配置仍计入总数上限。配置数量上限来自私有 `app_configs` 项 `notice.max_webhooks_per_user`，迁移初始值为 20，运行时读取，配置更新后无需重启。支持启停、修改、软删除和异步测试；完整 webhook 地址和签名密钥只在创建/修改时提交，读取只返回平台主机遮罩和是否配置签名。编辑时空白 webhook 地址或签名密钥表示保留原值；清除签名需显式设置 `clear_signing_secret=true`。
 
 通知 API 均需 Bearer Access Token，并从 token 取得用户业务 UUID：`GET /api/v1/notifications?page=1&page_size=20&unread_only=false` 分页查询消息及各渠道投递状态，`GET /api/v1/notifications/unread-count` 读取角标数量，`PATCH /api/v1/notifications/{business_id}/read` 标记单条已读，`POST /api/v1/notifications/read-all` 标记全部已读。配置 API 为 `GET/POST /api/v1/notice-configs`、`PATCH/DELETE /api/v1/notice-configs/{business_id}` 和 `POST /api/v1/notice-configs/{business_id}/test`；测试接口只创建 outbox 并以 202 返回。用 `GET /api/v1/notice-deliveries/{business_id}` 查询投递状态，`POST /api/v1/notice-deliveries/{business_id}/retry` 重新排队最终失败的任务。
 
-后台事件在同一数据库事务中写入站内通知和各启用配置的 webhook outbox，独立 worker 负责外部 HTTP 请求，使用 12 秒超时、拒绝重定向和最多 5 次发送尝试。网络错误、HTTP 状态或平台业务码只转换成安全错误分类，不记录 webhook 地址、签名密钥或远端响应正文。投递失败仍可从站内消息查看并单渠道重试；系统要求事件当前 `image_key` 和 `async_version` 同时匹配，不为已删除或过期版本生成通知。新数据库应按序执行 `backend/migrations/000001` 至当前最新迁移；已有数据库升级前先备份并按顺序手动执行所有尚未应用的文件。`000011_create_notification_center.sql` 创建 `notifications`、`notice_config` 和 `notice_deliveries` 表，不建立外键。
+后台事件在同一数据库事务中写入站内通知和各启用配置的 webhook outbox，独立 worker 负责外部 HTTP 请求，使用 12 秒超时、拒绝重定向和最多 5 次发送尝试。超长反馈 Markdown 会按保守的 3800 字节上限拆分，每个渠道的每段都有独立投递状态和重试入口。网络错误、HTTP 状态或平台业务码只转换成安全错误分类，不记录 webhook 地址、签名密钥或远端响应正文。投递失败仍可从站内消息查看并单渠道重试；灵感图事件要求当前 `image_key` 和 `async_version` 同时匹配，不为已删除或过期版本生成通知。新数据库应按序执行 `backend/migrations/000001` 至当前最新迁移；已有数据库升级前先备份并按顺序手动执行所有尚未应用的文件。`000011_create_notification_center.sql` 创建消息中心表，`000013_feedback_notifications.sql` 增加反馈任务和分段投递字段，两者均不建立外键。
 
 ### 服务端错误日志与管理员通知
 
@@ -38,6 +42,18 @@ API 默认通过宿主机 `127.0.0.1:8089` 提供服务，监听地址、请求�
 UPDATE app_configs
 SET config_value = '<已注册管理员手机号>', updated_at = now()
 WHERE config_key = 'error_logs.admin_phone';
+```
+
+### 用户反馈通知与公共图片
+
+新反馈与 `feedback_notification_jobs` 任务在同一事务保存。后台 worker 按 `feedback.admin_phone` 查找已注册用户，并以稳定 `feedback.submitted:<feedback business_id>` 事件键创建站内通知和该用户启用渠道的 webhook outbox；不匹配用户时仅将任务标为安全错误状态，反馈仍保留。默认 `feedback.notify_admin=false`，无短信功能。启用前应设置独立手机号和 HTTPS 公共基础地址；地址可包含反向代理路径前缀，例如 `https://photo.016imcn.love/back`。手机号、开关与地址均为私有配置，业务代码只经统一配置服务读取。
+
+`http.public_base_url` 必须是 HTTPS 地址且包含主机名；允许配置反向代理路径前缀，但不允许查询参数、片段或用户凭据。worker 会在该地址后拼接反馈图片 API 路径生成绝对 URL，不采信请求 `Host`。反馈图片链接指向上方的无需鉴权读取接口；其他文件 key 不具有公共读取权限。新迁移 `backend/migrations/000013_feedback_notifications.sql` 会添加私有配置项、任务表与 webhook 分段列。运维应先应用迁移，再填入实际接收配置，最后启用开关：
+
+```sql
+UPDATE app_configs SET config_value = '<已注册用户手机号>', updated_at = now() WHERE config_key = 'feedback.admin_phone';
+UPDATE app_configs SET config_value = 'https://<公开服务域名>/<可选路径前缀>', updated_at = now() WHERE config_key = 'http.public_base_url';
+UPDATE app_configs SET config_value = 'true', updated_at = now() WHERE config_key = 'feedback.notify_admin';
 ```
 
 ### 构建镜像源

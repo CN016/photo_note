@@ -80,6 +80,8 @@ func run() error {
 	notices := service.NewNoticeService(repository, runtimeConfigService)
 	errorLogs := service.NewErrorLogService(repository, runtimeConfigService, notices)
 	notices.SetErrorLogService(errorLogs)
+	feedbackNotifications := service.NewFeedbackNotificationService(repository, runtimeConfigService, notices)
+	feedbackNotifications.SetErrorLogService(errorLogs)
 	inspirations := service.NewInspirationService(repository, fileManager, runtimeConfig.MaxUploadBytes)
 	inspirations.SetCompressionNotifier(notices)
 	inspirations.SetErrorLogService(errorLogs)
@@ -120,6 +122,11 @@ func run() error {
 		defer close(noticeWorkerDone)
 		notices.RunDeliveryWorker(shutdownContext)
 	}()
+	feedbackNotificationWorkerDone := make(chan struct{})
+	go func() {
+		defer close(feedbackNotificationWorkerDone)
+		feedbackNotifications.Run(shutdownContext)
+	}()
 	errorLogWorkerDone := make(chan struct{})
 	errorLogContext, cancelErrorLogs := context.WithCancel(context.Background())
 	go func() {
@@ -156,6 +163,11 @@ func run() error {
 		}
 		select {
 		case <-noticeWorkerDone:
+		case <-shutdown.Done():
+			return shutdown.Err()
+		}
+		select {
+		case <-feedbackNotificationWorkerDone:
 		case <-shutdown.Done():
 			return shutdown.Err()
 		}

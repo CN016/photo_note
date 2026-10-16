@@ -101,6 +101,7 @@ function messageTitle(item: NoticeMessage): string {
   if (item.event_type === 'inspiration.compression.succeeded') return t('compressionSucceeded')
   if (item.event_type === 'inspiration.compression.failed') return t('compressionFailed')
   if (item.event_type === 'system.error_log.created') return t('errorLogCreated')
+  if (item.event_type === 'feedback.submitted') return t('feedbackSubmitted')
   return t('title')
 }
 
@@ -119,7 +120,14 @@ function messageBody(item: NoticeMessage): string {
       line: item.payload.source_line ?? 0,
     })
   }
+  if (item.event_type === 'feedback.submitted') return item.payload.text || t('feedbackImagesOnly')
   return t('description')
+}
+
+/** 只渲染后端生成的 HTTPS 反馈图片链接，正文始终使用纯文本插值。 */
+function feedbackImages(item: NoticeMessage): string[] {
+  if (item.event_type !== 'feedback.submitted' || !Array.isArray(item.payload.image_urls)) return []
+  return item.payload.image_urls.filter(url => typeof url === 'string' && url.startsWith('https://'))
 }
 
 function formatDate(value: string): string {
@@ -361,12 +369,16 @@ onBeforeUnmount(() => {
               <h2>{{ messageTitle(item) }}</h2>
               <span class="read-state">{{ item.read_at ? t('readLabel') : t('unreadLabel') }}</span>
             </div>
-            <p class="notification-body">{{ messageBody(item) }}</p>
+            <p class="notification-body" :class="{ 'feedback-message': item.event_type === 'feedback.submitted' }">{{ messageBody(item) }}</p>
+            <div v-if="feedbackImages(item).length" class="feedback-image-list">
+              <img v-for="(imageURL, index) in feedbackImages(item)" :key="imageURL" :src="imageURL" :alt="t('feedbackImage', { index: index + 1 })" loading="lazy" referrerpolicy="no-referrer" />
+            </div>
             <div class="notification-meta"><span>{{ t('createdAt') }} · {{ formatDate(item.created_at) }}</span></div>
 
             <div v-if="item.deliveries?.length" class="delivery-list" @click.stop>
               <div v-for="delivery in item.deliveries" :key="delivery.business_id" class="delivery-row">
                 <span class="provider-chip"><WebhookProviderLogo :provider="delivery.provider" size="small" /><span>{{ providerName(delivery.provider) }} · {{ delivery.config_name }}</span></span>
+                <span v-if="delivery.part_count > 1" class="delivery-part">{{ t('part', { index: delivery.part_index, count: delivery.part_count }) }}</span>
                 <span class="delivery-state" :class="`state-${delivery.status}`">{{ deliveryStatus(delivery) }}</span>
                 <button v-if="delivery.can_retry" class="inline-action" type="button" @click="retryDelivery(delivery)">{{ t('retry') }}</button>
               </div>

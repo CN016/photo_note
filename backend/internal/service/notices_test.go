@@ -12,6 +12,7 @@ import (
 	"strings"
 	"testing"
 	"time"
+	"unicode/utf8"
 
 	"github.com/google/uuid"
 	"github.com/photo-nini/backend/internal/model"
@@ -91,7 +92,7 @@ func TestProviderRequestUsesPlatformSpecificPayloadsAndSignatures(t *testing.T) 
 	}{
 		{provider: "wecom", address: "https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=wecom-secret", wantKeys: []string{"msgtype", "markdown"}},
 		{provider: "dingtalk", address: "https://oapi.dingtalk.com/robot/send?access_token=ding-secret", secret: "ding-signing", wantKeys: []string{"msgtype", "markdown"}},
-		{provider: "feishu", address: "https://open.feishu.cn/open-apis/bot/v2/hook/feishu-secret", secret: "feishu-signing", wantKeys: []string{"msg_type", "content", "timestamp", "sign"}},
+		{provider: "feishu", address: "https://open.feishu.cn/open-apis/bot/v2/hook/feishu-secret", secret: "feishu-signing", wantKeys: []string{"msg_type", "card", "timestamp", "sign"}},
 	}
 	for _, test := range tests {
 		t.Run(test.provider, func(t *testing.T) {
@@ -139,6 +140,87 @@ func TestProviderRequestUsesPlatformSpecificPayloadsAndSignatures(t *testing.T) 
 				t.Fatal("provider payload leaked webhook credentials")
 			}
 		})
+	}
+}
+
+// TestFeedbackWebhookMarkdownEscapingAndSplitting 保证输入不触发 Markdown 提及，且分段不拆 UTF-8 或图片链接。
+func TestFeedbackWebhookMarkdownEscapingAndSplitting(t *testing.T) {
+	imageURL := "https://images.example/api/v1/public-feedback-images/public_local_20261016_123e4567-e89b-12d3-a456-426614174000.png"
+	markdown, err := feedbackMarkdown("![伪造](https://attacker.example) <at user_id=\"all\">\n"+strings.Repeat("反馈内容", 900), []string{imageURL})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(markdown, "![伪造]") || strings.Contains(markdown, "<at user_id=\"all\">") {
+		t.Fatal("user feedback must remain plain text in webhook Markdown")
+	}
+	parts, err := splitFeedbackMarkdown(markdown, feedbackWebhookPartLimit)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(parts) < 2 || strings.Join(parts, "") != markdown {
+		t.Fatalf("feedback Markdown was not fully preserved across parts: parts=%d", len(parts))
+	}
+	for _, part := range parts {
+		if len(part) > feedbackWebhookPartLimit || !utf8.ValidString(part) {
+			t.Fatalf("webhook part exceeds byte limit or has invalid UTF-8: bytes=%d", len(part))
+		}
+	}
+	imageMarkdown := "![反馈图片1](" + imageURL + ")"
+	imagePartCount := 0
+	for _, part := range parts {
+		if strings.Contains(part, imageMarkdown) {
+			imagePartCount++
+		}
+		if strings.Contains(part, "![反馈图片1](") && !strings.Contains(part, imageMarkdown) {
+			t.Fatal("generated image Markdown link was cut across webhook parts")
+		}
+	}
+	if imagePartCount != 1 {
+		t.Fatalf("generated image reference appears in %d parts, want 1", imagePartCount)
+	}
+
+	boundaryContent := strings.Repeat("x", feedbackWebhookPartLimit-1) + "\\*tail"
+	boundaryMarkdown, err := feedbackMarkdown(boundaryContent, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	boundaryParts, err := splitFeedbackMarkdown(boundaryMarkdown, feedbackWebhookPartLimit)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(boundaryParts) != 2 || boundaryParts[0] != strings.Repeat("x", feedbackWebhookPartLimit-1) || !strings.HasPrefix(boundaryParts[1], strings.Repeat("\\", 3)+"*tail") {
+		t.Fatalf("Markdown escape pair was split at a chunk boundary: %#v", boundaryParts)
+	}
+}
+
+// TestFeedbackFeishuRequestUsesInteractiveMarkdownCard 检查飞书反馈 webhook 使用 Markdown 卡片载荷。
+func TestFeedbackFeishuRequestUsesInteractiveMarkdownCard(t *testing.T) {
+	config := model.NoticeConfig{Provider: "feishu", WebhookURL: "https://open.feishu.cn/open-apis/bot/v2/hook/token"}
+	delivery := model.NoticeDelivery{
+		EventType: "feedback.submitted",
+		Payload:   model.JSONB(`{"title":"收到新的用户反馈（1/1）","markdown":"反馈正文\\n\\n![反馈图片1](https://images.example/image.png)"}`),
+	}
+	_, body, err := providerRequest(config, delivery)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var payload struct {
+		MessageType string `json:"msg_type"`
+		Card        struct {
+			Schema string `json:"schema"`
+			Body   struct {
+				Elements []struct {
+					Tag     string `json:"tag"`
+					Content string `json:"content"`
+				} `json:"elements"`
+			} `json:"body"`
+		} `json:"card"`
+	}
+	if err := json.Unmarshal(body, &payload); err != nil {
+		t.Fatal(err)
+	}
+	if payload.MessageType != "interactive" || payload.Card.Schema != "2.0" || len(payload.Card.Body.Elements) != 1 || payload.Card.Body.Elements[0].Tag != "markdown" || !strings.Contains(payload.Card.Body.Elements[0].Content, "![反馈图片1]") {
+		t.Fatalf("Feishu card did not preserve feedback Markdown: %+v", payload)
 	}
 }
 

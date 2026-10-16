@@ -89,6 +89,8 @@ export interface NoticeDelivery {
   business_id: string
   provider: 'wecom' | 'dingtalk' | 'feishu'
   config_name: string
+  part_index: number
+  part_count: number
   status: 'pending' | 'sending' | 'retry' | 'delivered' | 'failed' | 'cancelled'
   attempt_count: number
   last_error_code: string
@@ -109,6 +111,10 @@ export interface NoticeMessage {
     error_code?: string
     source_file?: string
     source_line?: number
+    text?: string
+    markdown?: string
+    image_urls?: string[]
+    title?: string
   }
   read_at: string | null
   created_at: string

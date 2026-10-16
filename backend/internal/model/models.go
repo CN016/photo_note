@@ -104,6 +104,21 @@ type Feedback struct {
 // TableName 固定反馈模型使用与版本化建表 SQL 相同的表名。
 func (Feedback) TableName() string { return "feedbacks" }
 
+// FeedbackNotificationJob 保存反馈提交通知的持久化后台任务；反馈正文仍只从 feedbacks 表读取。
+type FeedbackNotificationJob struct {
+	BaseModel
+	FeedbackBusinessID uuid.UUID  `gorm:"column:feedback_business_id;type:uuid;not null;uniqueIndex"`
+	Status             string     `gorm:"column:job_status;type:varchar(16);not null;default:'pending'"`
+	AttemptCount       int        `gorm:"column:attempt_count;type:smallint;not null;default:0"`
+	NextAttemptAt      time.Time  `gorm:"column:next_attempt_at;type:timestamptz;not null"`
+	LastAttemptAt      *time.Time `gorm:"column:last_attempt_at;type:timestamptz"`
+	CompletedAt        *time.Time `gorm:"column:completed_at;type:timestamptz"`
+	LastErrorCode      string     `gorm:"column:last_error_code;type:varchar(64);not null;default:''"`
+}
+
+// TableName 固定反馈通知任务模型使用与版本化 SQL 迁移相同的表名。
+func (FeedbackNotificationJob) TableName() string { return "feedback_notification_jobs" }
+
 // LedgerRecord 保存当前用户的一笔收入或支出；草稿 JSON 与已完成金额分开，编辑时不影响正式统计。
 type LedgerRecord struct {
 	BaseModel
@@ -229,6 +244,8 @@ type NoticeDelivery struct {
 	ConfigName             string     `gorm:"column:config_name;type:varchar(80);not null"`
 	EventType              string     `gorm:"column:event_type;type:varchar(64);not null"`
 	Payload                JSONB      `gorm:"column:payload;type:jsonb;not null"`
+	PartIndex              int        `gorm:"column:part_index;type:smallint;not null;default:1"`
+	PartCount              int        `gorm:"column:part_count;type:smallint;not null;default:1"`
 	Status                 string     `gorm:"column:delivery_status;type:varchar(16);not null;default:'pending'"`
 	AttemptCount           int        `gorm:"column:attempt_count;type:smallint;not null;default:0"`
 	NextAttemptAt          time.Time  `gorm:"column:next_attempt_at;type:timestamptz;not null"`

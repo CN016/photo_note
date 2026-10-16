@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"strings"
+	"time"
 	"unicode/utf8"
 
 	"github.com/google/uuid"
@@ -13,7 +14,7 @@ import (
 
 // FeedbackRepository 定义反馈写入所需的最小持久化能力。
 type FeedbackRepository interface {
-	CreateFeedback(context.Context, *model.Feedback) error
+	CreateFeedbackAndNotificationJob(context.Context, *model.Feedback, *model.FeedbackNotificationJob) error
 }
 
 // FeedbackRateLimiter 以可信代理解析后的客户端地址限制公开反馈提交频率。
@@ -37,6 +38,9 @@ func NewFeedbackService(repository FeedbackRepository, limiter FeedbackRateLimit
 
 // Validate 检查正文和图片数量，并要求两类反馈内容至少出现一项。
 func (service *FeedbackService) Validate(content string, imageCount int) error {
+	if !utf8.ValidString(content) {
+		return fault.InvalidField("content", "反馈文字必须使用有效的 UTF-8 编码")
+	}
 	if utf8.RuneCountInString(content) > service.maxChars {
 		return fault.InvalidField("content", "反馈文字超过允许长度")
 	}
@@ -75,5 +79,12 @@ func (service *FeedbackService) Submit(ctx context.Context, userID *uuid.UUID, c
 		Content:   strings.TrimSpace(content),
 		ImageKeys: imageKeys,
 	}
-	return service.repository.CreateFeedback(ctx, feedback)
+	now := time.Now().UTC()
+	job := &model.FeedbackNotificationJob{
+		BaseModel:          model.BaseModel{BusinessID: uuid.New()},
+		FeedbackBusinessID: feedback.BusinessID,
+		Status:             "pending",
+		NextAttemptAt:      now,
+	}
+	return service.repository.CreateFeedbackAndNotificationJob(ctx, feedback, job)
 }

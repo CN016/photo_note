@@ -16,6 +16,9 @@
   "compressionSucceeded": "Inspiration image processing completed",
   "compressionFailed": "Inspiration image processing failed. Check the image and upload it again.",
   "errorLogCreated": "New server error",
+  "feedbackSubmitted": "New user feedback",
+  "feedbackImagesOnly": "The feedback contains images only; see below.",
+  "feedbackImage": "Feedback image {index}",
   "errorLogBody": "Error code {code}; location {source}:{line}.",
   "errorLogUnknownSource": "Unknown location",
   "errorLogInternalOnly": "This error notification is available only in the in-app inbox.",
@@ -24,6 +27,7 @@
   "noWebhookStatus": "No external webhook was configured for this message.",
   "retry": "Retry",
   "retryQueued": "The delivery was queued again.",
+  "part": "Part {index}/{count}",
   "retryFailed": "This delivery could not be retried. Check the channel configuration.",
   "delivery": {
     "pending": "Queued",

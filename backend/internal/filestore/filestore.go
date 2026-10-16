@@ -47,6 +47,8 @@ type ParsedKey struct {
 	Date      time.Time
 	UUID      uuid.UUID
 	Extension string
+	// Public 只用于反馈图片专属命名空间；公共与私有文件实际保存在不同目录。
+	Public bool
 }
 
 // NewManager 校验并创建本地存储根目录；目录权限错误会在服务启动阶段暴露。
@@ -67,6 +69,16 @@ func NewManager(root string) (*Manager, error) {
 
 // Store 使用服务端生成的日期和随机 UUID 保存文件，且通过实际读取量执行配置大小限制。
 func (manager *Manager) Store(ctx context.Context, storeType, originalFilename string, source io.Reader, maxBytes int64) (string, error) {
+	return manager.store(ctx, storeType, originalFilename, source, maxBytes, false)
+}
+
+// StorePublic 仅供反馈图片使用公共 key，并将字节写入独立目录，避免给私有 key 加前缀即可公开读取。
+func (manager *Manager) StorePublic(ctx context.Context, storeType, originalFilename string, source io.Reader, maxBytes int64) (string, error) {
+	return manager.store(ctx, storeType, originalFilename, source, maxBytes, true)
+}
+
+// store 统一执行有大小和请求取消保护的本地写入；public 文件与普通文件使用分离的物理命名空间。
+func (manager *Manager) store(ctx context.Context, storeType, originalFilename string, source io.Reader, maxBytes int64, public bool) (string, error) {
 	if manager == nil || source == nil || maxBytes < 1 {
 		return "", errors.New("文件存储参数无效")
 	}
@@ -88,7 +100,7 @@ func (manager *Manager) Store(ctx context.Context, storeType, originalFilename s
 		return "", fmt.Errorf("生成文件 UUID 失败: %w", err)
 	}
 	extension := safeExtension(originalFilename)
-	key := ParsedKey{Type: storeType, Date: now, UUID: fileID, Extension: extension}
+	key := ParsedKey{Type: storeType, Date: now, UUID: fileID, Extension: extension, Public: public}
 	storekey := formatKey(key)
 	path := manager.localPath(key)
 	if err := os.MkdirAll(filepath.Dir(path), 0o750); err != nil {
@@ -276,7 +288,12 @@ func detectContentType(file *os.File, extension string) (string, error) {
 
 // ParseKey 解析并严格校验 key 的类型、日期、UUID 和扩展名，禁止路径分隔符和非规范 UUID。
 func ParseKey(value string) (ParsedKey, error) {
-	parts := strings.SplitN(value, "_", 3)
+	parts := strings.Split(value, "_")
+	public := false
+	if len(parts) == 4 && parts[0] == "public" {
+		public = true
+		parts = parts[1:]
+	}
 	if len(parts) != 3 || (parts[0] != localType && parts[0] != ossType) {
 		return ParsedKey{}, ErrInvalidStoreKey
 	}
@@ -295,19 +312,27 @@ func ParseKey(value string) (ParsedKey, error) {
 	if err != nil || fileID == uuid.Nil || fileID.String() != strings.ToLower(name[0]) {
 		return ParsedKey{}, ErrInvalidStoreKey
 	}
-	return ParsedKey{Type: parts[0], Date: date, UUID: fileID, Extension: strings.ToLower(name[1])}, nil
+	return ParsedKey{Type: parts[0], Date: date, UUID: fileID, Extension: strings.ToLower(name[1]), Public: public}, nil
 }
 
-// formatKey 输出 <type>_yyyymmdd_uuid.ext 格式，日期统一以 UTC 计算。
+// formatKey 输出私有 <type>_yyyymmdd_uuid.ext 或公共 public_<type>_yyyymmdd_uuid.ext 格式。
 func formatKey(key ParsedKey) string {
-	return fmt.Sprintf("%s_%s_%s.%s", key.Type, key.Date.UTC().Format("20060102"), key.UUID.String(), key.Extension)
+	prefix := key.Type
+	if key.Public {
+		prefix = "public_" + prefix
+	}
+	return fmt.Sprintf("%s_%s_%s.%s", prefix, key.Date.UTC().Format("20060102"), key.UUID.String(), key.Extension)
 }
 
 // localPath 将已校验字段映射到 日期/UUID前三位/UUID.ext 的本地目录结构。
 func (manager *Manager) localPath(key ParsedKey) string {
 	date := key.Date.UTC().Format("20060102")
 	fileID := key.UUID.String()
-	return filepath.Join(manager.root, date, fileID[:3], fileID+"."+key.Extension)
+	root := manager.root
+	if key.Public {
+		root = filepath.Join(root, "public")
+	}
+	return filepath.Join(root, date, fileID[:3], fileID+"."+key.Extension)
 }
 
 // safeExtension 丢弃路径部分，仅接受短 ASCII 扩展名；缺失或不安全时使用 bin。
