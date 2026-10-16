@@ -84,21 +84,26 @@ docker compose -f backend/docker-compose.yml up -d --build
 目标服务器为 Linux `amd64` 时，可在本机预构建并导出镜像：
 
 ```sh
+IMAGE_VERSION=2.7.0
 docker buildx build --platform linux/amd64 \
   --build-arg GO_BASE_IMAGE=m.daocloud.io/docker.io/library/golang:1.24-alpine \
   --build-arg RUNTIME_BASE_IMAGE=m.daocloud.io/docker.io/library/alpine:3.22 \
   --build-arg 'GOPROXY=https://goproxy.cn|https://proxy.golang.org|direct' \
+  --tag "photo-nini-api:${IMAGE_VERSION}" \
   --tag photo-nini-api:local --load \
   --file backend/Dockerfile backend
 mkdir -p backend/dist
-docker save --output backend/dist/photo-nini-api-linux-amd64.tar photo-nini-api:local
+docker save --output "backend/dist/photo-nini-api-v${IMAGE_VERSION}-linux-amd64.tar" \
+  "photo-nini-api:${IMAGE_VERSION}" photo-nini-api:local
 ```
+
+`IMAGE_VERSION` 应与 `backend/internal/version/version.go` 中的版本一致。导出时同时保存版本标签和 Compose 使用的 `photo-nini-api:local` 标签，服务器 `docker load` 后无需额外改标签。
 
 将 tar 文件复制到服务器后，先创建并配置 `backend/.env`，再导入镜像并启动服务：
 
 ```sh
-docker load --input photo-nini-api-linux-amd64.tar
-docker compose -f backend/docker-compose.yml up -d --no-build
+docker load --input photo-nini-api-v2.7.0-linux-amd64.tar
+docker compose -f backend/docker-compose.yml up -d --no-build --force-recreate api
 ```
 
 导出包仅适用于 `linux/amd64`；若服务器是 ARM64，需要将构建平台改为 `linux/arm64` 并单独导出对应镜像。
