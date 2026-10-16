@@ -1,6 +1,9 @@
 {
   "title": "灵感图",
   "subtitle": "把喜欢的画面，慢慢收进自己的收藏。",
+  "sections": "灵感图页面",
+  "listSection": "图片列表",
+  "statisticsSection": "拍摄统计",
   "newImage": "添加灵感图",
   "searchPlaceholder": "寻找一张灵感图",
   "filters": "灵感图筛选与排序",

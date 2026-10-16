@@ -13,6 +13,7 @@ export const router = createRouter({
     { path: '/maintenance', name: 'maintenance', component: () => import('./views/BackendMaintenancePage.vue'), meta: { public: true, maintenance: true } },
     { path: '/book/:shareToken', name: 'public-booking', component: () => import('./views/PublicBookingPage.vue'), meta: { public: true } },
     { path: '/inspirations', name: 'gallery', component: () => import('./views/GalleryPage.vue') },
+    { path: '/inspirations/statistics', name: 'inspiration-statistics', component: () => import('./views/InspirationStatisticsPage.vue') },
     { path: '/inspirations/new', name: 'new-inspiration', component: () => import('./views/EditorPage.vue') },
     { path: '/inspirations/:id', name: 'edit-inspiration', component: () => import('./views/EditorPage.vue') },
     { path: '/ledger', name: 'ledger', component: () => import('./views/LedgerPage.vue') },

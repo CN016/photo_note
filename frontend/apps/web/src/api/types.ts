@@ -117,6 +117,28 @@ export interface InspirationImageMetadata {
   extra: Record<string, unknown>
 }
 
+/** 当前账号的灵感图拍摄属性汇总；不含位置、原图地址或设备序列号。 */
+export interface InspirationStatisticBucket {
+  value: string
+  count: number
+}
+
+export interface InspirationStatistics {
+  total_images: number
+  images_with_shooting_metadata: number
+  collection_months: InspirationStatisticBucket[]
+  camera_models: InspirationStatisticBucket[]
+  lens_models: InspirationStatisticBucket[]
+  focal_lengths: InspirationStatisticBucket[]
+  apertures: InspirationStatisticBucket[]
+  iso_speeds: InspirationStatisticBucket[]
+  exposure_times: InspirationStatisticBucket[]
+  flash_usage: InspirationStatisticBucket[]
+  aspect_ratios: InspirationStatisticBucket[]
+  megapixels: InspirationStatisticBucket[]
+  color_spaces: InspirationStatisticBucket[]
+}
+
 export interface PageResult<T> {
   items: T[]
   page: number

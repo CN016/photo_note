@@ -162,6 +162,29 @@ type InspirationImageMetadata struct {
 	Extra                   JSONB          `gorm:"column:image_metadata_extra;type:jsonb;not null;default:'{}'" json:"extra,omitempty"`
 }
 
+// InspirationStatisticBucket 表示某个图片属性分组中的数量；Value 使用稳定键或清理后的设备名称。
+type InspirationStatisticBucket struct {
+	Value string `json:"value"`
+	Count int64  `json:"count"`
+}
+
+// InspirationStatistics 汇总当前用户的拍摄属性分布，不包含图片 key、坐标或设备序列号。
+type InspirationStatistics struct {
+	TotalImages                int64                        `json:"total_images"`                         // 当前账号拥有的图片总数。
+	ImagesWithShootingMetadata int64                        `json:"images_with_shooting_metadata"`       // 至少存在一项拍摄参数的图片数。
+	CollectionMonths           []InspirationStatisticBucket `json:"collection_months"`                   // 最近 12 个 UTC 日历月的新增数量。
+	CameraModels               []InspirationStatisticBucket `json:"camera_models"`                       // 相机制造商和型号合并后的前五项。
+	LensModels                 []InspirationStatisticBucket `json:"lens_models"`                         // 镜头制造商和型号合并后的前五项。
+	FocalLengths               []InspirationStatisticBucket `json:"focal_lengths"`                       // 35mm 等效焦距优先的焦段分布。
+	Apertures                  []InspirationStatisticBucket `json:"apertures"`                            // 最大光圈值的分布。
+	ISOSpeeds                  []InspirationStatisticBucket `json:"iso_speeds"`                           // ISO 感光度分布。
+	ExposureTimes              []InspirationStatisticBucket `json:"exposure_times"`                      // 快门曝光时间分布。
+	FlashUsage                 []InspirationStatisticBucket `json:"flash_usage"`                          // 已知闪光灯触发状态的数量。
+	AspectRatios               []InspirationStatisticBucket `json:"aspect_ratios"`                       // 根据图片尺寸归类的画面方向。
+	Megapixels                 []InspirationStatisticBucket `json:"megapixels"`                           // 根据像素宽高积归类的百万像素数。
+	ColorSpaces                []InspirationStatisticBucket `json:"color_spaces"`                         // 图片色彩空间前五项。
+}
+
 // MarshalJSON 确保尚未持久化的元数据也以对象形式输出扩展标签，而不是 null。
 func (metadata InspirationImageMetadata) MarshalJSON() ([]byte, error) {
 	type plain InspirationImageMetadata

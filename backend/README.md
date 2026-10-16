@@ -22,6 +22,8 @@ API 默认通过宿主机 `127.0.0.1:8089` 提供服务，监听地址、请求�
 
 创建与换图 `PATCH /api/v1/inspirations` 请求可携带顶层 `image_metadata` 对象。Web 在转换工作画布前用 `exifr` 尝试读取原文件属性，同时保存原图大小和浏览器提供的修改时间；服务端 Docker 运行镜像安装 ExifTool，在压缩前从编辑文档 `data.source_image_key` 读取原图并补充 EXIF/IPTC/XMP 属性，源 key 无法读取时回退到本次工作图。已知属性写入独立可空列，原图大小和修改时间与压缩工作副本的 `file_size` 分开保存；其他命名空间标签写入 `image_metadata_extra`，大小最多 1 MiB。服务端识别值覆盖客户端冲突值，服务端无法读取的值保留客户端结果。解析失败或 ExifTool 不可用不会中断图片压缩，图片 key 与 `async_version` 保护后台写回；属性只在创建、详情和更新响应中返回，列表省略该对象。GPS、序列号等属性随灵感图私有记录保存，接口仍要求 Access Token；不收集本机路径、文件系统创建时间或访问时间。迁移为 `backend/migrations/000016_add_inspiration_image_metadata.sql`，不回填历史记录。Web 端 `exifr` 7.1.3 使用 MIT 许可；服务端 Alpine `exiftool` 包使用 Artistic-1.0-Perl 或 GPL-1.0-or-later 许可，版本随 Alpine 3.22 仓库更新。
 
+灵感图拍摄统计使用需鉴权的 `GET /api/v1/inspirations/statistics`。接口按 Access Token 中的用户业务 UUID 在 PostgreSQL 聚合，只返回数量和分类键，不读取文件内容，也不返回 GPS、原图 key 或设备序列号。响应包含图片总数、至少含一种拍摄参数的图片数，以及最近 12 个 UTC 日历月的收藏数；分类包括相机型号和镜头型号 TOP 5、焦段、光圈、ISO、曝光时间、闪光灯、画面方向、百万像素和色彩空间。焦段优先使用 35mm 等效焦距，否则使用实际焦距；缺失属性不会计入对应分组。该功能复用 `000016` 图片属性列，不新增迁移。
+
 账本使用 `ledger_records` 表逐笔保存已完成收支和可恢复草稿；金额在数据库中保存为整数分，API 使用两位小数的十进制字符串。所有 `/api/v1/ledger/*` 接口均需 Bearer Access Token，并从令牌读取用户业务 UUID 限定查询和写入。`GET /api/v1/ledger/records?from=YYYY-MM-DD&to=YYYY-MM-DD` 返回日期范围内的正式记录及当前用户的未完成草稿；`POST /api/v1/ledger/records` 创建草稿，`PATCH /api/v1/ledger/records/{business_id}/draft` 自动保存快照并校验草稿修订号，`POST /api/v1/ledger/records/{business_id}/complete` 完成草稿或应用编辑，`DELETE /api/v1/ledger/records/{business_id}` 删除记录，`POST /api/v1/ledger/import` 在单个事务中导入完整记录。正式分析不包含草稿；编辑已完成记录期间，统计仍按原正式字段计算。旧营收日历 JSON/CSV 导入时类型默认为收入。已有数据库升级前先备份 PostgreSQL，再确认并按顺序应用尚未执行的版本化迁移；账本表迁移为 `backend/migrations/000009_create_ledger_records.sql`，API 不会自动执行 SQL。
 
 ### 消息中心与 webhook 通知

@@ -1,6 +1,9 @@
 {
   "title": "Inspiration",
   "subtitle": "Keep the images you love, all in one thoughtful place.",
+  "sections": "Inspiration pages",
+  "listSection": "Image library",
+  "statisticsSection": "Photo statistics",
   "newImage": "Add inspiration",
   "searchPlaceholder": "Find an inspiration image",
   "filters": "Filter and sort inspirations",

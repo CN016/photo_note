@@ -40,25 +40,26 @@ type publicConfigReader interface {
 
 // Dependencies 汇总 HTTP 层使用的业务服务和健康检查依赖，路由不直接创建数据库连接。
 type Dependencies struct {
-	Auth                 *service.AuthService
-	Users                *service.UserService
-	Tags                 *service.TagService
-	Inspirations         *service.InspirationService
-	Tokens               accessTokenValidator
-	PostgresPing         func(context.Context) error
-	RedisPing            func(context.Context) error
-	MaxBodyBytes         int64
-	Files                fileStorage
-	MaxUploadBytes       int64
-	CurrentFileStoreType func(context.Context) (string, error)
-	PublicConfigs        publicConfigReader
-	Feedback             *service.FeedbackService
-	Ledger               *service.LedgerService
-	Schedule             *service.ScheduleService
-	Notices              *service.NoticeService
-	TrustedProxyCIDRs    []string
-	ErrorLogs            *service.ErrorLogService
-	Console              *service.ConsoleService
+	Auth                  *service.AuthService
+	Users                 *service.UserService
+	Tags                  *service.TagService
+	Inspirations          *service.InspirationService
+	InspirationStatistics *service.InspirationStatisticsService
+	Tokens                accessTokenValidator
+	PostgresPing          func(context.Context) error
+	RedisPing             func(context.Context) error
+	MaxBodyBytes          int64
+	Files                 fileStorage
+	MaxUploadBytes        int64
+	CurrentFileStoreType  func(context.Context) (string, error)
+	PublicConfigs         publicConfigReader
+	Feedback              *service.FeedbackService
+	Ledger                *service.LedgerService
+	Schedule              *service.ScheduleService
+	Notices               *service.NoticeService
+	TrustedProxyCIDRs     []string
+	ErrorLogs             *service.ErrorLogService
+	Console               *service.ConsoleService
 }
 
 // fileStorage 是 HTTP 上传和读取使用的文件存储能力，不包含用户归属或文件元数据管理。
@@ -118,6 +119,9 @@ func Router(dependencies Dependencies) *gin.Engine {
 	protected.PATCH("/tags/:business_id", updateTagHandler(dependencies.Tags))
 	protected.DELETE("/tags/:business_id", deleteTagHandler(dependencies.Tags))
 	protected.GET("/inspirations", listInspirationsHandler(dependencies.Inspirations))
+	if dependencies.InspirationStatistics != nil {
+		protected.GET("/inspirations/statistics", inspirationStatisticsHandler(dependencies.InspirationStatistics))
+	}
 	protected.POST("/inspirations", createInspirationHandler(dependencies.Inspirations))
 	protected.GET("/inspirations/:business_id", getInspirationHandler(dependencies.Inspirations))
 	protected.PATCH("/inspirations/:business_id", patchInspirationHandler(dependencies.Inspirations))
@@ -1098,6 +1102,23 @@ func listInspirationsHandler(inspirations *service.InspirationService) gin.Handl
 			items = append(items, inspirationDTO(inspiration, false))
 		}
 		writeData(c, http.StatusOK, pageResponse[inspirationResponse]{Items: items, Page: result.Page, PageSize: result.PageSize, Total: result.Total})
+	}
+}
+
+// inspirationStatisticsHandler 使用 token 中的用户业务 UUID 查询其图片属性统计。
+func inspirationStatisticsHandler(statistics *service.InspirationStatisticsService) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		claims, err := authContext(c)
+		if err != nil {
+			writeError(c, err)
+			return
+		}
+		result, err := statistics.Get(c.Request.Context(), claims.UserBusinessID)
+		if err != nil {
+			writeError(c, err)
+			return
+		}
+		writeData(c, http.StatusOK, result)
 	}
 }
 

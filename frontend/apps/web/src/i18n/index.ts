@@ -7,6 +7,8 @@ import registerZh from './register.zh-CN.json'
 import registerEn from './register.en-US.json'
 import galleryZh from './gallery.zh-CN.json'
 import galleryEn from './gallery.en-US.json'
+import statisticsZh from './statistics.zh-CN.json'
+import statisticsEn from './statistics.en-US.json'
 import editorZh from './editor.zh-CN.json'
 import editorEn from './editor.en-US.json'
 import maintenanceZh from './maintenance.zh-CN.json'
@@ -30,8 +32,8 @@ export const i18n = createI18n({
   locale: localStorage.getItem('photo-nini.locale') === 'en-US' ? 'en-US' : 'zh-CN',
   fallbackLocale: 'zh-CN',
   messages: {
-    'zh-CN': { common: commonZh, login: loginZh, register: registerZh, gallery: galleryZh, editor: editorZh, maintenance: maintenanceZh, profile: profileZh, feedback: feedbackZh, ledger: ledgerZh, schedule: scheduleZh, messages: messagesZh, console: consoleZh },
-    'en-US': { common: commonEn, login: loginEn, register: registerEn, gallery: galleryEn, editor: editorEn, maintenance: maintenanceEn, profile: profileEn, feedback: feedbackEn, ledger: ledgerEn, schedule: scheduleEn, messages: messagesEn, console: consoleEn },
+    'zh-CN': { common: commonZh, login: loginZh, register: registerZh, gallery: galleryZh, statistics: statisticsZh, editor: editorZh, maintenance: maintenanceZh, profile: profileZh, feedback: feedbackZh, ledger: ledgerZh, schedule: scheduleZh, messages: messagesZh, console: consoleZh },
+    'en-US': { common: commonEn, login: loginEn, register: registerEn, gallery: galleryEn, statistics: statisticsEn, editor: editorEn, maintenance: maintenanceEn, profile: profileEn, feedback: feedbackEn, ledger: ledgerEn, schedule: scheduleEn, messages: messagesEn, console: consoleEn },
   },
 })
 

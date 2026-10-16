@@ -101,6 +101,11 @@ onBeforeUnmount(() => { if (searchTimer !== undefined) window.clearTimeout(searc
         <RouterLink custom to="/inspirations/new" v-slot="{ navigate }"><el-button class="primary-button add-button" type="primary" @click="navigate"><el-icon aria-hidden="true"><Plus /></el-icon>{{ t('gallery.newImage') }}</el-button></RouterLink>
       </section>
 
+      <nav class="gallery-subnav" :aria-label="t('gallery.sections')">
+        <RouterLink class="gallery-subnav-link is-current" to="/inspirations" aria-current="page">{{ t('gallery.listSection') }}</RouterLink>
+        <RouterLink class="gallery-subnav-link" to="/inspirations/statistics">{{ t('gallery.statisticsSection') }}</RouterLink>
+      </nav>
+
       <section class="gallery-tools" :aria-label="t('gallery.filters')">
         <el-input v-model="searchQuery" class="gallery-search" :placeholder="t('gallery.searchPlaceholder')" clearable>
           <template #prefix><el-icon aria-hidden="true"><Search /></el-icon></template>

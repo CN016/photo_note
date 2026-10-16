@@ -264,6 +264,217 @@ func (store *PostgresStore) ListInspirations(ctx context.Context, userID uuid.UU
 	return items, total, nil
 }
 
+// GetInspirationStatistics 在 PostgreSQL 内按用户聚合拍摄属性，只返回分组名称和数量。
+func (store *PostgresStore) GetInspirationStatistics(ctx context.Context, userID uuid.UUID) (model.InspirationStatistics, error) {
+	var totals struct {
+		TotalImages                int64 `gorm:"column:total_images"`
+		ImagesWithShootingMetadata int64 `gorm:"column:images_with_shooting_metadata"`
+	}
+	if err := store.db.WithContext(ctx).Raw(`
+		SELECT COUNT(*)::bigint AS total_images,
+		       COUNT(*) FILTER (WHERE
+		           NULLIF(BTRIM(camera_make), '') IS NOT NULL OR
+		           NULLIF(BTRIM(camera_model), '') IS NOT NULL OR
+		           NULLIF(BTRIM(lens_make), '') IS NOT NULL OR
+		           NULLIF(BTRIM(lens_model), '') IS NOT NULL OR
+		           aperture_f_number IS NOT NULL OR maximum_aperture_f_number IS NOT NULL OR
+		           focal_length_mm IS NOT NULL OR focal_length_35mm_mm IS NOT NULL OR
+		           exposure_time_seconds IS NOT NULL OR iso_speed IS NOT NULL
+		       )::bigint AS images_with_shooting_metadata
+		FROM inspirations
+		WHERE user_id = ?
+	`, userID).Scan(&totals).Error; err != nil {
+		return model.InspirationStatistics{}, persistenceError(err)
+	}
+
+	var rows []struct {
+		Dimension string `gorm:"column:dimension"`
+		Value     string `gorm:"column:value"`
+		Count     int64  `gorm:"column:image_count"`
+	}
+	if err := store.db.WithContext(ctx).Raw(`
+		WITH scoped AS (
+		    SELECT camera_make, camera_model, lens_make, lens_model,
+		           focal_length_mm, focal_length_35mm_mm, aperture_f_number,
+		           iso_speed, exposure_time_seconds, flash_fired,
+		           image_width, image_height, color_space, created_at
+		    FROM inspirations
+		    WHERE user_id = ?
+		),
+		camera_labels AS (
+		    SELECT NULLIF(BTRIM(CONCAT_WS(' ', NULLIF(BTRIM(camera_make), ''), NULLIF(BTRIM(camera_model), ''))), '') AS label
+		    FROM scoped
+		),
+		lens_labels AS (
+		    SELECT NULLIF(BTRIM(CONCAT_WS(' ', NULLIF(BTRIM(lens_make), ''), NULLIF(BTRIM(lens_model), ''))), '') AS label
+		    FROM scoped
+		),
+		color_labels AS (
+			SELECT NULLIF(BTRIM(color_space), '') AS label FROM scoped
+		),
+		metrics AS (
+		    (
+		        SELECT 'camera_models'::text AS dimension, MIN(label) AS value, COUNT(*)::bigint AS image_count
+		        FROM camera_labels WHERE label IS NOT NULL
+		        GROUP BY LOWER(label) ORDER BY image_count DESC, value LIMIT 5
+		    )
+		    UNION ALL
+		    (
+		        SELECT 'lens_models'::text, MIN(label), COUNT(*)::bigint
+		        FROM lens_labels WHERE label IS NOT NULL
+		        GROUP BY LOWER(label) ORDER BY COUNT(*) DESC, MIN(label) LIMIT 5
+		    )
+		    UNION ALL
+		    (
+		        SELECT 'focal_lengths'::text,
+		               CASE
+		                   WHEN focal >= 200 THEN 'super_telephoto'
+		                   WHEN focal >= 85 THEN 'telephoto'
+		                   WHEN focal >= 35 THEN 'standard'
+		                   WHEN focal >= 24 THEN 'wide'
+		                   ELSE 'ultra_wide'
+		               END,
+		               COUNT(*)::bigint
+		        FROM (
+		            SELECT COALESCE(NULLIF(focal_length_35mm_mm, 0), focal_length_mm) AS focal FROM scoped
+		        ) AS focal_values
+		        WHERE focal > 0 GROUP BY 2
+		    )
+		    UNION ALL
+		    (
+		        SELECT 'apertures'::text,
+		               CASE
+		                   WHEN aperture_f_number <= 2.8 THEN 'wide_open'
+		                   WHEN aperture_f_number <= 5.6 THEN 'large'
+		                   WHEN aperture_f_number <= 8 THEN 'medium'
+		                   WHEN aperture_f_number < 16 THEN 'small'
+		                   ELSE 'very_small'
+		               END,
+		               COUNT(*)::bigint
+		        FROM scoped WHERE aperture_f_number > 0 GROUP BY 2
+		    )
+		    UNION ALL
+		    (
+		        SELECT 'iso_speeds'::text,
+		               CASE
+		                   WHEN iso_speed < 100 THEN 'under_100'
+		                   WHEN iso_speed < 400 THEN '100_400'
+		                   WHEN iso_speed < 1600 THEN '400_1600'
+		                   WHEN iso_speed < 6400 THEN '1600_6400'
+		                   ELSE '6400_plus'
+		               END,
+		               COUNT(*)::bigint
+		        FROM scoped WHERE iso_speed > 0 GROUP BY 2
+		    )
+		    UNION ALL
+		    (
+		        SELECT 'exposure_times'::text,
+		               CASE
+		                   WHEN exposure_time_seconds <= 1.0 / 500.0 THEN '1_500_or_faster'
+		                   WHEN exposure_time_seconds <= 1.0 / 60.0 THEN '1_500_to_1_60'
+		                   WHEN exposure_time_seconds <= 1 THEN '1_60_to_1s'
+		                   ELSE 'over_1s'
+		               END,
+		               COUNT(*)::bigint
+		        FROM scoped WHERE exposure_time_seconds > 0 GROUP BY 2
+		    )
+		    UNION ALL
+		    (
+		        SELECT 'flash_usage'::text,
+		               CASE WHEN flash_fired THEN 'fired' ELSE 'not_fired' END,
+		               COUNT(*)::bigint
+		        FROM scoped WHERE flash_fired IS NOT NULL GROUP BY 2
+		    )
+		    UNION ALL
+		    (
+		        SELECT 'aspect_ratios'::text,
+		               CASE
+		                   WHEN image_width::numeric / NULLIF(image_height, 0) >= 1.05 THEN 'landscape'
+		                   WHEN image_width::numeric / NULLIF(image_height, 0) <= 0.95 THEN 'portrait'
+		                   ELSE 'square'
+		               END,
+		               COUNT(*)::bigint
+		        FROM scoped WHERE image_width > 0 AND image_height > 0 GROUP BY 2
+		    )
+		    UNION ALL
+		    (
+		        SELECT 'megapixels'::text,
+		               CASE
+		                   WHEN image_width::numeric * image_height / 1000000 <= 2 THEN 'under_2'
+		                   WHEN image_width::numeric * image_height / 1000000 <= 12 THEN '2_12'
+		                   WHEN image_width::numeric * image_height / 1000000 <= 24 THEN '12_24'
+		                   ELSE '24_plus'
+		               END,
+		               COUNT(*)::bigint
+		        FROM scoped WHERE image_width > 0 AND image_height > 0 GROUP BY 2
+		    )
+		    UNION ALL
+		    (
+		        SELECT 'color_spaces'::text, MIN(label), COUNT(*)::bigint
+		        FROM color_labels WHERE label IS NOT NULL
+		        GROUP BY LOWER(label) ORDER BY COUNT(*) DESC, MIN(label) LIMIT 5
+		    )
+		    UNION ALL
+		    (
+		        SELECT 'collection_months'::text, TO_CHAR(months.month, 'YYYY-MM'), COUNT(scoped.created_at)::bigint
+		        FROM GENERATE_SERIES(
+		            DATE_TRUNC('month', CURRENT_TIMESTAMP AT TIME ZONE 'UTC') - INTERVAL '11 months',
+		            DATE_TRUNC('month', CURRENT_TIMESTAMP AT TIME ZONE 'UTC'),
+		            INTERVAL '1 month'
+		        ) AS months(month)
+		        LEFT JOIN scoped ON DATE_TRUNC('month', scoped.created_at AT TIME ZONE 'UTC') = months.month
+		        GROUP BY months.month ORDER BY months.month
+		    )
+		)
+		SELECT dimension, value, image_count
+		FROM metrics
+		ORDER BY dimension,
+		         CASE WHEN dimension = 'collection_months' THEN value END ASC,
+		         CASE WHEN dimension <> 'collection_months' THEN image_count END DESC,
+		         value
+	`, userID).Scan(&rows).Error; err != nil {
+		return model.InspirationStatistics{}, persistenceError(err)
+	}
+
+	statistics := model.InspirationStatistics{
+		TotalImages: totals.TotalImages, ImagesWithShootingMetadata: totals.ImagesWithShootingMetadata,
+		CollectionMonths: make([]model.InspirationStatisticBucket, 0, 12),
+		CameraModels:     make([]model.InspirationStatisticBucket, 0, 5), LensModels: make([]model.InspirationStatisticBucket, 0, 5),
+		FocalLengths: make([]model.InspirationStatisticBucket, 0, 5), Apertures: make([]model.InspirationStatisticBucket, 0, 5),
+		ISOSpeeds: make([]model.InspirationStatisticBucket, 0, 5), ExposureTimes: make([]model.InspirationStatisticBucket, 0, 4),
+		FlashUsage: make([]model.InspirationStatisticBucket, 0, 2), AspectRatios: make([]model.InspirationStatisticBucket, 0, 3),
+		Megapixels: make([]model.InspirationStatisticBucket, 0, 4), ColorSpaces: make([]model.InspirationStatisticBucket, 0, 5),
+	}
+	for _, row := range rows {
+		bucket := model.InspirationStatisticBucket{Value: row.Value, Count: row.Count}
+		switch row.Dimension {
+		case "collection_months":
+			statistics.CollectionMonths = append(statistics.CollectionMonths, bucket)
+		case "camera_models":
+			statistics.CameraModels = append(statistics.CameraModels, bucket)
+		case "lens_models":
+			statistics.LensModels = append(statistics.LensModels, bucket)
+		case "focal_lengths":
+			statistics.FocalLengths = append(statistics.FocalLengths, bucket)
+		case "apertures":
+			statistics.Apertures = append(statistics.Apertures, bucket)
+		case "iso_speeds":
+			statistics.ISOSpeeds = append(statistics.ISOSpeeds, bucket)
+		case "exposure_times":
+			statistics.ExposureTimes = append(statistics.ExposureTimes, bucket)
+		case "flash_usage":
+			statistics.FlashUsage = append(statistics.FlashUsage, bucket)
+		case "aspect_ratios":
+			statistics.AspectRatios = append(statistics.AspectRatios, bucket)
+		case "megapixels":
+			statistics.Megapixels = append(statistics.Megapixels, bucket)
+		case "color_spaces":
+			statistics.ColorSpaces = append(statistics.ColorSpaces, bucket)
+		}
+	}
+	return statistics, nil
+}
+
 // FindInspirationByBusinessID 用业务 UUID 查询详情，并同时校验用户归属。
 func (store *PostgresStore) FindInspirationByBusinessID(ctx context.Context, userID, inspirationID uuid.UUID) (model.Inspiration, error) {
 	var inspiration model.Inspiration

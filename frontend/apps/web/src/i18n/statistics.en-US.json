@@ -1,0 +1,78 @@
+{
+  "sections": "Inspiration pages",
+  "listSection": "Image library",
+  "statisticsSection": "Photo statistics",
+  "title": "Photo statistics",
+  "subtitle": "Explore the camera, lens, and shooting preferences in your inspiration collection.",
+  "totalImages": "Inspiration images",
+  "imagesWithSettings": "With shooting data",
+  "settingsCoverage": "Shooting data coverage",
+  "coverageDescription": "At least one camera, lens, focal length, aperture, ISO, or exposure value is available",
+  "collectionTitle": "Collection activity",
+  "collectionDescription": "Images added in the last 12 months",
+  "cameraModels": "Camera models",
+  "lensModels": "Lens models",
+  "focalLengths": "Focal length preferences",
+  "apertures": "Aperture preferences",
+  "isoSpeeds": "ISO sensitivity",
+  "exposureTimes": "Exposure time",
+  "flashUsage": "Flash",
+  "aspectRatios": "Image orientation",
+  "megapixels": "Image resolution",
+  "colorSpaces": "Color space",
+  "topFive": "TOP 5",
+  "noData": "No image properties are available for this statistic yet.",
+  "photoCount": "{count} images",
+  "focalDescription": "Uses 35 mm equivalent focal length when available, otherwise the lens focal length.",
+  "monthTooltip": "{month}: {count} images",
+  "noImagesTitle": "No inspiration images yet",
+  "noImagesDescription": "Add images to see collection activity and any shooting properties we can read.",
+  "addImage": "Add inspiration",
+  "loading": "Loading statistics…",
+  "loadError": "Statistics could not be loaded.",
+  "retry": "Try again",
+  "buckets": {
+    "focalLength": {
+      "ultra_wide": "Ultra wide · under 24 mm",
+      "wide": "Wide · 24 to under 35 mm",
+      "standard": "Mid-range · 35 to under 85 mm",
+      "telephoto": "Telephoto · 85 to under 200 mm",
+      "super_telephoto": "Super telephoto · 200 mm and above"
+    },
+    "aperture": {
+      "wide_open": "Wide aperture · f/2.8 and below",
+      "large": "f/2.8–f/5.6",
+      "medium": "f/5.6–f/8",
+      "small": "f/8–f/16",
+      "very_small": "Small aperture · f/16 and above"
+    },
+    "iso": {
+      "under_100": "Below ISO 100",
+      "100_400": "ISO 100–399",
+      "400_1600": "ISO 400–1599",
+      "1600_6400": "ISO 1600–6399",
+      "6400_plus": "ISO 6400 and above"
+    },
+    "exposure": {
+      "1_500_or_faster": "1/500 sec and faster",
+      "1_500_to_1_60": "1/500–1/60 sec",
+      "1_60_to_1s": "1/60 sec–1 sec",
+      "over_1s": "Over 1 sec"
+    },
+    "flash": {
+      "fired": "Fired",
+      "not_fired": "Did not fire"
+    },
+    "aspect": {
+      "landscape": "Landscape",
+      "portrait": "Portrait",
+      "square": "Nearly square"
+    },
+    "megapixels": {
+      "under_2": "Under 2 MP",
+      "2_12": "2–12 MP",
+      "12_24": "12–24 MP",
+      "24_plus": "24 MP and above"
+    }
+  }
+}

@@ -1,4 +1,4 @@
-import { ApiError, type ApiEnvelope, type ApiErrorEnvelope, type AuthResponse, type ConsoleConfigRecord, type ConsoleFeedbackRecord, type ConsoleInspirationRecord, type ConsoleUserRecord, type InspirationImageMetadata, type InspirationRecord, type LedgerFields, type LedgerImportItem, type LedgerImportResult, type LedgerRecord, type NoticeConfig, type NoticeConfigList, type NoticeDelivery, type NotificationPage, type PageResult, type ScheduleBooking, type ScheduleBookingReceipt, type ScheduleFields, type ScheduleOccurrence, type SchedulePublicSlot, type ScheduleShare, type TagRecord, type TokenPair, type UserProfile } from './types'
+import { ApiError, type ApiEnvelope, type ApiErrorEnvelope, type AuthResponse, type ConsoleConfigRecord, type ConsoleFeedbackRecord, type ConsoleInspirationRecord, type ConsoleUserRecord, type InspirationImageMetadata, type InspirationRecord, type InspirationStatistics, type LedgerFields, type LedgerImportItem, type LedgerImportResult, type LedgerRecord, type NoticeConfig, type NoticeConfigList, type NoticeDelivery, type NotificationPage, type PageResult, type ScheduleBooking, type ScheduleBookingReceipt, type ScheduleFields, type ScheduleOccurrence, type SchedulePublicSlot, type ScheduleShare, type TagRecord, type TokenPair, type UserProfile } from './types'
 import { API_REQUEST_ORIGIN } from './config'
 
 /** V1 业务路由统一加版本前缀；环境变量只提供服务主机。 */
@@ -175,6 +175,8 @@ export const api = {
     if (options.sort) params.set('sort', options.sort)
     return request<PageResult<InspirationRecord>>(`/inspirations?${params.toString()}`)
   },
+  /** 查询当前账号的拍摄参数分布；后台仅返回分类计数，不传输图片记录明细。 */
+  inspirationStatistics() { return request<InspirationStatistics>('/inspirations/statistics') },
   /** 获取当前用户标签，以业务 UUID 作为图库过滤值。 */
   tags() { return request<{ items: TagRecord[] }>('/tags') },
   /** 读取单张灵感图文档。 */
