@@ -12,6 +12,7 @@ export {}
 declare module 'vue' {
   export interface GlobalComponents {
     AppHeader: typeof import('./src/components/AppHeader.vue')['default']
+    AuthenticatedImageThumbnail: typeof import('./src/components/AuthenticatedImageThumbnail.vue')['default']
     BrandMark: typeof import('./src/components/BrandMark.vue')['default']
     ElAvatar: typeof import('element-plus/es')['ElAvatar']
     ElButton: typeof import('element-plus/es')['ElButton']
@@ -34,6 +35,8 @@ declare module 'vue' {
     ElSelect: typeof import('element-plus/es')['ElSelect']
     ElSlider: typeof import('element-plus/es')['ElSlider']
     ElSwitch: typeof import('element-plus/es')['ElSwitch']
+    ElTabPane: typeof import('element-plus/es')['ElTabPane']
+    ElTabs: typeof import('element-plus/es')['ElTabs']
     ElUpload: typeof import('element-plus/es')['ElUpload']
     FeedbackWidget: typeof import('./src/components/FeedbackWidget.vue')['default']
     InspirationThumbnail: typeof import('./src/components/InspirationThumbnail.vue')['default']

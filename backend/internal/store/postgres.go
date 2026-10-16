@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"errors"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -42,7 +43,7 @@ func (store *PostgresStore) ReadPublicConfigValues(ctx context.Context, keys []s
 	var rows []model.AppConfig
 	query := store.db.WithContext(ctx).
 		Select("config_key", "config_value").
-		Where("is_public = ?", true)
+		Where("is_public = ? AND is_secret = ?", true, false)
 	if len(keys) > 0 {
 		query = query.Where("config_key IN ?", keys)
 	}
@@ -70,7 +71,7 @@ func (store *PostgresStore) FindUserByPhone(ctx context.Context, phone string) (
 func (store *PostgresStore) FindUserByBusinessID(ctx context.Context, businessID uuid.UUID) (model.User, error) {
 	var user model.User
 	err := store.db.WithContext(ctx).
-		Select("business_id", "nickname", "phone", "avatar_key", "created_at", "updated_at").
+		Select("business_id", "nickname", "phone", "avatar_key", "is_admin", "created_at", "updated_at").
 		Where("business_id = ?", businessID).First(&user).Error
 	if err != nil {
 		return model.User{}, persistenceError(err)
@@ -81,7 +82,7 @@ func (store *PostgresStore) FindUserByBusinessID(ctx context.Context, businessID
 // FindUserPasswordHash 仅供密码修改验证当前凭据，返回字段不会进入用户资料 DTO。
 func (store *PostgresStore) FindUserPasswordHash(ctx context.Context, businessID uuid.UUID) (model.User, error) {
 	var user model.User
-	err := store.db.WithContext(ctx).Select("business_id", "password_hash").
+	err := store.db.WithContext(ctx).Select("business_id", "nickname", "phone", "avatar_key", "is_admin", "created_at", "updated_at", "password_hash").
 		Where("business_id = ?", businessID).First(&user).Error
 	if err != nil {
 		return model.User{}, persistenceError(err)
@@ -230,8 +231,12 @@ func (store *PostgresStore) CreateInspiration(ctx context.Context, inspiration *
 }
 
 // ListInspirations 按用户、标签任一/全部匹配规则和稳定排序执行分页检索。
-func (store *PostgresStore) ListInspirations(ctx context.Context, userID uuid.UUID, tagIDs []uuid.UUID, match string, offset, limit int) ([]model.Inspiration, int64, error) {
+func (store *PostgresStore) ListInspirations(ctx context.Context, userID uuid.UUID, tagIDs []uuid.UUID, match, search, sort string, offset, limit int) ([]model.Inspiration, int64, error) {
 	query := store.db.WithContext(ctx).Model(&model.Inspiration{}).Where("user_id = ?", userID)
+	if search != "" {
+		pattern := "%" + strings.NewReplacer("\\", "\\\\", "%", "\\%", "_", "\\_").Replace(search) + "%"
+		query = query.Where("file_name ILIKE ? ESCAPE E'\\\\'", pattern)
+	}
 	if len(tagIDs) > 0 {
 		values := make(pq.StringArray, 0, len(tagIDs))
 		for _, tagID := range tagIDs {
@@ -248,7 +253,11 @@ func (store *PostgresStore) ListInspirations(ctx context.Context, userID uuid.UU
 		return nil, 0, persistenceError(err)
 	}
 	items := make([]model.Inspiration, 0)
-	if err := query.Order("created_at DESC, business_id DESC").Offset(offset).Limit(limit).Find(&items).Error; err != nil {
+	order := map[string]string{"created_desc": "created_at DESC, business_id DESC", "created_asc": "created_at ASC, business_id ASC", "updated_desc": "updated_at DESC, business_id DESC"}[sort]
+	if order == "" {
+		order = "created_at DESC, business_id DESC"
+	}
+	if err := query.Order(order).Offset(offset).Limit(limit).Find(&items).Error; err != nil {
 		return nil, 0, persistenceError(err)
 	}
 	return items, total, nil

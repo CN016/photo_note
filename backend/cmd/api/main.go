@@ -105,6 +105,7 @@ func run() error {
 		Notices:              notices,
 		TrustedProxyCIDRs:    runtimeConfig.TrustedProxyCIDRs,
 		ErrorLogs:            errorLogs,
+		Console:              service.NewConsoleService(repository),
 	}
 	router := httpapi.Router(dependencies)
 	server := &http.Server{

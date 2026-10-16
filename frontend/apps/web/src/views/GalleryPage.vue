@@ -1,20 +1,28 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { ArrowRight, PictureFilled, Plus } from '@element-plus/icons-vue'
+import { ArrowRight, PictureFilled, Plus, Search } from '@element-plus/icons-vue'
 import AppHeader from '../components/AppHeader.vue'
 import InspirationThumbnail from '../components/InspirationThumbnail.vue'
 import { api } from '../api/client'
-import { ApiError, type InspirationRecord } from '../api/types'
+import { ApiError, type InspirationRecord, type TagRecord } from '../api/types'
 
 const { t, locale } = useI18n()
 const items = ref<InspirationRecord[]>([])
+const tags = ref<TagRecord[]>([])
+const searchQuery = ref('')
+const selectedTagIDs = ref<string[]>([])
+const tagMatch = ref<'any' | 'all'>('any')
+const sort = ref<'created_desc' | 'created_asc' | 'updated_desc'>('created_desc')
 const page = ref(1)
 const total = ref(0)
 const pageSize = 20
 const loading = ref(false)
 const error = ref('')
 const hasMore = computed(() => items.value.length < total.value)
+const filtersActive = computed(() => Boolean(searchQuery.value.trim() || selectedTagIDs.value.length))
+let requestVersion = 0
+let searchTimer: number | undefined
 
 /** 将网络错误与列表读取错误映射为当前语言的页面提示。 */
 function errorText(cause: unknown): string {
@@ -24,15 +32,42 @@ function errorText(cause: unknown): string {
 
 /** 按后端分页读取列表；刷新首屏替换结果，继续翻页时追加结果。 */
 async function loadPage(nextPage = 1) {
+  const version = ++requestVersion
   loading.value = true
   error.value = ''
   try {
-    const result = await api.inspirations(nextPage, pageSize)
+    const result = await api.inspirations(nextPage, pageSize, {
+      q: searchQuery.value,
+      tagIds: selectedTagIDs.value,
+      tagMatch: tagMatch.value,
+      sort: sort.value,
+    })
+    if (version !== requestVersion) return
     items.value = nextPage === 1 ? result.items : [...items.value, ...result.items]
     page.value = result.page
     total.value = result.total
-  } catch (cause) { error.value = errorText(cause) }
-  finally { loading.value = false }
+  } catch (cause) { if (version === requestVersion) error.value = errorText(cause) }
+  finally { if (version === requestVersion) loading.value = false }
+}
+
+/** 标签获取失败不影响图库浏览；筛选请求始终由后端分页执行。 */
+async function loadTags() {
+  try { tags.value = (await api.tags()).items }
+  catch { tags.value = [] }
+}
+
+/** 筛选条件变化后短暂合并连续输入，并从第一页重新查询。 */
+watch([searchQuery, selectedTagIDs, tagMatch, sort], () => {
+  if (searchTimer !== undefined) window.clearTimeout(searchTimer)
+  searchTimer = window.setTimeout(() => { void loadPage(1) }, 220)
+})
+
+/** 清空检索条件后恢复默认的收藏时间倒序。 */
+function resetFilters() {
+  searchQuery.value = ''
+  selectedTagIDs.value = []
+  tagMatch.value = 'any'
+  sort.value = 'created_desc'
 }
 
 /** 使用当前界面语言格式化灵感图创建日期。 */
@@ -53,7 +88,8 @@ function displayFileSize(bytes: number | null | undefined): string {
   return `${new Intl.NumberFormat(locale.value, { maximumFractionDigits: 1 }).format(value)} ${units[unitIndex]}`
 }
 
-onMounted(() => { void loadPage() })
+onMounted(() => { void loadPage(); void loadTags() })
+onBeforeUnmount(() => { if (searchTimer !== undefined) window.clearTimeout(searchTimer); requestVersion += 1 })
 </script>
 
 <template>
@@ -63,6 +99,24 @@ onMounted(() => { void loadPage() })
       <section class="gallery-intro">
         <div><p class="eyebrow">{{ t('common.product') }}</p><h1>{{ t('gallery.title') }}</h1><p class="gallery-subtitle">{{ t('gallery.subtitle') }}</p></div>
         <RouterLink custom to="/inspirations/new" v-slot="{ navigate }"><el-button class="primary-button add-button" type="primary" @click="navigate"><el-icon aria-hidden="true"><Plus /></el-icon>{{ t('gallery.newImage') }}</el-button></RouterLink>
+      </section>
+
+      <section class="gallery-tools" :aria-label="t('gallery.filters')">
+        <el-input v-model="searchQuery" class="gallery-search" :placeholder="t('gallery.searchPlaceholder')" clearable>
+          <template #prefix><el-icon aria-hidden="true"><Search /></el-icon></template>
+        </el-input>
+        <el-select v-model="selectedTagIDs" class="gallery-tag-select" multiple filterable collapse-tags collapse-tags-tooltip :placeholder="t('gallery.filterTags')" :max-collapse-tags="2">
+          <el-option v-for="tag in tags" :key="tag.business_id" :label="tag.content" :value="tag.business_id" />
+        </el-select>
+        <el-select v-if="selectedTagIDs.length" v-model="tagMatch" class="gallery-match-select" :aria-label="t('gallery.tagMatch')">
+          <el-option :label="t('gallery.matchAny')" value="any" />
+          <el-option :label="t('gallery.matchAll')" value="all" />
+        </el-select>
+        <el-select v-model="sort" class="gallery-sort-select" :aria-label="t('gallery.sort')">
+          <el-option :label="t('gallery.sortNewest')" value="created_desc" />
+          <el-option :label="t('gallery.sortOldest')" value="created_asc" />
+          <el-option :label="t('gallery.sortEdited')" value="updated_desc" />
+        </el-select>
       </section>
 
       <div v-if="items.length" class="gallery-meta"><span>{{ t('gallery.count', { count: total }) }}</span><span class="gallery-meta-line"></span></div>
@@ -82,6 +136,12 @@ onMounted(() => { void loadPage() })
             </div>
           </RouterLink>
         </article>
+      </section>
+
+      <section v-else-if="!loading && !error && filtersActive" class="gallery-empty gallery-filter-empty">
+        <div class="empty-art" aria-hidden="true"><el-icon><Search /></el-icon></div>
+        <p class="eyebrow">{{ t('gallery.noMatchesEyebrow') }}</p><h2>{{ t('gallery.noMatches') }}</h2>
+        <el-button @click="resetFilters">{{ t('gallery.clearFilters') }}</el-button>
       </section>
 
       <section v-else-if="!loading && !error" class="gallery-empty">

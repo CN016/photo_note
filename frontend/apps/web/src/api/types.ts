@@ -15,6 +15,15 @@ export interface UserProfile {
   nickname: string
   phone: string
   avatar_key: string | null
+  is_admin: boolean
+  created_at: string
+  updated_at: string
+}
+
+/** 当前账号可维护的灵感标签，只含业务 UUID 和展示名称。 */
+export interface TagRecord {
+  business_id: string
+  content: string
   created_at: string
   updated_at: string
 }
@@ -50,6 +59,49 @@ export interface PageResult<T> {
   page: number
   page_size: number
   total: number
+}
+
+/** 管理工作台中的用户最小资料与权限标记。 */
+export interface ConsoleUserRecord {
+  business_id: string
+  nickname: string
+  phone: string
+  is_admin: boolean
+  created_at: string
+}
+
+/** 全站灵感图只读摘要，不包含用户私有编辑文档 data。 */
+export interface ConsoleInspirationRecord {
+  business_id: string
+  owner_nickname: string
+  tag_ids: string[]
+  image_key: string
+  file_name: string
+  created_at: string
+  updated_at: string
+}
+
+/** 反馈中心允许查看正文、附件并更新处理状态。 */
+export interface ConsoleFeedbackRecord {
+  business_id: string
+  nickname: string
+  content: string
+  image_keys: string[]
+  status: 'new' | 'processed'
+  created_at: string
+  updated_at: string
+}
+
+/** 管理配置中，秘密原值不返回，仅可读取是否已设置。 */
+export interface ConsoleConfigRecord {
+  business_id: string
+  key: string
+  description: string
+  value?: string
+  is_public: boolean
+  is_secret: boolean
+  is_configured: boolean
+  updated_at: string
 }
 
 /** 账本草稿和正式记录共用的完整编辑快照；金额以两位小数字符串传输。 */

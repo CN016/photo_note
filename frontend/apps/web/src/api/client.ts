@@ -1,4 +1,4 @@
-import { ApiError, type ApiEnvelope, type ApiErrorEnvelope, type AuthResponse, type InspirationRecord, type LedgerFields, type LedgerImportItem, type LedgerImportResult, type LedgerRecord, type NoticeConfig, type NoticeConfigList, type NoticeDelivery, type NotificationPage, type PageResult, type ScheduleBooking, type ScheduleBookingReceipt, type ScheduleFields, type ScheduleOccurrence, type SchedulePublicSlot, type ScheduleShare, type TokenPair, type UserProfile } from './types'
+import { ApiError, type ApiEnvelope, type ApiErrorEnvelope, type AuthResponse, type ConsoleConfigRecord, type ConsoleFeedbackRecord, type ConsoleInspirationRecord, type ConsoleUserRecord, type InspirationRecord, type LedgerFields, type LedgerImportItem, type LedgerImportResult, type LedgerRecord, type NoticeConfig, type NoticeConfigList, type NoticeDelivery, type NotificationPage, type PageResult, type ScheduleBooking, type ScheduleBookingReceipt, type ScheduleFields, type ScheduleOccurrence, type SchedulePublicSlot, type ScheduleShare, type TagRecord, type TokenPair, type UserProfile } from './types'
 import { API_REQUEST_ORIGIN } from './config'
 
 /** V1 业务路由统一加版本前缀；环境变量只提供服务主机。 */
@@ -166,8 +166,17 @@ export const api = {
     images.forEach((image, index) => body.append('images', image, filenames[index] || `feedback-${index + 1}.jpg`))
     return request<void>('/feedback', { method: 'POST', body }, Boolean(accessToken))
   },
-  /** 使用服务端分页契约加载灵感图。 */
-  inspirations(page: number, pageSize = 20) { return request<PageResult<InspirationRecord>>(`/inspirations?page=${page}&page_size=${pageSize}`) },
+  /** 使用服务端分页契约加载灵感图，并把文件名、标签和排序条件交给数据库组合筛选。 */
+  inspirations(page: number, pageSize = 20, options: { q?: string; tagIds?: string[]; tagMatch?: 'any' | 'all'; sort?: 'created_desc' | 'created_asc' | 'updated_desc' } = {}) {
+    const params = new URLSearchParams({ page: String(page), page_size: String(pageSize) })
+    if (options.q?.trim()) params.set('q', options.q.trim())
+    options.tagIds?.forEach(id => params.append('tag_ids', id))
+    if (options.tagMatch) params.set('tag_match', options.tagMatch)
+    if (options.sort) params.set('sort', options.sort)
+    return request<PageResult<InspirationRecord>>(`/inspirations?${params.toString()}`)
+  },
+  /** 获取当前用户标签，以业务 UUID 作为图库过滤值。 */
+  tags() { return request<{ items: TagRecord[] }>('/tags') },
   /** 读取单张灵感图文档。 */
   inspiration(id: string) { return request<InspirationRecord>(`/inspirations/${encodeURIComponent(id)}`) },
   /** 上传原始图片字节；文件名和类型由浏览器 FormData 提交。 */
@@ -179,6 +188,42 @@ export const api = {
   /** 带鉴权下载原始图片字节，不将 storekey 拼接为公开可访问 URL。 */
   async download(storekey: string): Promise<Blob> {
     return requestBlob(`/files/${encodeURIComponent(storekey)}`)
+  },
+  /** 获取管理用户列表；角色在后端逐请求校验。 */
+  consoleUsers(page: number, pageSize = 20, q = '') {
+    const params = new URLSearchParams({ page: String(page), page_size: String(pageSize) })
+    if (q.trim()) params.set('q', q.trim())
+    return request<PageResult<ConsoleUserRecord>>(`/atelier-7f3c9a2e/users?${params.toString()}`)
+  },
+  /** 设置一个目标账号是否具有工作台权限。 */
+  consoleSetUserRole(id: string, isAdmin: boolean) {
+    return request<{ business_id: string; is_admin: boolean }>(`/atelier-7f3c9a2e/users/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify({ is_admin: isAdmin }) })
+  },
+  /** 获取配置元数据；秘密值只返回是否已配置。 */
+  consoleConfigs() { return request<{ items: ConsoleConfigRecord[] }>('/atelier-7f3c9a2e/configs') },
+  /** 新增一项私有或公开配置；秘密项不能公开。 */
+  consoleCreateConfig(input: { key: string; value: string; description: string; is_public: boolean; is_secret: boolean }) {
+    return request<ConsoleConfigRecord>('/atelier-7f3c9a2e/configs', { method: 'POST', body: JSON.stringify(input) })
+  },
+  /** 编辑描述、公开状态或配置值；秘密值为空时沿用旧值。 */
+  consoleUpdateConfig(key: string, patch: { value?: string; clear_value?: boolean; description?: string; is_public?: boolean }) {
+    return request<ConsoleConfigRecord>(`/atelier-7f3c9a2e/configs/${encodeURIComponent(key)}`, { method: 'PATCH', body: JSON.stringify(patch) })
+  },
+  /** 查询全站灵感图片摘要，结果不包含任何私有编辑文档。 */
+  consoleInspirations(page: number, pageSize = 20, q = '', sort: 'created_desc' | 'created_asc' | 'updated_desc' = 'created_desc') {
+    const params = new URLSearchParams({ page: String(page), page_size: String(pageSize), sort })
+    if (q.trim()) params.set('q', q.trim())
+    return request<PageResult<ConsoleInspirationRecord>>(`/atelier-7f3c9a2e/inspirations?${params.toString()}`)
+  },
+  /** 按处理状态分页读取反馈。 */
+  consoleFeedbacks(page: number, pageSize = 20, status: '' | 'new' | 'processed' = '') {
+    const params = new URLSearchParams({ page: String(page), page_size: String(pageSize) })
+    if (status) params.set('status', status)
+    return request<PageResult<ConsoleFeedbackRecord>>(`/atelier-7f3c9a2e/feedbacks?${params.toString()}`)
+  },
+  /** 标记反馈状态为新反馈或已处理。 */
+  consoleUpdateFeedbackStatus(id: string, status: 'new' | 'processed') {
+    return request<{ business_id: string; status: 'new' | 'processed' }>(`/atelier-7f3c9a2e/feedbacks/${encodeURIComponent(id)}/status`, { method: 'PATCH', body: JSON.stringify({ status }) })
   },
   /** 按日历日期范围读取正式账目，并恢复当前用户未完成的账本草稿。 */
   ledgerRecords(from: string, to: string) { return request<{ items: LedgerRecord[] }>(`/ledger/records?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`) },

@@ -58,6 +58,7 @@ type Dependencies struct {
 	Notices              *service.NoticeService
 	TrustedProxyCIDRs    []string
 	ErrorLogs            *service.ErrorLogService
+	Console              *service.ConsoleService
 }
 
 // fileStorage 是 HTTP 上传和读取使用的文件存储能力，不包含用户归属或文件元数据管理。
@@ -151,6 +152,16 @@ func Router(dependencies Dependencies) *gin.Engine {
 	protected.POST("/notice-configs/:business_id/test", testNoticeConfigHandler(dependencies.Notices))
 	protected.GET("/notice-deliveries/:business_id", getNoticeDeliveryHandler(dependencies.Notices))
 	protected.POST("/notice-deliveries/:business_id/retry", retryNoticeDeliveryHandler(dependencies.Notices))
+	console := protected.Group("/atelier-7f3c9a2e")
+	console.Use(administratorMiddleware(dependencies.Console))
+	console.GET("/users", consoleUsersHandler(dependencies.Console))
+	console.PATCH("/users/:business_id", consoleUserRoleHandler(dependencies.Console))
+	console.GET("/configs", consoleConfigsHandler(dependencies.Console))
+	console.POST("/configs", createConsoleConfigHandler(dependencies.Console))
+	console.PATCH("/configs/:config_key", updateConsoleConfigHandler(dependencies.Console))
+	console.GET("/inspirations", consoleInspirationsHandler(dependencies.Console))
+	console.GET("/feedbacks", consoleFeedbacksHandler(dependencies.Console))
+	console.PATCH("/feedbacks/:business_id/status", consoleFeedbackStatusHandler(dependencies.Console))
 	return router
 }
 
@@ -789,6 +800,7 @@ type userResponse struct {
 	Nickname   string    `json:"nickname"`
 	Phone      string    `json:"phone"`
 	AvatarKey  *string   `json:"avatar_key"`
+	IsAdmin    bool      `json:"is_admin"`
 	CreatedAt  time.Time `json:"created_at"`
 	UpdatedAt  time.Time `json:"updated_at"`
 }
@@ -796,7 +808,7 @@ type userResponse struct {
 // userDTO 显式映射公开资料字段，确保数据库主键、密码哈希和内部 user_id 不会被序列化。
 func userDTO(user model.User) userResponse {
 	return userResponse{BusinessID: user.BusinessID, Nickname: user.Nickname, Phone: user.Phone,
-		AvatarKey: user.AvatarKey, CreatedAt: user.CreatedAt, UpdatedAt: user.UpdatedAt}
+		AvatarKey: user.AvatarKey, IsAdmin: user.IsAdmin, CreatedAt: user.CreatedAt, UpdatedAt: user.UpdatedAt}
 }
 
 // getCurrentUserHandler 按 token 中的用户业务 UUID 返回当前用户资料。
@@ -1060,7 +1072,17 @@ func listInspirationsHandler(inspirations *service.InspirationService) gin.Handl
 			return
 		}
 		match := c.Query("tag_match")
-		result, err := inspirations.List(c.Request.Context(), claims.UserBusinessID, tagIDs, match, page)
+		search, err := optionalQueryString(c, "q")
+		if err != nil {
+			writeError(c, err)
+			return
+		}
+		sort, err := optionalQueryString(c, "sort")
+		if err != nil {
+			writeError(c, err)
+			return
+		}
+		result, err := inspirations.List(c.Request.Context(), claims.UserBusinessID, tagIDs, match, search, sort, page)
 		if err != nil {
 			writeError(c, err)
 			return
@@ -1241,6 +1263,18 @@ func queryInteger(c *gin.Context, name string, fallback int) (int, error) {
 		return 0, err
 	}
 	return value, nil
+}
+
+// optionalQueryString 读取可选单值查询参数并拒绝重复键，避免不同代理和客户端对参数顺序解释不一致。
+func optionalQueryString(c *gin.Context, name string) (string, error) {
+	values, exists := c.Request.URL.Query()[name]
+	if !exists {
+		return "", nil
+	}
+	if len(values) != 1 {
+		return "", fault.InvalidRequest(name + " 只能出现一次")
+	}
+	return values[0], nil
 }
 
 // parseTagQuery 解析重复传入的 tag_ids，去重并限制一次检索最多筛选 100 个标签。

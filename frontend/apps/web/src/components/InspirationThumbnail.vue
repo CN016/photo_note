@@ -5,7 +5,8 @@ import type { InspirationRecord } from '../api/types'
 import { api } from '../api/client'
 import { previewObjectUrl } from '../../../../packages/image-processing/src'
 
-const props = defineProps<{ record: InspirationRecord }>()
+type ThumbnailRecord = Pick<InspirationRecord, 'file_name' | 'image_key'> & { data?: Record<string, unknown> }
+const props = defineProps<{ record: ThumbnailRecord }>()
 const { t } = useI18n()
 const element = ref<HTMLElement | null>(null)
 const imageUrl = ref<string | null>(null)
@@ -16,7 +17,7 @@ let requestVersion = 0
 
 const imageName = computed(() => props.record.file_name || t('gallery.untitled'))
 const imageLabel = computed(() => t('gallery.openImage', { name: imageName.value }))
-const sourceKey = computed(() => typeof props.record.data.source_image_key === 'string' ? props.record.data.source_image_key : props.record.image_key)
+const sourceKey = computed(() => typeof props.record.data?.source_image_key === 'string' ? props.record.data.source_image_key : props.record.image_key)
 
 /** 懒加载触发后鉴权读取图片并生成缩略图地址，过期请求会立即释放地址。 */
 async function loadPreview() {

@@ -23,6 +23,8 @@ type AppConfig struct {
 	Description string `gorm:"column:description;type:text;not null"`
 	// IsPublic 默认关闭；只有显式开放的配置值才能通过无需鉴权的客户端接口读取。
 	IsPublic bool `gorm:"column:is_public;type:boolean;not null;default:false" json:"-"`
+	// IsSecret 标识配置值是否属于秘密；这类值仅在服务端读取，管理接口也只回报是否已配置。
+	IsSecret bool `gorm:"column:is_secret;type:boolean;not null;default:false" json:"-"`
 }
 
 // TableName 固定配置模型使用与版本化建表 SQL 相同的表名。
@@ -58,6 +60,8 @@ type User struct {
 	Phone        string  `gorm:"column:phone;type:varchar(11);not null;uniqueIndex"`
 	PasswordHash string  `gorm:"column:password_hash;type:text;not null" json:"-"`
 	AvatarKey    *string `gorm:"column:avatar_key;type:text"`
+	// IsAdmin 由数据库运维指定，任何注册或个人资料请求都不能修改此权限。
+	IsAdmin bool `gorm:"column:is_admin;type:boolean;not null;default:false"`
 }
 
 // TableName 固定用户模型使用与版本化建表 SQL 相同的表名。
@@ -99,10 +103,45 @@ type Feedback struct {
 	UserID    *uuid.UUID     `gorm:"column:user_id;type:uuid;index"`
 	Content   string         `gorm:"column:content;type:text;not null;default:''"`
 	ImageKeys pq.StringArray `gorm:"column:image_keys;type:text[];not null;default:ARRAY[]::text[]"`
+	// Status 仅记录后台处理状态；新提交统一以 new 状态进入反馈中心。
+	Status string `gorm:"column:feedback_status;type:varchar(16);not null;default:'new'"`
 }
 
 // TableName 固定反馈模型使用与版本化建表 SQL 相同的表名。
 func (Feedback) TableName() string { return "feedbacks" }
+
+// ConsoleUser 是后台列表查询的最小投影，不承载密码哈希、数据库 ID 或内部 user_id。
+type ConsoleUser struct {
+	BusinessID uuid.UUID `gorm:"column:business_id"`
+	Nickname   string    `gorm:"column:nickname"`
+	Phone      string    `gorm:"column:phone"`
+	IsAdmin    bool      `gorm:"column:is_admin"`
+	CreatedAt  time.Time `gorm:"column:created_at"`
+}
+
+// ConsoleInspiration 是全站只读图库的最小投影，不包含私有编辑文档 data。
+type ConsoleInspiration struct {
+	BusinessID    uuid.UUID      `gorm:"column:business_id"`
+	UserID        uuid.UUID      `gorm:"column:user_id"`
+	OwnerNickname string         `gorm:"column:owner_nickname"`
+	TagIDs        pq.StringArray `gorm:"column:tag_ids"`
+	ImageKey      string         `gorm:"column:image_key"`
+	FileName      string         `gorm:"column:file_name"`
+	CreatedAt     time.Time      `gorm:"column:created_at"`
+	UpdatedAt     time.Time      `gorm:"column:updated_at"`
+}
+
+// ConsoleFeedback 是反馈管理页使用的投影；仅包含处理所需字段及昵称，不带手机号等用户资料。
+type ConsoleFeedback struct {
+	BusinessID uuid.UUID      `gorm:"column:business_id"`
+	UserID     *uuid.UUID     `gorm:"column:user_id"`
+	Nickname   string         `gorm:"column:nickname"`
+	Content    string         `gorm:"column:content"`
+	ImageKeys  pq.StringArray `gorm:"column:image_keys"`
+	Status     string         `gorm:"column:feedback_status"`
+	CreatedAt  time.Time      `gorm:"column:created_at"`
+	UpdatedAt  time.Time      `gorm:"column:updated_at"`
+}
 
 // FeedbackNotificationJob 保存反馈提交通知的持久化后台任务；反馈正文仍只从 feedbacks 表读取。
 type FeedbackNotificationJob struct {

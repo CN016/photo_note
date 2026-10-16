@@ -105,6 +105,15 @@ func checkSchema(ctx context.Context, connection *gorm.DB) error {
 		if name == "app_configs" && !connection.WithContext(ctx).Migrator().HasColumn(table, "IsPublic") {
 			return fmt.Errorf("PostgreSQL schema 缺少 app_configs.is_public，请先执行 backend/migrations/000004_add_config_public_flag.sql")
 		}
+		if name == "app_configs" && !connection.WithContext(ctx).Migrator().HasColumn(table, "IsSecret") {
+			return fmt.Errorf("PostgreSQL schema 缺少 app_configs.is_secret，请先执行 backend/migrations/000015_console_roles_feedback_and_secret_configs.sql")
+		}
+		if name == "users" && !connection.WithContext(ctx).Migrator().HasColumn(table, "IsAdmin") {
+			return fmt.Errorf("PostgreSQL schema 缺少 users.is_admin，请先执行 backend/migrations/000015_console_roles_feedback_and_secret_configs.sql")
+		}
+		if name == "feedbacks" && !connection.WithContext(ctx).Migrator().HasColumn(table, "Status") {
+			return fmt.Errorf("PostgreSQL schema 缺少 feedbacks.feedback_status，请先执行 backend/migrations/000015_console_roles_feedback_and_secret_configs.sql")
+		}
 		// 灵感图文件元数据缺失时不能安全创建或更新灵感图，因此启动阶段要求先执行增量迁移。
 		if name == "inspirations" {
 			migrator := connection.WithContext(ctx).Migrator()

@@ -1,6 +1,7 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import { useAuthStore } from './stores/auth'
 import { checkBackendAvailability } from './backendHealth'
+import { api } from './api/client'
 
 /** 页面边界按账号、灵感图列表和编辑工作区拆分，适合后续壳应用复用。 */
 export const router = createRouter({
@@ -18,6 +19,7 @@ export const router = createRouter({
     { path: '/schedule', name: 'schedule', component: () => import('./views/SchedulePage.vue') },
     { path: '/messages', name: 'messages', component: () => import('./views/MessagesPage.vue') },
     { path: '/profile', name: 'profile', component: () => import('./views/ProfilePage.vue') },
+    { path: '/atelier-7f3c9a2e', name: 'atelier-console', component: () => import('./views/ConsolePage.vue') },
     { path: '/:pathMatch(.*)*', redirect: '/inspirations' },
   ],
 })
@@ -39,5 +41,13 @@ router.beforeEach(async to => {
   await auth.initialize()
   if (to.meta.public && auth.user && to.name !== 'public-booking') return '/inspirations'
   if (!to.meta.public && !auth.user) return '/login'
+  if (to.name === 'atelier-console') {
+    try {
+      auth.user = await api.currentUser()
+    } catch {
+      return auth.user ? '/inspirations' : '/login'
+    }
+    if (!auth.user.is_admin) return '/inspirations'
+  }
   return true
 })

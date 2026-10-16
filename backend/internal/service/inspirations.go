@@ -29,7 +29,7 @@ import (
 type InspirationRepository interface {
 	ValidateTagOwnership(context.Context, uuid.UUID, []uuid.UUID) error
 	CreateInspiration(context.Context, *model.Inspiration) error
-	ListInspirations(context.Context, uuid.UUID, []uuid.UUID, string, int, int) ([]model.Inspiration, int64, error)
+	ListInspirations(context.Context, uuid.UUID, []uuid.UUID, string, string, string, int, int) ([]model.Inspiration, int64, error)
 	FindInspirationByBusinessID(context.Context, uuid.UUID, uuid.UUID) (model.Inspiration, error)
 	UpdateInspiration(context.Context, uuid.UUID, uuid.UUID, map[string]any) (model.Inspiration, error)
 	UpdateInspirationWithAsyncVersion(context.Context, uuid.UUID, uuid.UUID, map[string]any) (model.Inspiration, error)
@@ -158,14 +158,24 @@ type inspirationFileCompression struct {
 }
 
 // List 在数据库中按当前用户及 any/all 标签条件分页查询。
-func (service *InspirationService) List(ctx context.Context, userID uuid.UUID, tagIDs []uuid.UUID, match string, page PageRequest) (Page[model.Inspiration], error) {
+func (service *InspirationService) List(ctx context.Context, userID uuid.UUID, tagIDs []uuid.UUID, match, query, sort string, page PageRequest) (Page[model.Inspiration], error) {
 	if match == "" {
 		match = "any"
 	}
 	if match != "any" && match != "all" {
 		return Page[model.Inspiration]{}, fault.InvalidRequest("tag_match 只能是 any 或 all")
 	}
-	items, total, err := service.inspirations.ListInspirations(ctx, userID, tagIDs, match, page.Offset, page.PageSize)
+	query = strings.TrimSpace(query)
+	if len(query) > 200 {
+		return Page[model.Inspiration]{}, fault.InvalidRequest("q 长度不能超过 200 个字节")
+	}
+	if sort == "" {
+		sort = "created_desc"
+	}
+	if sort != "created_desc" && sort != "created_asc" && sort != "updated_desc" {
+		return Page[model.Inspiration]{}, fault.InvalidRequest("sort 只支持 created_desc、created_asc 或 updated_desc")
+	}
+	items, total, err := service.inspirations.ListInspirations(ctx, userID, tagIDs, match, query, sort, page.Offset, page.PageSize)
 	if err != nil {
 		return Page[model.Inspiration]{}, err
 	}

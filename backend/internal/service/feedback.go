@@ -78,6 +78,7 @@ func (service *FeedbackService) Submit(ctx context.Context, userID *uuid.UUID, c
 		UserID:    userID,
 		Content:   strings.TrimSpace(content),
 		ImageKeys: imageKeys,
+		Status:    "new",
 	}
 	now := time.Now().UTC()
 	job := &model.FeedbackNotificationJob{

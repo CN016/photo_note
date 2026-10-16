@@ -41,8 +41,9 @@ GORM 迁移设置 `DisableForeignKeyConstraintWhenMigrating: true`，模型避�
 | `config_value` | `text` | 非空，保存配置值；秘密配置只允许作为私有项保存 |
 | `description` | `text` | 配置说明 |
 | `is_public` | `boolean` | 非空，默认 `false`；仅为 `true` 时公开配置值 |
+| `is_secret` | `boolean` | 非空，默认 `false`；秘密配置只能公开是否已配置，不能返回原值 |
 
-只有 `is_public=true` 的配置值可以通过无需鉴权的 `GET /api/v1/configs/public` 读取；响应仅包含 key 和 value，私有项及不存在项均不会返回。可不传参数读取全部开放项，也可重复传入 `keys` 参数筛选，例如 `?keys=frontend.theme&keys=frontend.upload_limit`。公开配置不得包含密码、密钥、令牌等秘密；密码、应用密钥和签名材料等只能作为 `is_public=false` 的私有配置由后端读取。服务通过统一配置服务按 key 加载 `app.mode`、`http.listen_addr`、HTTP 请求体上限和超时、Access/Refresh Token 时长、文件存储根目录和单文件大小上限；`files.active_store_type` 在每次上传时重新读取，使存储类型切换对下一次写入生效。连接 PostgreSQL 和 Redis 所需的地址、账号及密码保留在运行环境中。`000002_seed_runtime_config.sql` 和 `000003_seed_file_storage_config.sql` 为新环境提供非秘密初始值；缺少必需配置项时服务拒绝启动。
+只有 `is_public=true AND is_secret=false` 的配置值可以通过无需鉴权的 `GET /api/v1/configs/public` 读取；响应仅包含 key 和 value，私有项及不存在项均不会返回。可不传参数读取全部开放项，也可重复传入 `keys` 参数筛选，例如 `?keys=frontend.theme&keys=frontend.upload_limit`。公开配置不得包含密码、密钥、令牌等秘密；密码、应用密钥和签名材料等只能作为 `is_public=false` 的私有配置由后端读取。服务通过统一配置服务按 key 加载 `app.mode`、`http.listen_addr`、HTTP 请求体上限和超时、Access/Refresh Token 时长、文件存储根目录和单文件大小上限；`files.active_store_type` 在每次上传时重新读取，使存储类型切换对下一次写入生效。连接 PostgreSQL 和 Redis 所需的地址、账号及密码保留在运行环境中。`000002_seed_runtime_config.sql` 和 `000003_seed_file_storage_config.sql` 为新环境提供非秘密初始值；缺少必需配置项时服务拒绝启动。
 
 ### 3.2 `users` 用户表
 
@@ -52,6 +53,7 @@ GORM 迁移设置 `DisableForeignKeyConstraintWhenMigrating: true`，模型避�
 | `phone` | `varchar(11)` | 非空、唯一，只保存 11 位数字 |
 | `password_hash` | `text` | 非空，保存 Argon2id 编码哈希，不保存明文 |
 | `avatar_key` | `text` | 头像 OSS key 或由服务管理的文件标识 |
+| `is_admin` | `boolean` | 非空，默认 `false`；仅控制管理工作台权限，注册与个人资料接口不可写入 |
 
 手机号是登录标识。当前使用手机号和密码注册/登录，不包含短信验证码流程；旧客户端可在登录时传入 `+86` 加 11 位号码。
 
@@ -83,8 +85,9 @@ GORM 迁移设置 `DisableForeignKeyConstraintWhenMigrating: true`，模型避�
 | `user_id` | `uuid` | 可空；登录用户保存 `users.business_id`，游客反馈为空；建立 B-tree 索引 |
 | `content` | `text` | 非空，默认空字符串；最多 2000 个 Unicode 字符，至少与一张图片提供其一 |
 | `image_keys` | `text[]` | 非空，默认空数组；保存服务端验证的图片 storekey，最多 5 个 |
+| `feedback_status` | `varchar(16)` | 非空，默认 `new`；仅允许 `new` 或 `processed` |
 
-反馈接口允许游客提交；登录请求的用户归属始终从有效 token 得出。正文与图片至少提供一项，图片受文件单体积配置约束。提交事务同时写入 `feedbacks` 与 `feedback_notification_jobs`，由持久化 worker 按专用配置查找已有接收用户并发布 `feedback.submitted` 通知；通知关闭或接收用户缺失时反馈仍成功保留。不提供反馈后台、回复或用户历史页。
+反馈接口允许游客提交；登录请求的用户归属始终从有效 token 得出。正文与图片至少提供一项，图片受文件单体积配置约束。新反馈状态为 `new`；管理工作台可将状态改为 `processed`。提交事务同时写入 `feedbacks` 与 `feedback_notification_jobs`，由持久化 worker 按专用配置查找已有接收用户并发布 `feedback.submitted` 通知；通知关闭或接收用户缺失时反馈仍成功保留。不提供反馈回复或用户历史页。
 
 反馈图片使用独立 `public_` key 和物理存储目录。无需鉴权的图片读取接口只接受该标记且实际类型为 JPEG、PNG、GIF 或 WebP 的文件；普通文件 key 不可通过该接口读取。通知的 Markdown 和纯文本由后台从完整反馈正文生成，图片绝对链接使用私有 `http.public_base_url` 配置。该 HTTPS 地址可包含反向代理路径前缀，不使用请求 Host。
 
@@ -127,7 +130,7 @@ GORM 关联迁移默认可能创建外键；配置 `DisableForeignKeyConstraintW
 
 ## 5. V1 HTTP API
 
-统一前缀 `/api/v1`。注册、登录和刷新是无需 Access Token 的认证入口；退出登录、用户资料、标签、灵感图和文件接口都需要有效 Access Token。每次受保护请求都通过 Redis 校验 token。`/healthz` readiness 接口和 `GET /api/v1/configs/public` 公开访问；公开配置接口只返回 `is_public=true` 的 key/value。业务数据归属从 token 中的用户业务 UUID 得出；文件 V1 不记录用户归属，任何已通过鉴权且持有有效 `storekey` 的用户都可读取对应文件。
+统一前缀 `/api/v1`。注册、登录和刷新是无需 Access Token 的认证入口；退出登录、用户资料、标签、灵感图和文件接口都需要有效 Access Token。每次受保护请求都通过 Redis 校验 token。`/healthz` readiness 接口和 `GET /api/v1/configs/public` 公开访问；公开配置接口只返回 `is_public=true AND is_secret=false` 的 key/value。业务数据归属从 token 中的用户业务 UUID 得出；文件 V1 不记录用户归属，任何已通过鉴权且持有有效 `storekey` 的用户都可读取对应文件。
 
 ### 5.1 响应与错误
 
@@ -160,17 +163,17 @@ GORM 关联迁移默认可能创建外键；配置 `DisableForeignKeyConstraintW
 | `POST /auth/refresh` | 否（请求体带 RT） | `refresh_token`；原子轮换 | 新 token pair |
 | `POST /auth/logout` | AT | 撤销当前会话 | `204` |
 | `GET /healthz` | 否 | 检查 PostgreSQL 和 Redis 连通性 | `data.status` 与当前服务 `data.version` |
-| `GET /configs/public` | 否 | 可重复传 `keys` 筛选；只查询 `is_public=true` | `items` 中仅包含 `key`、`value` |
+| `GET /configs/public` | 否 | 可重复传 `keys` 筛选；只查询 `is_public=true AND is_secret=false` | `items` 中仅包含 `key`、`value` |
 | `POST /feedback` | 可选 AT | multipart：`content`，重复的 `images` 文件字段；允许游客 | `received: true` |
 | `GET /public-feedback-images/{storekey}` | 否 | 仅接受带反馈公共标记的图片 key | 实际图片二进制流 |
-| `GET /users/me` | AT | 无 | 当前用户 `business_id`、昵称、手机号、头像 key 和时间字段 |
+| `GET /users/me` | AT | 无 | 当前用户 `business_id`、昵称、手机号、头像 key、`is_admin` 和时间字段 |
 | `PATCH /users/me` | AT | 可选 `nickname`, `avatar_key` | 更新后的当前用户资料 |
 | `POST /users/me/password` | AT | `current_password`, `new_password` | `204`；保留当前设备并撤销其他设备会话 |
 | `GET /tags` | AT | 分页参数 | 当前用户标签列表 |
 | `POST /tags` | AT | `content` | 新建标签及其业务 UUID |
 | `PATCH /tags/{business_id}` | AT | `content` | 更新后的标签 |
 | `DELETE /tags/{business_id}` | AT | 删除标签并清理灵感图引用 | `204` |
-| `GET /inspirations` | AT | 分页参数，可重复传 `tag_ids` 和 `tag_match=any\|all` | 当前用户灵感图列表 |
+| `GET /inspirations` | AT | 分页参数、可选文件名关键字 `q`、可重复传 `tag_ids` 和 `tag_match=any\|all`、`sort` | 当前用户灵感图列表 |
 | `POST /inspirations` | AT | `tag_ids`, `image_key`, 可选 `file_name`, `data` | 新建灵感图及其业务 UUID、文件元数据 |
 | `GET /inspirations/{business_id}` | AT | 路径业务 UUID | 灵感图详情 |
 | `PATCH /inspirations/{business_id}` | AT | 可选 `tag_ids`, `image_key`, `file_name`, `data` | 更新后的灵感图及文件元数据 |
@@ -178,13 +181,31 @@ GORM 关联迁移默认可能创建外键；配置 `DisableForeignKeyConstraintW
 | `POST /files` | AT | multipart/form-data，单个文件字段 `file` | `storekey` |
 | `GET /files/{storekey}` | AT | 根据 key 中的存储类型读取文件 | 二进制文件流 |
 
+灵感图列表的 `q` 对原始文件名做不区分大小写的包含匹配；`sort` 支持 `created_desc`（默认）、`created_asc`、`updated_desc`，并与标签筛选及分页在服务端组合执行。`tag_match=any` 命中任一标签，`tag_match=all` 要求同时包含全部标签；未传 `tag_ids` 时不应用标签筛选。
+
+### 5.3 管理工作台
+
+管理页面使用 `/atelier-7f3c9a2e` 路由；以下接口均要求有效 Access Token，并在每次请求时从数据库重新读取当前用户的管理员标记。普通用户返回 `403`；撤销角色后下一次请求即拒绝。管理员只能通过用户角色接口调整管理员标记；注册和个人资料更新不能授予权限。管理接口只返回必要字段，密钥配置只返回 `is_configured`，不回显密钥原值。秘密配置不得设为公开；数据库保护最后一位管理员不被降权。
+
+| 方法与路径 | 请求字段 / 行为 | 成功结果 |
+| --- | --- | --- |
+| `GET /atelier-7f3c9a2e/users` | 分页参数，可选 `q` 按昵称或手机号检索 | 用户资料与 `is_admin` |
+| `PATCH /atelier-7f3c9a2e/users/{business_id}` | `{ "is_admin": true\|false }` | 更新后的角色 |
+| `GET /atelier-7f3c9a2e/configs` | 无 | 配置清单；秘密项仅返回是否已配置 |
+| `POST /atelier-7f3c9a2e/configs` | `key`, `value`, `description`, `is_public`, `is_secret` | 新配置；秘密项不回显原值 |
+| `PATCH /atelier-7f3c9a2e/configs/{config_key}` | 可选 `value`, `clear_value`, `description`, `is_public` | 更新后的安全配置摘要 |
+| `GET /atelier-7f3c9a2e/inspirations` | 分页参数，可选 `q`、`sort` | 全站只读灵感图摘要，不包含用户编辑 JSON |
+| `GET /atelier-7f3c9a2e/feedbacks` | 分页参数，可选 `status=new\|processed` | 反馈正文、附件 key 与处理状态 |
+| `PATCH /atelier-7f3c9a2e/feedbacks/{business_id}/status` | `{ "status": "new"\|"processed" }` | 更新后的处理状态 |
+
+首位管理员由运维在上线时按 `backend/migrations/ops/20261016_first_console_operator.sql` 模板指定已注册账号；模板不包含真实手机号。配置只支持查看、新增和编辑，不提供删除；全站灵感图只读；反馈仅可查看并标记处理状态。
 上传成功返回 `{ "data": { "storekey": "local_yyyymmdd_uuid.ext" }, "request_id": "..." }`。修改 `files.active_store_type` 后，后续上传无需重启即可采用新值；`files.max_upload_bytes` 和 `files.local_root` 在启动时加载，修改后需重启服务生效。
 
 JSON 请求和响应使用 UTF-8；日期时间以 RFC 3339 格式返回。创建请求不得传 `id`、`business_id`、`user_id` 或时间字段，这些由服务端生成或从 token 得出。更新请求只修改列出的字段，未提供字段保持原值；`tag_ids: []` 表示清空所有标签。响应对象不得包含自增 `id`、`password` 或 `password_hash`。文件下载返回原始二进制流，不使用 JSON 封套。
 
-健康检查成功时返回 `{"data":{"status":"ok","version":"2.0.0"},"request_id":"..."}`。版本号来自 `backend/internal/version/version.go`，后端代码、接口、配置、数据库迁移或构建配置的每个改动批次都需按 `AGENTS.md` 递增。
+健康检查成功时返回 `{"data":{"status":"ok","version":"2.4.0"},"request_id":"..."}`。版本号来自 `backend/internal/version/version.go`，后端代码、接口、配置、数据库迁移或构建配置的每个改动批次都需按 `AGENTS.md` 递增。
 
-当前已部署契约为后端 2.0.0；此处较早的 V1 设计描述已由后续规则替代。注册仅使用 `POST /api/v2/auth/register` multipart，手机号为 11 位数字、密码为 8 至 128 个字符、昵称最多 64 个字符且头像必传；旧 `POST /api/v1/auth/register` 返回 `426 upgrade_required`。登录只接受 11 位数字，兼容旧客户端输入的 `+86` 加 11 位号码并映射到数据库中的 11 位值；手机号不存在和密码错误继续使用相同的 `401` 语义。
+当前已部署契约为后端 2.4.0；此处较早的 V1 设计描述已由后续规则替代。注册仅使用 `POST /api/v2/auth/register` multipart，手机号为 11 位数字、密码为 8 至 128 个字符、昵称最多 64 个字符且头像必传；旧 `POST /api/v1/auth/register` 返回 `426 upgrade_required`。登录只接受 11 位数字，兼容旧客户端输入的 `+86` 加 11 位号码并映射到数据库中的 11 位值；手机号不存在和密码错误继续使用相同的 `401` 语义。
 
 反馈正文最多 2000 个 Unicode 字符，最多 5 张图片，至少提交正文或一张图片；单图受 `files.max_upload_bytes` 限制。每个客户端 IP 每小时最多提交 5 次。IP 仅从配置的可信代理链解析，Redis 键保存 IP 摘要。反馈图片 storekey 与正文写入 `feedbacks`，反馈内容不写入日志。新迁移 `000013_feedback_notifications.sql` 建立持久化通知任务并为 webhook 投递增加分段序号；长正文按安全字节上限拆分，UTF-8 字符和图片引用保持完整，每段独立显示投递状态并可单独重试。通知开关默认关闭，不接入短信；启用时使用独立 `feedback.admin_phone` 查找现有账户。飞书的 Markdown 文本组件不把标准 `![...](URL)` 语法作为原生图片；当私有配置 `feedback.feishu_app_id` 和 `feedback.feishu_app_secret` 均已设置时，后台用启用机器人能力且具有图片资源上传权限的自建应用上传反馈图片，再以自定义机器人 `post` 富文本的 `img` 节点投递。没有凭证时发送可点击公共图片链接。凭证由 `000014_seed_feishu_feedback_image_upload.sql` 增加，缺失不影响反馈保存和原有链接通知。
 
@@ -198,6 +219,7 @@ JSON 请求和响应使用 UTF-8；日期时间以 RFC 3339 格式返回。创�
       "nickname": "昵称",
       "phone": "13800138000",
       "avatar_key": "local_yyyymmdd_uuid.jpg",
+      "is_admin": false,
       "created_at": "2026-10-12T00:00:00Z",
       "updated_at": "2026-10-12T00:00:00Z"
     },
@@ -213,7 +235,7 @@ JSON 请求和响应使用 UTF-8；日期时间以 RFC 3339 格式返回。创�
 }
 ```
 
-刷新请求为 `{ "refresh_token": "..." }`，响应 `data.tokens`，不要求有效 Access Token。`GET /users/me` 和 `PATCH /users/me` 的资料对象使用 `business_id`、`nickname`、`phone`、`avatar_key`、`created_at`、`updated_at` 字段；PATCH 仅允许更新昵称和头像 key。
+刷新请求为 `{ "refresh_token": "..." }`，响应 `data.tokens`，不要求有效 Access Token。`GET /users/me` 和 `PATCH /users/me` 的资料对象使用 `business_id`、`nickname`、`phone`、`avatar_key`、`is_admin`、`created_at`、`updated_at` 字段；PATCH 仅允许更新昵称和头像 key，`is_admin` 由受信角色接口管理。
 
 标签创建和更新请求为 `{ "content": "标签内容" }`，内容最多 64 个字符。标签响应为 `{ "business_id": "uuid", "content": "...", "created_at": "...", "updated_at": "..." }`。标签列表的 `data` 为 `{ "items": [...], "page": 1, "page_size": 20, "total": 0 }`。
 
