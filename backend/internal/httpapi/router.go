@@ -1030,27 +1030,33 @@ func deleteTagHandler(tags *service.TagService) gin.HandlerFunc {
 
 // inspirationResponse 输出灵感图业务字段，并保留 data 的 JSON 对象结构。
 type inspirationResponse struct {
-	BusinessID uuid.UUID       `json:"business_id"`
-	TagIDs     []string        `json:"tag_ids"`
-	ImageKey   string          `json:"image_key"`
-	FileName   string          `json:"file_name"`
-	FileHash   *string         `json:"file_hash"`
-	FileSize   *int64          `json:"file_size"`
-	Data       json.RawMessage `json:"data"`
-	CreatedAt  time.Time       `json:"created_at"`
-	UpdatedAt  time.Time       `json:"updated_at"`
+	BusinessID    uuid.UUID                       `json:"business_id"`
+	TagIDs        []string                        `json:"tag_ids"`
+	ImageKey      string                          `json:"image_key"`
+	FileName      string                          `json:"file_name"`
+	FileHash      *string                         `json:"file_hash"`
+	FileSize      *int64                          `json:"file_size"`
+	ImageMetadata *model.InspirationImageMetadata `json:"image_metadata,omitempty"`
+	Data          json.RawMessage                 `json:"data"`
+	CreatedAt     time.Time                       `json:"created_at"`
+	UpdatedAt     time.Time                       `json:"updated_at"`
 }
 
 // inspirationDTO 显式输出业务 UUID、标签业务 UUID 和 JSONB 文档，不暴露用户归属字段。
-func inspirationDTO(inspiration model.Inspiration) inspirationResponse {
+func inspirationDTO(inspiration model.Inspiration, includeImageMetadata bool) inspirationResponse {
 	tagIDs := make([]string, 0, len(inspiration.TagIDs))
 	for _, tagID := range inspiration.TagIDs {
 		tagIDs = append(tagIDs, tagID)
 	}
 	data := json.RawMessage(append([]byte(nil), inspiration.Data...))
-	return inspirationResponse{BusinessID: inspiration.BusinessID, TagIDs: tagIDs, ImageKey: inspiration.ImageKey,
+	response := inspirationResponse{BusinessID: inspiration.BusinessID, TagIDs: tagIDs, ImageKey: inspiration.ImageKey,
 		FileName: inspiration.FileName, FileHash: inspiration.FileHash, FileSize: inspiration.FileSize,
 		Data: data, CreatedAt: inspiration.CreatedAt, UpdatedAt: inspiration.UpdatedAt}
+	if includeImageMetadata {
+		metadata := service.NormalizeImageMetadata(inspiration.ImageMetadata)
+		response.ImageMetadata = &metadata
+	}
+	return response
 }
 
 // listInspirationsHandler 解析重复标签查询参数及 any/all 模式后返回当前用户的分页灵感图。
@@ -1089,7 +1095,7 @@ func listInspirationsHandler(inspirations *service.InspirationService) gin.Handl
 		}
 		items := make([]inspirationResponse, 0, len(result.Items))
 		for _, inspiration := range result.Items {
-			items = append(items, inspirationDTO(inspiration))
+			items = append(items, inspirationDTO(inspiration, false))
 		}
 		writeData(c, http.StatusOK, pageResponse[inspirationResponse]{Items: items, Page: result.Page, PageSize: result.PageSize, Total: result.Total})
 	}
@@ -1097,10 +1103,19 @@ func listInspirationsHandler(inspirations *service.InspirationService) gin.Handl
 
 // inspirationRequest 描述创建灵感图时允许客户端提交的字段集合。
 type inspirationRequest struct {
-	TagIDs   []uuid.UUID     `json:"tag_ids"`
-	ImageKey string          `json:"image_key"`
-	FileName string          `json:"file_name"`
-	Data     json.RawMessage `json:"data"`
+	TagIDs        []uuid.UUID                     `json:"tag_ids"`
+	ImageKey      string                          `json:"image_key"`
+	FileName      string                          `json:"file_name"`
+	Data          json.RawMessage                 `json:"data"`
+	ImageMetadata *model.InspirationImageMetadata `json:"image_metadata"`
+}
+
+// dereferenceImageMetadata 将可选请求对象转换为服务层使用的零值或完整值。
+func dereferenceImageMetadata(metadata *model.InspirationImageMetadata) model.InspirationImageMetadata {
+	if metadata == nil {
+		return model.InspirationImageMetadata{}
+	}
+	return *metadata
 }
 
 // createInspirationHandler 校验请求字段、标签归属及 JSON 文档版本后创建灵感图。
@@ -1118,12 +1133,13 @@ func createInspirationHandler(inspirations *service.InspirationService) gin.Hand
 		}
 		inspiration, err := inspirations.Create(c.Request.Context(), claims.UserBusinessID, service.InspirationInput{
 			TagIDs: request.TagIDs, ImageKey: request.ImageKey, FileName: request.FileName, Data: request.Data,
+			ImageMetadata: dereferenceImageMetadata(request.ImageMetadata),
 		})
 		if err != nil {
 			writeError(c, err)
 			return
 		}
-		writeData(c, http.StatusCreated, inspirationDTO(inspiration))
+		writeData(c, http.StatusCreated, inspirationDTO(inspiration, true))
 	}
 }
 
@@ -1145,7 +1161,7 @@ func getInspirationHandler(inspirations *service.InspirationService) gin.Handler
 			writeError(c, err)
 			return
 		}
-		writeData(c, http.StatusOK, inspirationDTO(inspiration))
+		writeData(c, http.StatusOK, inspirationDTO(inspiration, true))
 	}
 }
 
@@ -1167,7 +1183,7 @@ func patchInspirationHandler(inspirations *service.InspirationService) gin.Handl
 			writeError(c, err)
 			return
 		}
-		if err := allowFields(fields, "tag_ids", "image_key", "file_name", "data"); err != nil {
+		if err := allowFields(fields, "tag_ids", "image_key", "file_name", "data", "image_metadata"); err != nil {
 			writeError(c, err)
 			return
 		}
@@ -1176,6 +1192,7 @@ func patchInspirationHandler(inspirations *service.InspirationService) gin.Handl
 		_, imageKeySet := fields["image_key"]
 		_, fileNameSet := fields["file_name"]
 		_, dataSet := fields["data"]
+		_, imageMetadataSet := fields["image_metadata"]
 		if raw, exists := fields["tag_ids"]; exists {
 			if bytes.Equal(bytes.TrimSpace(raw), []byte("null")) {
 				writeError(c, fault.InvalidRequest("tag_ids 必须是 UUID 数组；清空标签请传空数组"))
@@ -1201,13 +1218,24 @@ func patchInspirationHandler(inspirations *service.InspirationService) gin.Handl
 		if raw, exists := fields["data"]; exists {
 			input.Data = append(json.RawMessage(nil), raw...)
 		}
+		if raw, exists := fields["image_metadata"]; exists {
+			trimmed := bytes.TrimSpace(raw)
+			if len(trimmed) == 0 || trimmed[0] != '{' {
+				writeError(c, fault.InvalidRequest("image_metadata 必须是 JSON 对象"))
+				return
+			}
+			if err := json.Unmarshal(trimmed, &input.ImageMetadata); err != nil {
+				writeError(c, fault.InvalidRequest("image_metadata 格式无效"))
+				return
+			}
+		}
 		inspiration, err := inspirations.Update(c.Request.Context(), claims.UserBusinessID, inspirationID,
-			input, tagIDsSet, imageKeySet, fileNameSet, dataSet)
+			input, tagIDsSet, imageKeySet, fileNameSet, dataSet, imageMetadataSet)
 		if err != nil {
 			writeError(c, err)
 			return
 		}
-		writeData(c, http.StatusOK, inspirationDTO(inspiration))
+		writeData(c, http.StatusOK, inspirationDTO(inspiration, true))
 	}
 }
 

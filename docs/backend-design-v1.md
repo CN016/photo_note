@@ -43,7 +43,7 @@ GORM 迁移设置 `DisableForeignKeyConstraintWhenMigrating: true`，模型避�
 | `is_public` | `boolean` | 非空，默认 `false`；仅为 `true` 时公开配置值 |
 | `is_secret` | `boolean` | 非空，默认 `false`；秘密配置只能公开是否已配置，不能返回原值 |
 
-只有 `is_public=true AND is_secret=false` 的配置值可以通过无需鉴权的 `GET /api/v1/configs/public` 读取；响应仅包含 key 和 value，私有项及不存在项均不会返回。可不传参数读取全部开放项，也可重复传入 `keys` 参数筛选，例如 `?keys=frontend.theme&keys=frontend.upload_limit`。公开配置不得包含密码、密钥、令牌等秘密；密码、应用密钥和签名材料等只能作为 `is_public=false` 的私有配置由后端读取。服务通过统一配置服务按 key 加载 `app.mode`、`http.listen_addr`、HTTP 请求体上限和超时、Access/Refresh Token 时长、文件存储根目录和单文件大小上限；`files.active_store_type` 在每次上传时重新读取，使存储类型切换对下一次写入生效。连接 PostgreSQL 和 Redis 所需的地址、账号及密码保留在运行环境中。`000002_seed_runtime_config.sql` 和 `000003_seed_file_storage_config.sql` 为新环境提供非秘密初始值；缺少必需配置项时服务拒绝启动。
+只有 `is_public=true AND is_secret=false` 的配置值可以通过无需鉴权的 `GET /api/v1/configs/public` 读取；响应仅包含 key 和 value，私有项、秘密项及不存在项均不会返回。可不传参数读取全部开放项，也可重复传入 `keys` 参数筛选，例如 `?keys=frontend.theme&keys=frontend.upload_limit`。公开配置不得包含密码、密钥、令牌等秘密；密码、应用密钥和签名材料等只能作为 `is_public=false` 的私有配置由后端读取。服务通过统一配置服务按 key 加载 `app.mode`、`http.listen_addr`、HTTP 请求体上限和超时、Access/Refresh Token 时长、文件存储根目录和单文件大小上限；`files.active_store_type` 在每次上传时重新读取，使存储类型切换对下一次写入生效。连接 PostgreSQL 和 Redis 所需的地址、账号及密码保留在运行环境中。`000002_seed_runtime_config.sql` 和 `000003_seed_file_storage_config.sql` 为新环境提供非秘密初始值；缺少必需配置项时服务拒绝启动。
 
 ### 3.2 `users` 用户表
 
@@ -74,9 +74,11 @@ GORM 迁移设置 `DisableForeignKeyConstraintWhenMigrating: true`，模型避�
 | `file_name` | `text` | 非空，保存原始文件名；历史记录默认空字符串，最多 255 个字符 |
 | `file_hash` | `varchar(64)` | 可空，保存图片内容 SHA-256 小写十六进制摘要；建立部分 B-tree 索引 |
 | `file_size` | `bigint` | 可空，保存服务端确认或压缩后最终文件大小，单位字节；历史记录和非 storekey 图片为空 |
+| 图片属性列 | 多个可空字段 | 原图标识、原图大小/浏览器修改时间、尺寸/分辨率/位深/颜色、描述/版权/评分/标签、拍摄日期、相机/镜头/闪光灯、曝光参数、GPS 等；`file_size` 仍只表示工作副本 |
+| `image_metadata_extra` | `jsonb` | 非空对象，保存未映射的命名空间 EXIF/IPTC/XMP 标签；最多 1 MiB |
 | `data` | `jsonb` | 非空，保存灵感图复杂数据；作为对象使用并包含 `schema_version` |
 
-创建或更新灵感图时，服务端一次性检查所有 `tag_ids` 是否存在且属于当前用户；任一标签不合法则整次请求失败。`image_key` 传入本服务格式的 `storekey` 时，服务端读取其内容；超过 1 MB 的静态图片会压缩后原位覆盖，不生成新 key，再根据最终存储字节计算 SHA-256 和文件大小。`file_size` 以字节为单位，表示压缩覆盖完成后的实际大小；小于或等于压缩目标的文件记录其原始字节数。更新 `image_key` 时重新处理并覆盖旧摘要和大小；非 storekey 的历史 OSS key 等标识不计算哈希或大小，两列均为空。`file_name` 由客户端传入，服务端只保存文件名部分，不保存客户端本机目录。删除标签时，在同一 PostgreSQL 事务中从该用户的灵感图 `tag_ids` 中移除对应业务 UUID，再删除标签记录。删除灵感图采用物理删除；V1 不引入软删除字段。
+创建或更新灵感图时，服务端一次性检查所有 `tag_ids` 是否存在且属于当前用户；任一标签不合法则整次请求失败。`image_key` 传入本服务格式的 `storekey` 时，服务端读取其内容；超过 1 MB 的静态图片会压缩后原位覆盖，不生成新 key，再根据最终存储字节计算 SHA-256 和文件大小。`file_size` 以字节为单位，表示压缩覆盖完成后的实际大小；小于或等于压缩目标的文件记录其原始字节数。更新 `image_key` 时重新处理并覆盖旧摘要和大小；非 storekey 的历史 OSS key 等标识不计算哈希或大小，两列均为空。客户端在新建或换图 PATCH 中可传顶层 `image_metadata`；Web 先用 `exifr` 尝试解析原始 File，并提交 `File.size` 和 `File.lastModified`，不保存设备路径、文件系统创建时间或访问时间。后台任务在压缩前优先从 `data.source_image_key` 读取原图，用固定参数调用标准输入模式的 ExifTool；原图 key 不可读时回退读取当前 `image_key`。服务端值覆盖冲突的已知字段，未识别值保留浏览器结果；解析失败不影响压缩，元数据更新受 `image_key` 与 `async_version` 双重条件保护，且并发写入只覆盖服务端成功读取的字段。`image_metadata_extra` 超过 1 MiB 时按稳定顺序舍弃超限的扩展标签但保留已知字段；ExifTool 的本机文件时间、权限和路径标签会过滤。详情/创建/更新响应包含完整属性，列表省略属性对象。GPS 和设备序列号仅存于鉴权的私有灵感图记录，不进入日志或通知。历史记录不回填，迁移为 `000016_add_inspiration_image_metadata.sql`。`file_name` 由客户端传入，服务端只保存文件名部分，不保存客户端本机目录。删除标签时，在同一 PostgreSQL 事务中从该用户的灵感图 `tag_ids` 中移除对应业务 UUID，再删除标签记录。删除灵感图采用物理删除；V1 不引入软删除字段。
 
 ### 3.5 `feedbacks` 反馈表
 
@@ -163,7 +165,7 @@ GORM 关联迁移默认可能创建外键；配置 `DisableForeignKeyConstraintW
 | `POST /auth/refresh` | 否（请求体带 RT） | `refresh_token`；原子轮换 | 新 token pair |
 | `POST /auth/logout` | AT | 撤销当前会话 | `204` |
 | `GET /healthz` | 否 | 检查 PostgreSQL 和 Redis 连通性 | `data.status` 与当前服务 `data.version` |
-| `GET /configs/public` | 否 | 可重复传 `keys` 筛选；只查询 `is_public=true AND is_secret=false` | `items` 中仅包含 `key`、`value` |
+| `GET /configs/public` | 否 | 可重复传 `keys` 筛选；只查询 `is_public=true` | `items` 中仅包含 `key`、`value` |
 | `POST /feedback` | 可选 AT | multipart：`content`，重复的 `images` 文件字段；允许游客 | `received: true` |
 | `GET /public-feedback-images/{storekey}` | 否 | 仅接受带反馈公共标记的图片 key | 实际图片二进制流 |
 | `GET /users/me` | AT | 无 | 当前用户 `business_id`、昵称、手机号、头像 key、`is_admin` 和时间字段 |
@@ -174,9 +176,9 @@ GORM 关联迁移默认可能创建外键；配置 `DisableForeignKeyConstraintW
 | `PATCH /tags/{business_id}` | AT | `content` | 更新后的标签 |
 | `DELETE /tags/{business_id}` | AT | 删除标签并清理灵感图引用 | `204` |
 | `GET /inspirations` | AT | 分页参数、可选文件名关键字 `q`、可重复传 `tag_ids` 和 `tag_match=any\|all`、`sort` | 当前用户灵感图列表 |
-| `POST /inspirations` | AT | `tag_ids`, `image_key`, 可选 `file_name`, `data` | 新建灵感图及其业务 UUID、文件元数据 |
+| `POST /inspirations` | AT | `tag_ids`, `image_key`, 可选 `file_name`, `data`, `image_metadata` | 新建灵感图及其业务 UUID、文件与图片属性 |
 | `GET /inspirations/{business_id}` | AT | 路径业务 UUID | 灵感图详情 |
-| `PATCH /inspirations/{business_id}` | AT | 可选 `tag_ids`, `image_key`, `file_name`, `data` | 更新后的灵感图及文件元数据 |
+| `PATCH /inspirations/{business_id}` | AT | 可选 `tag_ids`, `image_key`, `file_name`, `data`, `image_metadata` | 更新后的灵感图及文件与图片属性 |
 | `DELETE /inspirations/{business_id}` | AT | 路径业务 UUID | `204` |
 | `POST /files` | AT | multipart/form-data，单个文件字段 `file` | `storekey` |
 | `GET /files/{storekey}` | AT | 根据 key 中的存储类型读取文件 | 二进制文件流 |
@@ -199,13 +201,14 @@ GORM 关联迁移默认可能创建外键；配置 `DisableForeignKeyConstraintW
 | `PATCH /atelier-7f3c9a2e/feedbacks/{business_id}/status` | `{ "status": "new"\|"processed" }` | 更新后的处理状态 |
 
 首位管理员由运维在上线时按 `backend/migrations/ops/20261016_first_console_operator.sql` 模板指定已注册账号；模板不包含真实手机号。配置只支持查看、新增和编辑，不提供删除；全站灵感图只读；反馈仅可查看并标记处理状态。
+
 上传成功返回 `{ "data": { "storekey": "local_yyyymmdd_uuid.ext" }, "request_id": "..." }`。修改 `files.active_store_type` 后，后续上传无需重启即可采用新值；`files.max_upload_bytes` 和 `files.local_root` 在启动时加载，修改后需重启服务生效。
 
 JSON 请求和响应使用 UTF-8；日期时间以 RFC 3339 格式返回。创建请求不得传 `id`、`business_id`、`user_id` 或时间字段，这些由服务端生成或从 token 得出。更新请求只修改列出的字段，未提供字段保持原值；`tag_ids: []` 表示清空所有标签。响应对象不得包含自增 `id`、`password` 或 `password_hash`。文件下载返回原始二进制流，不使用 JSON 封套。
 
-健康检查成功时返回 `{"data":{"status":"ok","version":"2.4.0"},"request_id":"..."}`。版本号来自 `backend/internal/version/version.go`，后端代码、接口、配置、数据库迁移或构建配置的每个改动批次都需按 `AGENTS.md` 递增。
+健康检查成功时返回 `{"data":{"status":"ok","version":"2.6.0"},"request_id":"..."}`。版本号来自 `backend/internal/version/version.go`，后端代码、接口、配置、数据库迁移或构建配置的每个改动批次都需按 `AGENTS.md` 递增。
 
-当前已部署契约为后端 2.4.0；此处较早的 V1 设计描述已由后续规则替代。注册仅使用 `POST /api/v2/auth/register` multipart，手机号为 11 位数字、密码为 8 至 128 个字符、昵称最多 64 个字符且头像必传；旧 `POST /api/v1/auth/register` 返回 `426 upgrade_required`。登录只接受 11 位数字，兼容旧客户端输入的 `+86` 加 11 位号码并映射到数据库中的 11 位值；手机号不存在和密码错误继续使用相同的 `401` 语义。
+当前已部署契约为后端 2.6.0；此处较早的 V1 设计描述已由后续规则替代。注册仅使用 `POST /api/v2/auth/register` multipart，手机号为 11 位数字、密码为 8 至 128 个字符、昵称最多 64 个字符且头像必传；旧 `POST /api/v1/auth/register` 返回 `426 upgrade_required`。登录只接受 11 位数字，兼容旧客户端输入的 `+86` 加 11 位号码并映射到数据库中的 11 位值；手机号不存在和密码错误继续使用相同的 `401` 语义。
 
 反馈正文最多 2000 个 Unicode 字符，最多 5 张图片，至少提交正文或一张图片；单图受 `files.max_upload_bytes` 限制。每个客户端 IP 每小时最多提交 5 次。IP 仅从配置的可信代理链解析，Redis 键保存 IP 摘要。反馈图片 storekey 与正文写入 `feedbacks`，反馈内容不写入日志。新迁移 `000013_feedback_notifications.sql` 建立持久化通知任务并为 webhook 投递增加分段序号；长正文按安全字节上限拆分，UTF-8 字符和图片引用保持完整，每段独立显示投递状态并可单独重试。通知开关默认关闭，不接入短信；启用时使用独立 `feedback.admin_phone` 查找现有账户。飞书的 Markdown 文本组件不把标准 `![...](URL)` 语法作为原生图片；当私有配置 `feedback.feishu_app_id` 和 `feedback.feishu_app_secret` 均已设置时，后台用启用机器人能力且具有图片资源上传权限的自建应用上传反馈图片，再以自定义机器人 `post` 富文本的 `img` 节点投递。没有凭证时发送可点击公共图片链接。凭证由 `000014_seed_feishu_feedback_image_upload.sql` 增加，缺失不影响反馈保存和原有链接通知。
 
@@ -239,7 +242,7 @@ JSON 请求和响应使用 UTF-8；日期时间以 RFC 3339 格式返回。创�
 
 标签创建和更新请求为 `{ "content": "标签内容" }`，内容最多 64 个字符。标签响应为 `{ "business_id": "uuid", "content": "...", "created_at": "...", "updated_at": "..." }`。标签列表的 `data` 为 `{ "items": [...], "page": 1, "page_size": 20, "total": 0 }`。
 
-灵感图创建请求示例：`{ "tag_ids": ["uuid"], "image_key": "local_yyyymmdd_uuid.ext", "file_name": "原始文件名.png", "data": { "schema_version": 1 } }`。`image_key` 为上传接口返回的 storekey 时，后端读取文件；大于 1 MB 的静态图片会原位覆盖压缩后的内容，不改变 storekey，并根据最终字节计算 `file_hash` 和 `file_size`。`file_size` 是压缩后实际存储的字节数，不接受客户端设置；创建和显式更新 `image_key` 都会重新计算。压缩不透明图片会输出 JPEG，带透明像素的图片会输出 PNG；动画 GIF/WebP 大于目标大小时拒绝保存；下载以实际内容而不是 storekey 扩展名设置 MIME 类型。`file_name` 可选，缺省为空字符串，最多 255 个字符。`data` 必须是 JSON 对象并带正整数 `schema_version`；其他编辑数据字段由编辑器文档版本定义并原样保存。灵感图响应对象包含 `business_id`、`tag_ids`、`image_key`、`file_name`、`file_hash`、`file_size`、`data`、`created_at`、`updated_at`。列表使用同一分页结构。
+灵感图创建请求示例：`{ "tag_ids": ["uuid"], "image_key": "local_yyyymmdd_uuid.ext", "file_name": "原始文件名.png", "data": { "schema_version": 1, "source_image_key": "local_yyyymmdd_original.ext" }, "image_metadata": { "source_file_size": 123456, "source_last_modified_at": "2026-04-15T01:06:00Z", "extra": {} } }`。`image_metadata` 中已知字段可空且数值单位固定，`source_file_size` 表示原图字节数，不接受后端压缩结果覆盖。`image_key` 为上传接口返回的 storekey 时，后端读取文件；大于 1 MB 的静态图片会原位覆盖压缩后的内容，不改变 storekey，并根据最终字节计算 `file_hash` 和 `file_size`。`file_size` 是压缩后实际存储的字节数，不接受客户端设置；创建和显式更新 `image_key` 都会重新计算。压缩不透明图片会输出 JPEG，带透明像素的图片会输出 PNG；动画 GIF/WebP 大于目标大小时拒绝保存；下载以实际内容而不是 storekey 扩展名设置 MIME 类型。`file_name` 可选，缺省为空字符串，最多 255 个字符。`data` 必须是 JSON 对象并带正整数 `schema_version`；其他编辑数据字段由编辑器文档版本定义并原样保存。详情/创建/更新响应对象包含 `image_metadata`，列表响应为节省负载省略该字段；各已知属性键参见 `backend/migrations/000016_add_inspiration_image_metadata.sql`。灵感图响应仍包含 `business_id`、`tag_ids`、`image_key`、`file_name`、`file_hash`、`file_size`、`data`、`created_at`、`updated_at`。列表使用同一分页结构。
 
 标签检索 `tag_match` 默认 `any`：命中任一指定标签；`all`：必须同时包含所有指定标签；不传 `tag_ids` 时不按标签过滤。`tag_ids` 以重复 query 参数传入，例如 `?tag_ids=uuid1&tag_ids=uuid2&tag_match=all`。用户归属从 token 得出；访问其他用户的资源统一返回 `404`。列表对象和详情对象都只返回业务 UUID，不返回自增 `id`。
 

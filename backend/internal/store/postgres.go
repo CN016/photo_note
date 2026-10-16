@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"errors"
+	"reflect"
 	"strings"
 	"time"
 
@@ -307,6 +308,36 @@ func (store *PostgresStore) UpdateInspirationFileMetadataIfVersion(ctx context.C
 	result := store.db.WithContext(ctx).Model(&model.Inspiration{}).
 		Where("user_id = ? AND business_id = ? AND image_key = ? AND async_version = ?", userID, inspirationID, imageKey, asyncVersion).
 		Updates(map[string]any{"file_hash": fileHash, "file_size": fileSize, "updated_at": time.Now().UTC()})
+	if result.Error != nil {
+		return false, persistenceError(result.Error)
+	}
+	return result.RowsAffected > 0, nil
+}
+
+// UpdateInspirationImageMetadataIfVersion 在图片 key 和异步代次匹配时仅覆盖服务端已读到的非空值，并原子合并扩展标签。
+func (store *PostgresStore) UpdateInspirationImageMetadataIfVersion(ctx context.Context, userID, inspirationID uuid.UUID, imageKey string, asyncVersion int64, metadata model.InspirationImageMetadata) (bool, error) {
+	updates := make(map[string]any)
+	for column, value := range metadata.DatabaseColumns() {
+		if column == "image_metadata_extra" {
+			extra := metadata.Extra
+			if len(extra) > 2 {
+				updates[column] = gorm.Expr("COALESCE(image_metadata_extra, '{}'::jsonb) || ?::jsonb", string(extra))
+			}
+			continue
+		}
+		reflected := reflect.ValueOf(value)
+		if reflected.IsValid() && (reflected.Kind() == reflect.Pointer || reflected.Kind() == reflect.Slice || reflected.Kind() == reflect.Map) && reflected.IsNil() {
+			continue
+		}
+		updates[column] = value
+	}
+	if len(updates) == 0 {
+		return false, nil
+	}
+	updates["updated_at"] = time.Now().UTC()
+	result := store.db.WithContext(ctx).Model(&model.Inspiration{}).
+		Where("user_id = ? AND business_id = ? AND image_key = ? AND async_version = ?", userID, inspirationID, imageKey, asyncVersion).
+		Updates(updates)
 	if result.Error != nil {
 		return false, persistenceError(result.Error)
 	}

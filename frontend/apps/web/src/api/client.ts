@@ -1,4 +1,4 @@
-import { ApiError, type ApiEnvelope, type ApiErrorEnvelope, type AuthResponse, type ConsoleConfigRecord, type ConsoleFeedbackRecord, type ConsoleInspirationRecord, type ConsoleUserRecord, type InspirationRecord, type LedgerFields, type LedgerImportItem, type LedgerImportResult, type LedgerRecord, type NoticeConfig, type NoticeConfigList, type NoticeDelivery, type NotificationPage, type PageResult, type ScheduleBooking, type ScheduleBookingReceipt, type ScheduleFields, type ScheduleOccurrence, type SchedulePublicSlot, type ScheduleShare, type TagRecord, type TokenPair, type UserProfile } from './types'
+import { ApiError, type ApiEnvelope, type ApiErrorEnvelope, type AuthResponse, type ConsoleConfigRecord, type ConsoleFeedbackRecord, type ConsoleInspirationRecord, type ConsoleUserRecord, type InspirationImageMetadata, type InspirationRecord, type LedgerFields, type LedgerImportItem, type LedgerImportResult, type LedgerRecord, type NoticeConfig, type NoticeConfigList, type NoticeDelivery, type NotificationPage, type PageResult, type ScheduleBooking, type ScheduleBookingReceipt, type ScheduleFields, type ScheduleOccurrence, type SchedulePublicSlot, type ScheduleShare, type TagRecord, type TokenPair, type UserProfile } from './types'
 import { API_REQUEST_ORIGIN } from './config'
 
 /** V1 业务路由统一加版本前缀；环境变量只提供服务主机。 */
@@ -300,12 +300,13 @@ export const api = {
   /** 游客提交姓名、电话、备注和具体开放发生项。 */
   requestScheduleBooking(token: string, input: { schedule_id: string; start_at: string; name: string; phone: string; note: string }) { return request<ScheduleBookingReceipt>(`/book/${encodeURIComponent(token)}/requests`, { method: 'POST', body: JSON.stringify(input) }, false) },
   /** 创建灵感图；image_key 指向服务端可能压缩的工作副本。 */
-  createInspiration(imageKey: string, filename: string, data: Record<string, unknown>) {
-    return request<InspirationRecord>('/inspirations', { method: 'POST', body: JSON.stringify({ image_key: imageKey, file_name: filename, data }) })
+  createInspiration(imageKey: string, filename: string, data: Record<string, unknown>, imageMetadata: InspirationImageMetadata) {
+    return request<InspirationRecord>('/inspirations', { method: 'POST', body: JSON.stringify({ image_key: imageKey, file_name: filename, data, image_metadata: imageMetadata }) })
   },
   /** 已有灵感图只更新 data，不触发后端对源文件的原位压缩。 */
-  updateInspiration(id: string, data: Record<string, unknown>) {
-    return request<InspirationRecord>(`/inspirations/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify({ data }) })
+  updateInspiration(id: string, data: Record<string, unknown>, imageMetadata?: InspirationImageMetadata) {
+    const body = imageMetadata ? { data, image_metadata: imageMetadata } : { data }
+    return request<InspirationRecord>(`/inspirations/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify(body) })
   },
 }
 

@@ -49,9 +49,72 @@ export interface InspirationRecord {
   file_hash: string | null
   /** 后端压缩后编辑副本的实际字节数；旧服务或历史记录可能未返回。 */
   file_size?: number | null
+  /** 图片属性仅在创建、详情和更新响应中返回；列表为减小负载会省略。 */
+  image_metadata?: InspirationImageMetadata
   data: Record<string, unknown>
   created_at: string
   updated_at: string
+}
+
+/** 从原图读取的标准属性；extra 保留带命名空间且通过大小限制的其他标签。 */
+export interface InspirationImageMetadata {
+  image_id?: string
+  source_file_size?: number
+  source_last_modified_at?: string
+  image_width?: number
+  image_height?: number
+  horizontal_resolution_dpi?: number
+  vertical_resolution_dpi?: number
+  bit_depth?: number
+  color_space?: string
+  compression?: string
+  title?: string
+  subject?: string
+  rating?: number
+  tags?: string[]
+  author?: string
+  comments?: string
+  copyright?: string
+  software?: string
+  date_acquired?: string
+  date_time_original?: string
+  date_time_digitized?: string
+  camera_make?: string
+  camera_model?: string
+  camera_serial_number?: string
+  lens_make?: string
+  lens_model?: string
+  lens_serial_number?: string
+  flash_make?: string
+  flash_model?: string
+  flash_serial_number?: string
+  aperture_f_number?: number
+  maximum_aperture_f_number?: number
+  exposure_time_seconds?: number
+  iso_speed?: number
+  exposure_compensation_ev?: number
+  exposure_program?: string
+  flash_fired?: boolean
+  flash_mode?: string
+  flash_energy_bcps?: number
+  focal_length_mm?: number
+  focal_length_35mm_mm?: number
+  subject_distance_m?: number
+  metering_mode?: string
+  light_source?: string
+  white_balance?: string
+  contrast?: string
+  brightness_ev?: number
+  saturation?: string
+  sharpness?: string
+  digital_zoom_ratio?: number
+  compression_bits_per_pixel?: number
+  exif_version?: string
+  gps_latitude?: number
+  gps_longitude?: number
+  gps_altitude_m?: number
+  gps_timestamp?: string
+  extra: Record<string, unknown>
 }
 
 export interface PageResult<T> {

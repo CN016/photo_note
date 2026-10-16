@@ -34,6 +34,7 @@ type InspirationRepository interface {
 	UpdateInspiration(context.Context, uuid.UUID, uuid.UUID, map[string]any) (model.Inspiration, error)
 	UpdateInspirationWithAsyncVersion(context.Context, uuid.UUID, uuid.UUID, map[string]any) (model.Inspiration, error)
 	UpdateInspirationFileMetadataIfVersion(context.Context, uuid.UUID, uuid.UUID, string, int64, *string, *int64) (bool, error)
+	UpdateInspirationImageMetadataIfVersion(context.Context, uuid.UUID, uuid.UUID, string, int64, model.InspirationImageMetadata) (bool, error)
 	DeleteInspiration(context.Context, uuid.UUID, uuid.UUID) error
 }
 
@@ -50,6 +51,7 @@ type InspirationService struct {
 	errorLogs          *ErrorLogService
 	compressionNotices InspirationCompressionNotifier
 	maxImageBytes      int64
+	readImageMetadata  func(context.Context, []byte) (model.InspirationImageMetadata, error)
 	fileLocks          storeKeyLocks
 	compressionMutex   sync.Mutex
 	compressionCond    *sync.Cond
@@ -116,7 +118,8 @@ func (locks *storeKeyLocks) acquire(storekey string) func() {
 
 // NewInspirationService 注入数据库和文件存储，并启动固定并发的后台图片处理工作线程。
 func NewInspirationService(inspirations InspirationRepository, files InspirationFileStore, maxImageBytes int64) *InspirationService {
-	service := &InspirationService{inspirations: inspirations, files: files, maxImageBytes: maxImageBytes}
+	service := &InspirationService{inspirations: inspirations, files: files, maxImageBytes: maxImageBytes,
+		readImageMetadata: ReadExifToolMetadata}
 	service.compressionCond = sync.NewCond(&service.compressionMutex)
 	for worker := 0; worker < inspirationCompressionWorkers; worker++ {
 		go service.runCompressionWorker()
@@ -136,10 +139,11 @@ func (service *InspirationService) SetCompressionNotifier(notifier InspirationCo
 
 // InspirationInput 是创建或局部更新时已解析的业务数据，不包含 user_id 或数据库 id。
 type InspirationInput struct {
-	TagIDs   []uuid.UUID
-	ImageKey string
-	FileName string
-	Data     json.RawMessage
+	TagIDs        []uuid.UUID
+	ImageKey      string
+	FileName      string
+	Data          json.RawMessage
+	ImageMetadata model.InspirationImageMetadata
 }
 
 // inspirationFileMetadata 描述 storekey 文件压缩完成后按最终实际字节计算的元数据。
@@ -203,14 +207,15 @@ func (service *InspirationService) Create(ctx context.Context, userID uuid.UUID,
 		return model.Inspiration{}, err
 	}
 	inspiration := model.Inspiration{
-		BaseModel: model.BaseModel{BusinessID: uuid.New()},
-		UserID:    userID,
-		TagIDs:    uuidStrings(input.TagIDs),
-		ImageKey:  input.ImageKey,
-		FileName:  fileName,
-		FileHash:  nil,
-		FileSize:  nil,
-		Data:      model.JSONB(append([]byte(nil), input.Data...)),
+		BaseModel:     model.BaseModel{BusinessID: uuid.New()},
+		UserID:        userID,
+		TagIDs:        uuidStrings(input.TagIDs),
+		ImageKey:      input.ImageKey,
+		FileName:      fileName,
+		FileHash:      nil,
+		FileSize:      nil,
+		ImageMetadata: NormalizeImageMetadata(input.ImageMetadata),
+		Data:          model.JSONB(append([]byte(nil), input.Data...)),
 	}
 	if err := service.inspirations.CreateInspiration(ctx, &inspiration); err != nil {
 		return model.Inspiration{}, err
@@ -228,9 +233,10 @@ func (service *InspirationService) Get(ctx context.Context, userID, inspirationI
 }
 
 // Update 保留未提交字段；提交有效 storekey 时先递增异步代次并保存记录，再排队处理图片。
-func (service *InspirationService) Update(ctx context.Context, userID, inspirationID uuid.UUID, input InspirationInput, tagIDsSet, imageKeySet, fileNameSet, dataSet bool) (model.Inspiration, error) {
-	updates := make(map[string]any, 5)
+func (service *InspirationService) Update(ctx context.Context, userID, inspirationID uuid.UUID, input InspirationInput, tagIDsSet, imageKeySet, fileNameSet, dataSet, imageMetadataSet bool) (model.Inspiration, error) {
+	updates := make(map[string]any, 8)
 	storeKeyImage := false
+	var existing model.Inspiration
 	if imageKeySet {
 		input.ImageKey = strings.TrimSpace(input.ImageKey)
 		if input.ImageKey == "" {
@@ -242,7 +248,7 @@ func (service *InspirationService) Update(ctx context.Context, userID, inspirati
 		}
 		storeKeyImage = validStoreKey
 		// 先确认更新目标存在，避免无效 business_id 也触发对 storekey 文件的覆盖。
-		if _, err := service.inspirations.FindInspirationByBusinessID(ctx, userID, inspirationID); err != nil {
+		if existing, err = service.inspirations.FindInspirationByBusinessID(ctx, userID, inspirationID); err != nil {
 			return model.Inspiration{}, err
 		}
 	}
@@ -265,15 +271,36 @@ func (service *InspirationService) Update(ctx context.Context, userID, inspirati
 			return model.Inspiration{}, err
 		}
 		updates["data"] = model.JSONB(append([]byte(nil), input.Data...))
+	} else if imageKeySet {
+		// 缺少该次换图的 source_image_key 时，清除旧原图引用并让后台安全回退到新工作图。
+		var document map[string]json.RawMessage
+		if json.Unmarshal(existing.Data, &document) == nil && document != nil {
+			delete(document, "source_image_key")
+			if encoded, err := json.Marshal(document); err == nil {
+				updates["data"] = model.JSONB(encoded)
+			}
+		}
 	}
 	if imageKeySet {
 		updates["image_key"] = input.ImageKey
 		// 新图片尚未处理完成时清空旧文件元数据，避免把旧图的哈希或大小返回给前端。
 		updates["file_hash"] = nil
 		updates["file_size"] = nil
+		// 换图时重置旧图属性，再合入该次请求刚从原始文件读取的客户端属性。
+		metadata := model.InspirationImageMetadata{}
+		if imageMetadataSet {
+			metadata = NormalizeImageMetadata(input.ImageMetadata)
+		}
+		for column, value := range metadata.DatabaseColumns() {
+			updates[column] = value
+		}
+	} else if imageMetadataSet {
+		for column, value := range NormalizeImageMetadata(input.ImageMetadata).DatabaseColumns() {
+			updates[column] = value
+		}
 	}
 	if len(updates) == 0 {
-		return model.Inspiration{}, fault.InvalidRequest("至少提供 tag_ids、image_key、file_name 或 data 中的一个字段")
+		return model.Inspiration{}, fault.InvalidRequest("至少提供 tag_ids、image_key、file_name、data 或 image_metadata 中的一个字段")
 	}
 	if storeKeyImage {
 		updated, err := service.inspirations.UpdateInspirationWithAsyncVersion(ctx, userID, inspirationID, updates)
@@ -425,6 +452,7 @@ func (service *InspirationService) processCompressionJob(job inspirationCompress
 	if current.ImageKey != job.imageKey || current.AsyncVersion != job.asyncVersion {
 		return nil
 	}
+	service.extractAndSaveOriginalMetadata(ctx, job, current)
 
 	compressed, err := service.compressStoreKeyContent(ctx, job.imageKey)
 	if err != nil {
@@ -455,6 +483,65 @@ func (service *InspirationService) processCompressionJob(job inspirationCompress
 		service.publishCompressionNotice(job, true)
 	}
 	return nil
+}
+
+// extractAndSaveOriginalMetadata 在压缩前从原图提取属性；任何读取或解析故障都只跳过属性补充，不阻断压缩。
+func (service *InspirationService) extractAndSaveOriginalMetadata(ctx context.Context, job inspirationCompressionJob, current model.Inspiration) {
+	if service.files == nil {
+		return
+	}
+	var document struct {
+		SourceImageKey string `json:"source_image_key"`
+	}
+	_ = json.Unmarshal(current.Data, &document)
+	keys := make([]string, 0, 2)
+	if document.SourceImageKey != "" {
+		keys = append(keys, document.SourceImageKey)
+	}
+	if len(keys) == 0 || keys[0] != job.imageKey {
+		keys = append(keys, job.imageKey)
+	}
+	for _, key := range keys {
+		if _, err := filestore.ParseKey(key); err != nil {
+			continue
+		}
+		reader, size, _, err := service.files.Open(key)
+		if err != nil || reader == nil {
+			if reader != nil {
+				_ = reader.Close()
+			}
+			continue
+		}
+		if size > service.maxImageBytes {
+			_ = reader.Close()
+			continue
+		}
+		content, readErr := io.ReadAll(io.LimitReader(reader, service.maxImageBytes+1))
+		_ = reader.Close()
+		if readErr != nil || int64(len(content)) > service.maxImageBytes {
+			continue
+		}
+		metadataReader := service.readImageMetadata
+		if metadataReader == nil {
+			metadataReader = ReadExifToolMetadata
+		}
+		serverMetadata := model.InspirationImageMetadata{}
+		if size >= 0 {
+			serverSize := size
+			serverMetadata.SourceFileSize = &serverSize
+		}
+		parsedMetadata, parseErr := metadataReader(ctx, content)
+		if parseErr == nil {
+			serverMetadata = MergeInspirationImageMetadata(serverMetadata, parsedMetadata)
+		}
+		serverMetadata = NormalizeImageMetadata(serverMetadata)
+		updated, err := service.inspirations.UpdateInspirationImageMetadataIfVersion(ctx, job.userID, job.inspirationID,
+			job.imageKey, job.asyncVersion, serverMetadata)
+		if err != nil || !updated {
+			return
+		}
+		return
+	}
 }
 
 // publishCompressionNotice 在后台有限重试创建终态通知；通知存储短暂不可用时不把成功压缩误报成失败。

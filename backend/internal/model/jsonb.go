@@ -45,3 +45,12 @@ func (value JSONB) MarshalJSON() ([]byte, error) {
 	}
 	return value, nil
 }
+
+// UnmarshalJSON 保留 API 中嵌套 JSON 对象的原始字节，避免 []byte 默认要求 Base64 字符串。
+func (value *JSONB) UnmarshalJSON(input []byte) error {
+	if !json.Valid(input) {
+		return fmt.Errorf("JSONB 内容不是有效 JSON")
+	}
+	*value = append((*value)[:0], input...)
+	return nil
+}

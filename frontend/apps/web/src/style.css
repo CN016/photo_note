@@ -273,6 +273,15 @@ button.image-anchor:hover .image-anchor-label { background: rgb(20 22 23 / 64%);
 .color-metrics > div { display: grid; gap: 5px; padding: 10px; border-radius: 4px; background: var(--surface-soft); }
 .color-metrics dt { color: var(--muted); font-size: 9px; }
 .color-metrics dd { margin: 0; color: var(--ink); font-size: 13px; font-weight: 700; }
+.metadata-group { padding-top: 12px; }
+.metadata-group h3 { margin: 0 0 8px; color: var(--muted); font-size: 11px; font-weight: 700; }
+.image-metadata-list { display: grid; gap: 7px; margin: 0; }
+.image-metadata-list > div { display: grid; grid-template-columns: minmax(112px, .75fr) minmax(0, 1fr); gap: 10px; align-items: start; }
+.image-metadata-list dt { color: var(--muted); font-size: 11px; }
+.image-metadata-list dd { margin: 0; color: var(--ink); font-size: 12px; overflow-wrap: anywhere; }
+.metadata-extra { margin-top: 12px; color: var(--muted); font-size: 11px; }
+.metadata-extra summary { cursor: pointer; user-select: none; }
+.metadata-extra .image-metadata-list { margin-top: 10px; }
 .profile-retry-row { display: flex; justify-content: flex-start; margin-top: 5px; }
 .detail-note-list { display: grid; gap: 8px; margin: 0; padding: 0; list-style: none; }
 .detail-note-list li { display: grid; grid-template-columns: calc(var(--anchor-index-size, 21px) + 1px) minmax(0, 1fr); align-items: start; gap: 8px; color: var(--ink-soft); font-size: var(--anchor-note-font-size, 11px); line-height: 1.5; }

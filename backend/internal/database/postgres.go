@@ -123,6 +123,9 @@ func checkSchema(ctx context.Context, connection *gorm.DB) error {
 			if !migrator.HasColumn(table, "AsyncVersion") {
 				return fmt.Errorf("PostgreSQL schema 缺少 inspirations.async_version，请先执行 backend/migrations/000007_add_inspiration_async_version.sql")
 			}
+			if !migrator.HasColumn(table, "image_metadata_extra") {
+				return fmt.Errorf("PostgreSQL schema 缺少灵感图图片属性列，请先执行 backend/migrations/000016_add_inspiration_image_metadata.sql")
+			}
 		}
 		if name == "notice_deliveries" {
 			migrator := connection.WithContext(ctx).Migrator()

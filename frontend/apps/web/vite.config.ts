@@ -20,6 +20,7 @@ export default defineConfig(({ mode }) => {
     ],
     resolve: {
       alias: [
+        { find: /^exifr$/, replacement: fileURLToPath(new URL('./node_modules/exifr/dist/full.esm.mjs', import.meta.url)) },
         { find: /^@su-engineering\/heic\/wasm$/, replacement: fileURLToPath(new URL('wasm.js', heicPackage)) },
         { find: /^@su-engineering\/heic$/, replacement: fileURLToPath(new URL('index.js', heicPackage)) },
       ],

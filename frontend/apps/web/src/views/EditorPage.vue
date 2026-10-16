@@ -6,7 +6,7 @@ import { ElMessageBox, type UploadFile } from 'element-plus'
 import { ArrowLeft, ArrowRight, Check, Close, Crop, FullScreen, Lock, Plus, Picture, RefreshLeft, RefreshRight, UploadFilled } from '@element-plus/icons-vue'
 import AppHeader from '../components/AppHeader.vue'
 import { api } from '../api/client'
-import { ApiError, type InspirationRecord } from '../api/types'
+import { ApiError, type InspirationImageMetadata, type InspirationRecord } from '../api/types'
 import { useAnchorDisplayStore } from '../stores/anchorDisplay'
 import {
   anchorToView, createEditorDocument, cropOnRotatedCanvas, DocumentHistory, parseEditorDocument, viewSelectionToSourceRect,
@@ -14,7 +14,7 @@ import {
 } from '../../../../packages/editor-core/src'
 import {
   analyzeImageColors, decodeImagePreview, isColorAnalysis, makeWorkingJpeg, releaseCanvas, renderDocumentPreview,
-  type ColorAnalysis,
+  readInspirationImageMetadata, type ColorAnalysis,
 } from '../../../../packages/image-processing/src'
 
 type TransformAction = 'rotate' | 'crop' | 'reset'
@@ -36,6 +36,7 @@ const previewCanvas = ref<HTMLCanvasElement | null>(null)
 const stageBox = ref<HTMLElement | null>(null)
 const record = shallowRef<InspirationRecord | null>(null)
 const imageFile = shallowRef<File | null>(null)
+const imageMetadata = shallowRef<InspirationImageMetadata | null>(null)
 const filename = ref('')
 const imageReady = ref(false)
 const downsampled = ref(false)
@@ -66,6 +67,71 @@ let resizeObserver: ResizeObserver | null = null
 let selectionStart: { x: number; y: number } | null = null
 let colorWritePromise: Promise<void> | null = null
 let suppressAnchorClick = false
+
+/** 详情页只展示已采集到的属性；元数据中的空值不会占据面板空间。 */
+const imageMetadataSections = computed(() => {
+  const metadata = record.value?.image_metadata
+  if (!metadata) return []
+  const sections = [
+    { title: t('editor.metadataImageGroup'), fields: [
+      ['image_id', 'editor.metadataImageId'], ['source_file_size', 'editor.metadataSourceFileSize'],
+      ['source_last_modified_at', 'editor.metadataSourceLastModified'], ['image_width', 'editor.metadataWidth'],
+      ['image_height', 'editor.metadataHeight'], ['horizontal_resolution_dpi', 'editor.metadataHorizontalResolution'],
+      ['vertical_resolution_dpi', 'editor.metadataVerticalResolution'], ['bit_depth', 'editor.metadataBitDepth'],
+      ['color_space', 'editor.metadataColorSpace'], ['compression', 'editor.metadataCompression'],
+    ] },
+    { title: t('editor.metadataDescriptionGroup'), fields: [
+      ['title', 'editor.metadataTitle'], ['subject', 'editor.metadataSubject'], ['rating', 'editor.metadataRating'],
+      ['tags', 'editor.metadataTags'], ['author', 'editor.metadataAuthor'], ['comments', 'editor.metadataComments'],
+      ['copyright', 'editor.metadataCopyright'], ['software', 'editor.metadataSoftware'], ['date_acquired', 'editor.metadataDateAcquired'],
+    ] },
+    { title: t('editor.metadataCameraGroup'), fields: [
+      ['camera_make', 'editor.metadataCameraMake'], ['camera_model', 'editor.metadataCameraModel'], ['camera_serial_number', 'editor.metadataCameraSerial'],
+      ['date_time_original', 'editor.metadataDateTimeOriginal'], ['date_time_digitized', 'editor.metadataDateTimeDigitized'],
+    ] },
+    { title: t('editor.metadataLensGroup'), fields: [
+      ['lens_make', 'editor.metadataLensMake'], ['lens_model', 'editor.metadataLensModel'], ['lens_serial_number', 'editor.metadataLensSerial'],
+      ['flash_make', 'editor.metadataFlashMake'], ['flash_model', 'editor.metadataFlashModel'], ['flash_serial_number', 'editor.metadataFlashSerial'],
+      ['aperture_f_number', 'editor.metadataAperture'], ['maximum_aperture_f_number', 'editor.metadataMaximumAperture'], ['exposure_time_seconds', 'editor.metadataExposureTime'],
+      ['iso_speed', 'editor.metadataIso'], ['exposure_compensation_ev', 'editor.metadataExposureCompensation'],
+      ['exposure_program', 'editor.metadataExposureProgram'], ['flash_fired', 'editor.metadataFlashFired'], ['flash_mode', 'editor.metadataFlashMode'],
+      ['flash_energy_bcps', 'editor.metadataFlashEnergy'],
+      ['focal_length_mm', 'editor.metadataFocalLength'], ['focal_length_35mm_mm', 'editor.metadataFocalLength35mm'],
+      ['subject_distance_m', 'editor.metadataSubjectDistance'], ['metering_mode', 'editor.metadataMeteringMode'],
+      ['light_source', 'editor.metadataLightSource'], ['white_balance', 'editor.metadataWhiteBalance'],
+      ['contrast', 'editor.metadataContrast'], ['brightness_ev', 'editor.metadataBrightness'], ['saturation', 'editor.metadataSaturation'],
+      ['sharpness', 'editor.metadataSharpness'], ['digital_zoom_ratio', 'editor.metadataDigitalZoom'],
+      ['compression_bits_per_pixel', 'editor.metadataCompressionBits'], ['exif_version', 'editor.metadataExifVersion'],
+    ] },
+    { title: t('editor.metadataGpsGroup'), fields: [
+      ['gps_latitude', 'editor.metadataGpsLatitude'], ['gps_longitude', 'editor.metadataGpsLongitude'],
+      ['gps_altitude_m', 'editor.metadataGpsAltitude'], ['gps_timestamp', 'editor.metadataGpsTimestamp'],
+    ] },
+  ]
+  return sections.map(section => ({
+    ...section,
+    rows: section.fields.flatMap(([key, label]) => {
+      const value = metadata[key as keyof InspirationImageMetadata]
+      if (value === undefined || value === null || value === '' || (Array.isArray(value) && value.length === 0)) return []
+      return [{ key, label: t(label), value: formatMetadataValue(key, value) }]
+    }),
+  })).filter(section => section.rows.length > 0)
+})
+const imageMetadataExtraEntries = computed(() => Object.entries(record.value?.image_metadata?.extra ?? {})
+  .sort(([left], [right]) => left.localeCompare(right))
+  .map(([key, value]) => ({ key, value: formatMetadataValue(key, value) })))
+const hasImageMetadata = computed(() => imageMetadataSections.value.length > 0 || imageMetadataExtraEntries.value.length > 0)
+
+function formatMetadataValue(key: string, value: unknown): string {
+  if (Array.isArray(value)) return value.map(item => formatMetadataValue(key, item)).join(', ')
+  if (value && typeof value === 'object') return JSON.stringify(value)
+  if (typeof value === 'boolean') return t(value ? 'editor.metadataYes' : 'editor.metadataNo')
+  if (key === 'source_last_modified_at' && typeof value === 'string') {
+    const date = new Date(value)
+    if (Number.isFinite(date.getTime())) return new Intl.DateTimeFormat(locale.value, { dateStyle: 'medium', timeStyle: 'short' }).format(date)
+  }
+  return String(value)
+}
 
 const canUndo = computed(() => { historyRevision.value; return history?.canUndo ?? false })
 const canRedo = computed(() => { historyRevision.value; return history?.canRedo ?? false })
@@ -295,6 +361,7 @@ async function loadSelectedFile(file: File): Promise<void> {
   status.value = ''
   colorAnalysis.value = null
   colorAnalysisError.value = ''
+  imageMetadata.value = null
   imageReady.value = false
   resizeObserver?.disconnect()
   resizeObserver = null
@@ -310,6 +377,8 @@ async function loadSelectedFile(file: File): Promise<void> {
   historyRevision.value += 1
   loading.value = true
   try {
+    imageMetadata.value = await readInspirationImageMetadata(file)
+    if (version !== decodeVersion) return
     const decoded = await decodeImagePreview(file)
     if (version !== decodeVersion) { releaseCanvas(decoded.canvas); return }
     sourceCanvas.value = decoded.canvas
@@ -332,6 +401,7 @@ async function loadExisting(): Promise<void> {
   try {
     const loaded = await api.inspiration(itemId.value)
     record.value = loaded
+    imageMetadata.value = loaded.image_metadata ?? null
     filename.value = loaded.file_name || t('gallery.untitled')
     documentData.value = parseEditorDocument(loaded.data)
     history = new DocumentHistory(documentData.value)
@@ -624,7 +694,10 @@ async function save(): Promise<void> {
       }
       busyPhase.value = t('editor.creatingRecord')
       const data = { ...documentData.value, source_image_key: uploadSourceKey }
-      const created = await api.createInspiration(uploadWorkKey, file.name, data)
+      const created = await api.createInspiration(uploadWorkKey, file.name, data, imageMetadata.value ?? {
+        source_file_size: file.size,
+        extra: {},
+      })
       await router.replace({ name: 'edit-inspiration', params: { id: created.business_id } })
     }
     status.value = t('editor.saved')
@@ -766,6 +839,22 @@ onBeforeUnmount(() => {
             <div v-if="colorAnalysisError" class="profile-retry-row">
               <el-button text :disabled="colorAnalysisSaving || saving" @click="retryColorAnalysis">{{ t('editor.colorAnalysisRetry') }}</el-button>
             </div>
+          </section>
+
+          <section v-if="!isEditing && hasImageMetadata" class="control-section image-metadata-section" :aria-label="t('editor.metadataPanelTitle')">
+            <div class="section-title-row"><h2>{{ t('editor.metadataPanelTitle') }}</h2></div>
+            <div v-for="group in imageMetadataSections" :key="group.title" class="metadata-group">
+              <h3>{{ group.title }}</h3>
+              <dl class="image-metadata-list">
+                <div v-for="row in group.rows" :key="row.key"><dt>{{ row.label }}</dt><dd>{{ row.value }}</dd></div>
+              </dl>
+            </div>
+            <details v-if="imageMetadataExtraEntries.length" class="metadata-extra">
+              <summary>{{ t('editor.metadataExtra') }} ({{ imageMetadataExtraEntries.length }})</summary>
+              <dl class="image-metadata-list">
+                <div v-for="entry in imageMetadataExtraEntries" :key="entry.key"><dt>{{ entry.key }}</dt><dd>{{ entry.value }}</dd></div>
+              </dl>
+            </details>
           </section>
 
           <section class="control-section anchor-size-section">

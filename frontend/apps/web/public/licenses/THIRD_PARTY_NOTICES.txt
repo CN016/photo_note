@@ -20,6 +20,14 @@ The web UI uses the following open-source icon library:
 https://github.com/element-plus/element-plus-icons
 The full license text is included in element-plus-icons-vue-LICENSE.txt.
 
+The web app reads browser-side image metadata with:
+
+exifr 7.1.3 (MIT)
+https://github.com/MikeKovarik/exifr
+Its license text is included in exifr-LICENSE.txt. The parser is used on the
+original selected file before a working canvas copy is created; format support
+for EXIF, IPTC and XMP varies by file type.
+
 Webhook provider artwork in ../brand-logos/ is the unmodified official app icon artwork
 served by Apple App Store product pages. It is bundled locally for provider identification:
 - wecom.jpg — 企业微信, Tencent Technology (Shenzhen) Company Limited:

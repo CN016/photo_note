@@ -1,6 +1,7 @@
 package model
 
 import (
+	"encoding/json"
 	"time"
 
 	"github.com/google/uuid"
@@ -91,11 +92,120 @@ type Inspiration struct {
 	FileSize *int64 `gorm:"column:file_size;type:bigint" json:"-"`
 	// AsyncVersion 是异步图片处理代次；新增记录为 0，提交新的图片处理任务时递增。
 	AsyncVersion int64 `gorm:"column:async_version;type:bigint;not null;default:0" json:"-"`
-	Data         JSONB `gorm:"column:data;type:jsonb;not null"`
+	// ImageMetadata 将可检索的常见图像属性映射到独立可空列；额外标签使用 JSONB 扩展字段。
+	ImageMetadata InspirationImageMetadata `gorm:"embedded" json:"-"`
+	Data          JSONB                    `gorm:"column:data;type:jsonb;not null"`
 }
 
 // TableName 固定灵感图模型使用与版本化建表 SQL 相同的表名。
 func (Inspiration) TableName() string { return "inspirations" }
+
+// InspirationImageMetadata 保存浏览器和服务端从原始图片读取的 EXIF、IPTC、XMP 等属性。
+// 所有数值字段采用固定单位；原始日期字符串不擅自附加时区。
+type InspirationImageMetadata struct {
+	ImageID                 *string        `gorm:"column:image_id" json:"image_id,omitempty"`
+	SourceFileSize          *int64         `gorm:"column:source_file_size" json:"source_file_size,omitempty"`
+	SourceLastModifiedAt    *time.Time     `gorm:"column:source_last_modified_at" json:"source_last_modified_at,omitempty"`
+	ImageWidth              *int           `gorm:"column:image_width" json:"image_width,omitempty"`
+	ImageHeight             *int           `gorm:"column:image_height" json:"image_height,omitempty"`
+	HorizontalResolutionDPI *float64       `gorm:"column:horizontal_resolution_dpi" json:"horizontal_resolution_dpi,omitempty"`
+	VerticalResolutionDPI   *float64       `gorm:"column:vertical_resolution_dpi" json:"vertical_resolution_dpi,omitempty"`
+	BitDepth                *int           `gorm:"column:bit_depth" json:"bit_depth,omitempty"`
+	ColorSpace              *string        `gorm:"column:color_space" json:"color_space,omitempty"`
+	Compression             *string        `gorm:"column:compression" json:"compression,omitempty"`
+	Title                   *string        `gorm:"column:title" json:"title,omitempty"`
+	Subject                 *string        `gorm:"column:subject" json:"subject,omitempty"`
+	Rating                  *int           `gorm:"column:rating" json:"rating,omitempty"`
+	Tags                    pq.StringArray `gorm:"column:metadata_tags;type:text[]" json:"tags,omitempty"`
+	Author                  *string        `gorm:"column:author" json:"author,omitempty"`
+	Comments                *string        `gorm:"column:comments" json:"comments,omitempty"`
+	Copyright               *string        `gorm:"column:copyright" json:"copyright,omitempty"`
+	Software                *string        `gorm:"column:software" json:"software,omitempty"`
+	DateAcquired            *string        `gorm:"column:date_acquired" json:"date_acquired,omitempty"`
+	DateTimeOriginal        *string        `gorm:"column:date_time_original" json:"date_time_original,omitempty"`
+	DateTimeDigitized       *string        `gorm:"column:date_time_digitized" json:"date_time_digitized,omitempty"`
+	CameraMake              *string        `gorm:"column:camera_make" json:"camera_make,omitempty"`
+	CameraModel             *string        `gorm:"column:camera_model" json:"camera_model,omitempty"`
+	CameraSerialNumber      *string        `gorm:"column:camera_serial_number" json:"camera_serial_number,omitempty"`
+	LensMake                *string        `gorm:"column:lens_make" json:"lens_make,omitempty"`
+	LensModel               *string        `gorm:"column:lens_model" json:"lens_model,omitempty"`
+	LensSerialNumber        *string        `gorm:"column:lens_serial_number" json:"lens_serial_number,omitempty"`
+	FlashMake               *string        `gorm:"column:flash_make" json:"flash_make,omitempty"`
+	FlashModel              *string        `gorm:"column:flash_model" json:"flash_model,omitempty"`
+	FlashSerialNumber       *string        `gorm:"column:flash_serial_number" json:"flash_serial_number,omitempty"`
+	ApertureFNumber         *float64       `gorm:"column:aperture_f_number" json:"aperture_f_number,omitempty"`
+	MaximumApertureFNumber  *float64       `gorm:"column:maximum_aperture_f_number" json:"maximum_aperture_f_number,omitempty"`
+	ExposureTimeSeconds     *float64       `gorm:"column:exposure_time_seconds" json:"exposure_time_seconds,omitempty"`
+	ISOSpeed                *float64       `gorm:"column:iso_speed" json:"iso_speed,omitempty"`
+	ExposureCompensationEV  *float64       `gorm:"column:exposure_compensation_ev" json:"exposure_compensation_ev,omitempty"`
+	ExposureProgram         *string        `gorm:"column:exposure_program" json:"exposure_program,omitempty"`
+	FlashFired              *bool          `gorm:"column:flash_fired" json:"flash_fired,omitempty"`
+	FlashMode               *string        `gorm:"column:flash_mode" json:"flash_mode,omitempty"`
+	FlashEnergyBCPS         *float64       `gorm:"column:flash_energy_bcps" json:"flash_energy_bcps,omitempty"`
+	FocalLengthMM           *float64       `gorm:"column:focal_length_mm" json:"focal_length_mm,omitempty"`
+	FocalLength35mmMM       *float64       `gorm:"column:focal_length_35mm_mm" json:"focal_length_35mm_mm,omitempty"`
+	SubjectDistanceM        *float64       `gorm:"column:subject_distance_m" json:"subject_distance_m,omitempty"`
+	MeteringMode            *string        `gorm:"column:metering_mode" json:"metering_mode,omitempty"`
+	LightSource             *string        `gorm:"column:light_source" json:"light_source,omitempty"`
+	WhiteBalance            *string        `gorm:"column:white_balance" json:"white_balance,omitempty"`
+	Contrast                *string        `gorm:"column:contrast" json:"contrast,omitempty"`
+	BrightnessEV            *float64       `gorm:"column:brightness_ev" json:"brightness_ev,omitempty"`
+	Saturation              *string        `gorm:"column:saturation" json:"saturation,omitempty"`
+	Sharpness               *string        `gorm:"column:sharpness" json:"sharpness,omitempty"`
+	DigitalZoomRatio        *float64       `gorm:"column:digital_zoom_ratio" json:"digital_zoom_ratio,omitempty"`
+	CompressionBitsPerPixel *float64       `gorm:"column:compression_bits_per_pixel" json:"compression_bits_per_pixel,omitempty"`
+	EXIFVersion             *string        `gorm:"column:exif_version" json:"exif_version,omitempty"`
+	GPSLatitude             *float64       `gorm:"column:gps_latitude" json:"gps_latitude,omitempty"`
+	GPSLongitude            *float64       `gorm:"column:gps_longitude" json:"gps_longitude,omitempty"`
+	GPSAltitudeM            *float64       `gorm:"column:gps_altitude_m" json:"gps_altitude_m,omitempty"`
+	GPSTimestamp            *string        `gorm:"column:gps_timestamp" json:"gps_timestamp,omitempty"`
+	Extra                   JSONB          `gorm:"column:image_metadata_extra;type:jsonb;not null;default:'{}'" json:"extra,omitempty"`
+}
+
+// MarshalJSON 确保尚未持久化的元数据也以对象形式输出扩展标签，而不是 null。
+func (metadata InspirationImageMetadata) MarshalJSON() ([]byte, error) {
+	type plain InspirationImageMetadata
+	if len(metadata.Extra) == 0 {
+		metadata.Extra = JSONB(`{}`)
+	}
+	return json.Marshal(plain(metadata))
+}
+
+// DatabaseColumns 返回灵感图元数据对应的完整列集；代次保护写入时也会显式清空缺失字段，避免残留旧图属性。
+func (metadata InspirationImageMetadata) DatabaseColumns() map[string]any {
+	extra := metadata.Extra
+	if len(extra) == 0 {
+		extra = JSONB(`{}`)
+	}
+	return map[string]any{
+		"image_id": metadata.ImageID, "source_file_size": metadata.SourceFileSize,
+		"source_last_modified_at": metadata.SourceLastModifiedAt, "image_width": metadata.ImageWidth,
+		"image_height": metadata.ImageHeight, "horizontal_resolution_dpi": metadata.HorizontalResolutionDPI,
+		"vertical_resolution_dpi": metadata.VerticalResolutionDPI, "bit_depth": metadata.BitDepth,
+		"color_space": metadata.ColorSpace, "compression": metadata.Compression,
+		"title": metadata.Title, "subject": metadata.Subject, "rating": metadata.Rating,
+		"metadata_tags": metadata.Tags, "author": metadata.Author, "comments": metadata.Comments,
+		"copyright": metadata.Copyright, "software": metadata.Software, "date_acquired": metadata.DateAcquired,
+		"date_time_original": metadata.DateTimeOriginal, "date_time_digitized": metadata.DateTimeDigitized,
+		"camera_make": metadata.CameraMake, "camera_model": metadata.CameraModel,
+		"camera_serial_number": metadata.CameraSerialNumber, "lens_make": metadata.LensMake, "lens_model": metadata.LensModel,
+		"lens_serial_number": metadata.LensSerialNumber, "flash_make": metadata.FlashMake, "flash_model": metadata.FlashModel,
+		"flash_serial_number": metadata.FlashSerialNumber, "aperture_f_number": metadata.ApertureFNumber,
+		"maximum_aperture_f_number": metadata.MaximumApertureFNumber, "exposure_time_seconds": metadata.ExposureTimeSeconds,
+		"iso_speed": metadata.ISOSpeed, "exposure_compensation_ev": metadata.ExposureCompensationEV,
+		"exposure_program": metadata.ExposureProgram, "flash_fired": metadata.FlashFired,
+		"flash_mode": metadata.FlashMode, "flash_energy_bcps": metadata.FlashEnergyBCPS,
+		"focal_length_mm": metadata.FocalLengthMM, "focal_length_35mm_mm": metadata.FocalLength35mmMM,
+		"subject_distance_m": metadata.SubjectDistanceM, "metering_mode": metadata.MeteringMode,
+		"light_source": metadata.LightSource, "white_balance": metadata.WhiteBalance,
+		"contrast": metadata.Contrast, "brightness_ev": metadata.BrightnessEV, "saturation": metadata.Saturation,
+		"sharpness": metadata.Sharpness, "digital_zoom_ratio": metadata.DigitalZoomRatio,
+		"compression_bits_per_pixel": metadata.CompressionBitsPerPixel,
+		"exif_version":               metadata.EXIFVersion, "gps_latitude": metadata.GPSLatitude,
+		"gps_longitude": metadata.GPSLongitude, "gps_altitude_m": metadata.GPSAltitudeM,
+		"gps_timestamp": metadata.GPSTimestamp, "image_metadata_extra": extra,
+	}
+}
 
 // Feedback 映射用户反馈记录；图片只保存 storekey，文件内容仍由独立文件存储管理。
 type Feedback struct {
