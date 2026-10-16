@@ -3,6 +3,7 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref, shallowRef } from 
 import { useI18n } from 'vue-i18n'
 import { onBeforeRouteLeave, useRoute, useRouter } from 'vue-router'
 import { ElMessageBox, type UploadFile } from 'element-plus'
+import { ArrowLeft, ArrowRight, Check, Close, Crop, FullScreen, Lock, Plus, Picture, RefreshLeft, RefreshRight, UploadFilled } from '@element-plus/icons-vue'
 import AppHeader from '../components/AppHeader.vue'
 import { api } from '../api/client'
 import { ApiError, type InspirationRecord } from '../api/types'
@@ -679,7 +680,7 @@ onBeforeUnmount(() => {
     <main class="editor-main" :style="anchorDisplayStyle">
       <div class="editor-heading-row">
         <div class="editor-title-group">
-          <RouterLink class="back-link" to="/inspirations"><span aria-hidden="true">←</span>{{ t('common.back') }}</RouterLink>
+          <RouterLink class="back-link" to="/inspirations"><el-icon aria-hidden="true"><ArrowLeft /></el-icon>{{ t('common.back') }}</RouterLink>
           <div><p class="eyebrow">{{ t('common.product') }}</p><h1>{{ isExisting ? (isEditing ? t('editor.editTitle') : t('editor.detailTitle')) : t('editor.newTitle') }}</h1></div>
         </div>
         <div class="editor-heading-actions">
@@ -691,7 +692,7 @@ onBeforeUnmount(() => {
 
       <section v-if="!isExisting && !imageReady" class="upload-welcome">
         <el-upload class="upload-dropzone" action="#" :auto-upload="false" :show-file-list="false" accept="image/*,.heic,.heif" :aria-label="t('editor.fileLabel')" :on-change="selectUploadedFile">
-          <span class="upload-icon" aria-hidden="true">↥</span><strong>{{ t('editor.chooseImage') }}</strong><span>{{ t('editor.chooseHint') }}</span>
+          <el-icon class="upload-icon" aria-hidden="true"><UploadFilled /></el-icon><strong>{{ t('editor.chooseImage') }}</strong><span>{{ t('editor.chooseHint') }}</span>
         </el-upload>
         <p v-if="loading" class="loading-inline" role="status"><span class="loading-dot"></span>{{ t('common.loading') }}</p>
       </section>
@@ -699,10 +700,10 @@ onBeforeUnmount(() => {
       <div v-else-if="imageReady" class="editor-workspace">
         <section class="editor-canvas-column" :aria-label="t('editor.previewLabel')">
           <div class="canvas-toolbar">
-            <span class="filename-chip"><span aria-hidden="true">▧</span>{{ filename }}</span>
+            <span class="filename-chip"><el-icon aria-hidden="true"><Picture /></el-icon>{{ filename }}</span>
             <div v-if="isEditing" class="history-actions">
-              <el-button class="icon-button" :disabled="!canUndo" :aria-label="t('editor.undo')" :title="t('editor.undo')" @click="undo">↶</el-button>
-              <el-button class="icon-button" :disabled="!canRedo" :aria-label="t('editor.redo')" :title="t('editor.redo')" @click="redo">↷</el-button>
+              <el-button class="icon-button" :disabled="!canUndo" :aria-label="t('editor.undo')" :title="t('editor.undo')" @click="undo"><el-icon aria-hidden="true"><RefreshLeft /></el-icon></el-button>
+              <el-button class="icon-button" :disabled="!canRedo" :aria-label="t('editor.redo')" :title="t('editor.redo')" @click="redo"><el-icon aria-hidden="true"><RefreshRight /></el-icon></el-button>
             </div>
           </div>
           <div ref="stageBox" class="canvas-stage" :class="{ 'anchor-active': anchorMode, 'crop-active': cropMode }" @click="onStageClick">
@@ -777,9 +778,9 @@ onBeforeUnmount(() => {
             <section class="control-section transform-section">
               <div class="section-title-row"><h2>{{ t('editor.editTitle') }}</h2><span class="section-step">01</span></div>
               <div class="transform-buttons">
-                <el-button class="tool-button" :disabled="cropMode" @click="prepareTransform('rotate')"><span aria-hidden="true">⟳</span>{{ t('editor.rotate') }}</el-button>
-                <el-button class="tool-button" :disabled="cropMode" @click="prepareTransform('crop')"><span aria-hidden="true">⌗</span>{{ t('editor.crop') }}</el-button>
-                <el-button class="tool-button" :disabled="cropMode" @click="prepareTransform('reset')"><span aria-hidden="true">⤢</span>{{ t('editor.resetCrop') }}</el-button>
+                <el-button class="tool-button" :disabled="cropMode" @click="prepareTransform('rotate')"><el-icon aria-hidden="true"><RefreshRight /></el-icon>{{ t('editor.rotate') }}</el-button>
+                <el-button class="tool-button" :disabled="cropMode" @click="prepareTransform('crop')"><el-icon aria-hidden="true"><Crop /></el-icon>{{ t('editor.crop') }}</el-button>
+                <el-button class="tool-button" :disabled="cropMode" @click="prepareTransform('reset')"><el-icon aria-hidden="true"><FullScreen /></el-icon>{{ t('editor.resetCrop') }}</el-button>
               </div>
             </section>
 
@@ -792,19 +793,19 @@ onBeforeUnmount(() => {
 
             <section class="control-section notes-section">
               <div class="section-title-row"><div><h2>{{ t('editor.anchors') }}</h2><span class="notes-count">{{ documentData.anchors.length }}</span></div><span class="section-step">03</span></div>
-              <el-button class="note-mode-button" :class="{ active: anchorMode }" :disabled="cropMode" @click="anchorMode = !anchorMode"><span aria-hidden="true">＋</span>{{ anchorMode ? t('editor.anchorModeOn') : t('editor.anchorMode') }}</el-button>
+              <el-button class="note-mode-button" :class="{ active: anchorMode }" :disabled="cropMode" @click="anchorMode = !anchorMode"><el-icon aria-hidden="true"><Plus /></el-icon>{{ anchorMode ? t('editor.anchorModeOn') : t('editor.anchorMode') }}</el-button>
               <p v-if="!documentData.anchors.length" class="notes-empty">{{ t('editor.anchorEmpty') }}</p>
               <div v-else class="note-list">
                 <div v-for="(anchor, index) in documentData.anchors" :key="anchor.id" class="note-list-item-row">
-                  <el-button class="note-list-item" @click="editAnchor(anchor)"><span class="note-index">{{ index + 1 }}</span><span>{{ anchor.note }}</span><span class="note-arrow" aria-hidden="true">↗</span></el-button>
-                  <el-button class="note-delete-button" text :aria-label="t('editor.anchorDeleteLabel', { number: index + 1 })" :title="t('editor.anchorDeleteLabel', { number: index + 1 })" @click="deleteAnchorById(anchor.id)">×</el-button>
+                  <el-button class="note-list-item" @click="editAnchor(anchor)"><span class="note-index">{{ index + 1 }}</span><span>{{ anchor.note }}</span><el-icon class="note-arrow" aria-hidden="true"><ArrowRight /></el-icon></el-button>
+                  <el-button class="note-delete-button" text :aria-label="t('editor.anchorDeleteLabel', { number: index + 1 })" :title="t('editor.anchorDeleteLabel', { number: index + 1 })" @click="deleteAnchorById(anchor.id)"><el-icon aria-hidden="true"><Close /></el-icon></el-button>
                 </div>
               </div>
             </section>
-            <p class="source-preserved"><span aria-hidden="true">◌</span>{{ t('editor.sourcePreserved') }}</p>
+            <p class="source-preserved"><el-icon aria-hidden="true"><Lock /></el-icon>{{ t('editor.sourcePreserved') }}</p>
             <p v-if="error" class="form-error editor-error" role="alert">{{ error }}</p>
             <p v-if="status" class="success-message" role="status">{{ status }}</p>
-            <el-button class="primary-button save-button desktop-save" type="primary" :disabled="saving || loading || cropMode || anchorDialog || !!transformDialog" :loading="saving" @click="save">{{ saving ? t('editor.saving') : !isExisting && uploadSourceKey ? t('editor.retry') : t('editor.saveEdit') }}<span aria-hidden="true">↗</span></el-button>
+            <el-button class="primary-button save-button desktop-save" type="primary" :disabled="saving || loading || cropMode || anchorDialog || !!transformDialog" :loading="saving" @click="save">{{ saving ? t('editor.saving') : !isExisting && uploadSourceKey ? t('editor.retry') : t('editor.saveEdit') }}<el-icon aria-hidden="true"><Check /></el-icon></el-button>
             <p v-if="busyPhase" class="save-progress" role="status"><span class="loading-dot"></span>{{ busyPhase }}</p>
           </template>
 
@@ -817,7 +818,7 @@ onBeforeUnmount(() => {
       </div>
 
       <div v-if="error && !imageReady" class="editor-load-error" role="alert"><p>{{ error }}</p><RouterLink class="secondary-button" to="/inspirations">{{ t('common.back') }}</RouterLink></div>
-      <div v-if="imageReady && isEditing" class="mobile-save-bar"><span v-if="error" class="mobile-save-error" role="alert">{{ error }}</span><span v-else-if="busyPhase" class="mobile-save-progress" role="status">{{ busyPhase }}</span><el-button v-if="isExisting" class="cancel-edit-button mobile-cancel-button" :disabled="saving" @click="cancelEditing">{{ t('editor.cancelEdit') }}</el-button><el-button class="primary-button save-button" type="primary" :disabled="saving || loading || cropMode || anchorDialog || !!transformDialog" :loading="saving" @click="save">{{ saving ? t('editor.saving') : !isExisting && uploadSourceKey ? t('editor.retry') : isExisting ? t('editor.saveEdit') : t('editor.saveNew') }}<span aria-hidden="true">↗</span></el-button></div>
+      <div v-if="imageReady && isEditing" class="mobile-save-bar"><span v-if="error" class="mobile-save-error" role="alert">{{ error }}</span><span v-else-if="busyPhase" class="mobile-save-progress" role="status">{{ busyPhase }}</span><el-button v-if="isExisting" class="cancel-edit-button mobile-cancel-button" :disabled="saving" @click="cancelEditing">{{ t('editor.cancelEdit') }}</el-button><el-button class="primary-button save-button" type="primary" :disabled="saving || loading || cropMode || anchorDialog || !!transformDialog" :loading="saving" @click="save">{{ saving ? t('editor.saving') : !isExisting && uploadSourceKey ? t('editor.retry') : isExisting ? t('editor.saveEdit') : t('editor.saveNew') }}<el-icon aria-hidden="true"><Check /></el-icon></el-button></div>
     </main>
 
     <el-dialog :model-value="!!transformDialog" :title="t('editor.transformTitle')" width="min(500px, calc(100vw - 32px))" @close="transformDialog = null">

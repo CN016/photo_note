@@ -13,3 +13,20 @@ the web application from the published source.
 The core @su-engineering/heic package (0.1.1 in the current lockfile) is MIT licensed;
 its license text is included in this directory:
 https://github.com/su-engineering/heic-web
+
+The web UI uses the following open-source icon library:
+
+@element-plus/icons-vue 2.3.2 (MIT)
+https://github.com/element-plus/element-plus-icons
+The full license text is included in element-plus-icons-vue-LICENSE.txt.
+
+Webhook provider artwork in ../brand-logos/ is the unmodified official app icon artwork
+served by Apple App Store product pages. It is bundled locally for provider identification:
+- wecom.jpg — 企业微信, Tencent Technology (Shenzhen) Company Limited:
+  https://apps.apple.com/cn/app/企业微信/id1087897068
+- dingtalk.jpg — 钉钉, DingTalk Technology Co., Ltd.:
+  https://apps.apple.com/cn/app/钉钉/id930368978
+- feishu.jpg — 飞书, Beijing Feishu Technology Co., Ltd.:
+  https://apps.apple.com/cn/app/飞书-字节跳动旗下-ai-工作平台/id1401729613
+All brand names and artwork remain the property of their respective owners; this project
+uses the artwork only to identify each webhook destination and does not imply endorsement.

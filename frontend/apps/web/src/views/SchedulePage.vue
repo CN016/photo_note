@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import { ArrowLeft, ArrowRight, Plus, Share } from '@element-plus/icons-vue'
 import { useI18n } from 'vue-i18n'
 import AppHeader from '../components/AppHeader.vue'
 import { api } from '../api/client'
@@ -257,11 +258,11 @@ onMounted(() => { void load() })
   <main class="schedule-main">
     <header class="schedule-heading">
       <div><p class="schedule-eyebrow">{{ t('title') }}</p><h1>{{ t('title') }}</h1><p>{{ t('subtitle') }}</p></div>
-      <el-button type="primary" @click="openNew('work')">＋ {{ t('actions.add') }}</el-button>
+      <el-button type="primary" @click="openNew('work')"><el-icon aria-hidden="true"><Plus /></el-icon>{{ t('actions.add') }}</el-button>
     </header>
 
     <section class="schedule-share-card">
-      <div class="share-copy"><span class="share-icon" aria-hidden="true">↗</span><div><h2>{{ t('share.title') }}</h2><p>{{ t('share.help') }}</p><small>{{ share.enabled ? t('share.enabled') : t('share.disabled') }}</small></div></div>
+      <div class="share-copy"><el-icon class="share-icon" aria-hidden="true"><Share /></el-icon><div><h2>{{ t('share.title') }}</h2><p>{{ t('share.help') }}</p><small>{{ share.enabled ? t('share.enabled') : t('share.disabled') }}</small></div></div>
       <div class="share-actions">
         <a v-if="shareURL" class="share-url" :href="shareURL" target="_blank" rel="noreferrer">{{ shareURL }}</a>
         <el-button v-if="shareURL" @click="copyShare">{{ t('actions.copy') }}</el-button>
@@ -280,7 +281,7 @@ onMounted(() => { void load() })
             <button :class="{ active: view === 'custom' }" @click="changeView('custom')">{{ t('views.custom') }}</button>
           </div>
           <el-input-number v-if="view === 'custom'" v-model="customDays" :min="1" :max="90" :step="1" controls-position="right" :aria-label="t('views.custom')" @change="customDays = clampScheduleDays(customDays); load()" />
-          <div class="schedule-date-nav"><el-button circle plain :aria-label="t('actions.previous')" @click="shiftWindow(-1)">‹</el-button><strong>{{ view === 'month' ? formatChinaDate(`${monthKey}-01`, locale, { year: 'numeric', month: 'long' }) : `${dateLabel(fetchRange.from, { month: 'short', day: 'numeric' })} – ${dateLabel(fetchRange.to, { month: 'short', day: 'numeric' })}` }}</strong><el-button circle plain :aria-label="t('actions.next')" @click="shiftWindow(1)">›</el-button><el-button plain @click="goToday">{{ t('actions.today') }}</el-button></div>
+          <div class="schedule-date-nav"><el-button circle plain :aria-label="t('actions.previous')" @click="shiftWindow(-1)"><el-icon aria-hidden="true"><ArrowLeft /></el-icon></el-button><strong>{{ view === 'month' ? formatChinaDate(`${monthKey}-01`, locale, { year: 'numeric', month: 'long' }) : `${dateLabel(fetchRange.from, { month: 'short', day: 'numeric' })} – ${dateLabel(fetchRange.to, { month: 'short', day: 'numeric' })}` }}</strong><el-button circle plain :aria-label="t('actions.next')" @click="shiftWindow(1)"><el-icon aria-hidden="true"><ArrowRight /></el-icon></el-button><el-button plain @click="goToday">{{ t('actions.today') }}</el-button></div>
         </div>
 
         <div v-if="loading" class="schedule-state" role="status">{{ t('loading') }}</div>
@@ -299,7 +300,7 @@ onMounted(() => { void load() })
           <div v-else class="schedule-days" :class="`days-${view}`" :style="{ '--schedule-day-count': String(effectiveDays) }">
             <article v-for="date in visibleDates" :key="date" class="schedule-day-card" :class="{ selected: selectedDate === date, today: date === chinaDateKey() }" @click="selectDate(date)">
               <button class="schedule-day-heading" @click.stop="selectDate(date)"><strong>{{ dateLabel(date, { weekday: 'long', month: 'long', day: 'numeric' }) }}</strong><span>{{ itemsFor(date).length }}</span></button>
-              <button v-if="!itemsFor(date).length" class="day-add-empty" @click="openNew('work', date)">＋ {{ t('actions.add') }}</button>
+              <button v-if="!itemsFor(date).length" class="day-add-empty" @click="openNew('work', date)"><el-icon aria-hidden="true"><Plus /></el-icon>{{ t('actions.add') }}</button>
               <button v-for="item in itemsFor(date)" :key="`${item.business_id}-${item.series_date}`" class="schedule-event-card" :class="`kind-${item.kind}`" @click.stop="selectDate(date)">
                 <span class="event-card-time">{{ timeRange(item) }}</span><strong>{{ item.title }}</strong><span class="event-card-kind">{{ itemKind(item) }}<template v-if="item.kind === 'availability'"> · {{ item.capacity }} {{ t('form.capacity') }}</template></span><p v-if="item.content">{{ item.content }}</p>
               </button>

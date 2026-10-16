@@ -2,6 +2,7 @@
 import { computed, onBeforeUnmount, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { ElMessage } from 'element-plus'
+import { ChatLineRound, Plus } from '@element-plus/icons-vue'
 import type { UploadFile } from 'element-plus'
 import { api } from '../api/client'
 import { ApiError } from '../api/types'
@@ -80,10 +81,7 @@ onBeforeUnmount(() => {
 <template>
   <div class="feedback-entry" :class="{ 'feedback-entry-editor': props.editorRoute, 'feedback-entry-no-nav': !props.hasMobileNav }">
     <el-button class="feedback-trigger" type="primary" :aria-label="t('feedback.open')" @click="visible = true">
-      <svg class="feedback-trigger-icon" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-        <path d="M20 11.5a7.5 7.5 0 0 1-7.5 7.5H7l-3.5 2v-9.5A7.5 7.5 0 0 1 11 4h1.5a7.5 7.5 0 0 1 7.5 7.5Z" />
-        <path d="M8 10h8M8 14h5" />
-      </svg>
+      <el-icon class="feedback-trigger-icon" aria-hidden="true"><ChatLineRound /></el-icon>
       <span class="feedback-trigger-label">{{ t('feedback.open') }}</span>
     </el-button>
   </div>
@@ -93,7 +91,7 @@ onBeforeUnmount(() => {
       <el-input v-model="content" type="textarea" :rows="6" maxlength="2000" show-word-limit :placeholder="t('feedback.contentPlaceholder')" />
       <div class="feedback-image-label"><span>{{ t('feedback.images') }}</span><small>{{ t('feedback.imageCount', { count: imageCount }) }}</small></div>
       <el-upload action="#" :auto-upload="false" list-type="picture-card" accept="image/*,.heic,.heif" multiple :limit="5" :on-change="selectImage" :on-remove="removeImage" :disabled="preparing || submitting">
-        <span class="upload-plus">＋</span>
+        <el-icon class="upload-plus" aria-hidden="true"><Plus /></el-icon>
       </el-upload>
       <p class="feedback-upload-help">{{ t('feedback.imageHelp') }}</p>
       <p v-if="error" class="form-error" role="alert">{{ error }}</p>

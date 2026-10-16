@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { ArrowRight, PictureFilled, Plus } from '@element-plus/icons-vue'
 import AppHeader from '../components/AppHeader.vue'
 import InspirationThumbnail from '../components/InspirationThumbnail.vue'
 import { api } from '../api/client'
@@ -61,7 +62,7 @@ onMounted(() => { void loadPage() })
     <main class="gallery-main">
       <section class="gallery-intro">
         <div><p class="eyebrow">{{ t('common.product') }}</p><h1>{{ t('gallery.title') }}</h1><p class="gallery-subtitle">{{ t('gallery.subtitle') }}</p></div>
-        <RouterLink custom to="/inspirations/new" v-slot="{ navigate }"><el-button class="primary-button add-button" type="primary" @click="navigate"><span aria-hidden="true">＋</span>{{ t('gallery.newImage') }}</el-button></RouterLink>
+        <RouterLink custom to="/inspirations/new" v-slot="{ navigate }"><el-button class="primary-button add-button" type="primary" @click="navigate"><el-icon aria-hidden="true"><Plus /></el-icon>{{ t('gallery.newImage') }}</el-button></RouterLink>
       </section>
 
       <div v-if="items.length" class="gallery-meta"><span>{{ t('gallery.count', { count: total }) }}</span><span class="gallery-meta-line"></span></div>
@@ -84,9 +85,9 @@ onMounted(() => { void loadPage() })
       </section>
 
       <section v-else-if="!loading && !error" class="gallery-empty">
-        <div class="empty-art" aria-hidden="true"><span class="empty-sun"></span><span class="empty-swatch"></span><span class="empty-squiggle">〰</span></div>
+        <div class="empty-art" aria-hidden="true"><el-icon><PictureFilled /></el-icon></div>
         <p class="eyebrow">{{ t('gallery.emptyTitle') }}</p><h2>{{ t('gallery.emptyText') }}</h2>
-        <RouterLink custom to="/inspirations/new" v-slot="{ navigate }"><el-button @click="navigate">{{ t('gallery.uploadFirst') }}<span aria-hidden="true">↗</span></el-button></RouterLink>
+        <RouterLink custom to="/inspirations/new" v-slot="{ navigate }"><el-button @click="navigate">{{ t('gallery.uploadFirst') }}<el-icon aria-hidden="true"><ArrowRight /></el-icon></el-button></RouterLink>
       </section>
 
       <div v-if="loading && !items.length" class="gallery-loading" role="status"><span class="loading-dot"></span>{{ t('common.loading') }}</div>

@@ -3,6 +3,8 @@ import { computed, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
 import { ApiError } from '../api/types'
+import { ArrowRight, StarFilled } from '@element-plus/icons-vue'
+import BrandMark from '../components/BrandMark.vue'
 import LanguageSwitcher from '../components/LanguageSwitcher.vue'
 import ThemeSwitcher from '../components/ThemeSwitcher.vue'
 import { useAuthStore } from '../stores/auth'
@@ -46,17 +48,17 @@ async function submit() {
 <template>
   <main class="auth-page">
     <section class="auth-art" aria-hidden="true">
-      <div class="art-brand"><span class="brand-mark">n.</span><span>{{ t('common.brand') }}</span></div>
+      <div class="art-brand"><BrandMark /><span>{{ t('common.brand') }}</span></div>
       <div class="art-copy"><p class="eyebrow">{{ t('login.eyebrow') }}</p><h1>{{ t('login.title') }}</h1><p>{{ t('login.subtitle') }}</p></div>
       <div class="moodboard">
         <div class="mood-card mood-card-one"><div class="sun-disc"></div><div class="sand-hill"></div><span>{{ t('login.moodOne') }}</span></div>
         <div class="mood-card mood-card-two"><div class="leaf-shape"></div><span>{{ t('login.moodTwo') }}</span></div>
-        <div class="mood-card mood-card-three"><span>{{ t('login.moodThree') }}</span><i>✳</i></div>
+        <div class="mood-card mood-card-three"><span>{{ t('login.moodThree') }}</span><el-icon class="mood-decoration-icon"><StarFilled /></el-icon></div>
       </div>
       <p class="art-caption">{{ t('login.artCaption') }}</p>
     </section>
     <section class="auth-panel">
-      <div class="auth-topbar"><RouterLink class="mobile-brand" to="/login"><span class="brand-mark">n.</span>{{ t('common.brand') }}</RouterLink><div class="auth-top-actions"><ThemeSwitcher /><LanguageSwitcher /></div></div>
+      <div class="auth-topbar"><RouterLink class="mobile-brand" to="/login"><BrandMark />{{ t('common.brand') }}</RouterLink><div class="auth-top-actions"><ThemeSwitcher /><LanguageSwitcher /></div></div>
       <div class="auth-form-wrap">
         <div class="auth-heading"><p class="eyebrow">{{ t('login.formHint') }}</p><h2>{{ t('login.formTitle') }}</h2></div>
         <form class="auth-form" @submit.prevent="submit" novalidate>
@@ -64,7 +66,7 @@ async function submit() {
           <p id="phone-help" class="field-help">{{ t('login.phoneInvalid') }}</p>
           <el-form-item :label="t('login.password')"><el-input v-model="password" name="password" type="password" show-password autocomplete="current-password" :placeholder="t('login.passwordPlaceholder')" /></el-form-item>
           <p v-if="error" class="form-error" role="alert">{{ error }}</p>
-          <el-button class="primary-button full-button" type="primary" native-type="submit" :loading="busy">{{ busy ? t('login.submitting') : t('login.submit') }}<span aria-hidden="true">↗</span></el-button>
+          <el-button class="primary-button full-button" type="primary" native-type="submit" :loading="busy">{{ busy ? t('login.submitting') : t('login.submit') }}<el-icon aria-hidden="true"><ArrowRight /></el-icon></el-button>
         </form>
         <p class="auth-switch">{{ t('login.newHere') }} <RouterLink to="/register">{{ t('login.createAccount') }}</RouterLink></p>
       </div>

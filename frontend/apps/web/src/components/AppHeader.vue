@@ -3,8 +3,10 @@ import { onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { ElNotification } from 'element-plus'
+import { Calendar, ChatDotRound, Clock, Picture, Plus, User } from '@element-plus/icons-vue'
 import { useAuthStore } from '../stores/auth'
 import { api } from '../api/client'
+import BrandMark from './BrandMark.vue'
 import LanguageSwitcher from './LanguageSwitcher.vue'
 import ThemeSwitcher from './ThemeSwitcher.vue'
 
@@ -74,16 +76,16 @@ function active(path: string): boolean {
 <template>
   <aside class="app-navigation" :aria-label="t('common.navigation')">
     <RouterLink class="brand-lockup" to="/inspirations" :aria-label="t('common.brand')">
-      <span class="brand-mark">n.</span>
+      <BrandMark />
       <span class="brand-copy"><strong>{{ t('common.brand') }}</strong><small>{{ t('common.product') }}</small></span>
     </RouterLink>
     <nav class="desktop-nav">
-      <RouterLink class="nav-item" :class="{ active: active('/inspirations') }" to="/inspirations"><span aria-hidden="true">▦</span>{{ t('common.inspirations') }}</RouterLink>
-      <RouterLink class="nav-item" :class="{ active: route.path === '/inspirations/new' }" to="/inspirations/new"><span aria-hidden="true">＋</span>{{ t('common.create') }}</RouterLink>
-      <RouterLink class="nav-item" :class="{ active: active('/ledger') }" to="/ledger"><span aria-hidden="true">◷</span>{{ t('common.ledger') }}</RouterLink>
-      <RouterLink class="nav-item" :class="{ active: active('/schedule') }" to="/schedule"><span aria-hidden="true">▦</span>{{ t('common.schedule') }}</RouterLink>
-      <RouterLink class="nav-item" :class="{ active: active('/messages') }" to="/messages"><span class="nav-icon-wrap"><span aria-hidden="true">◌</span><b v-if="unreadCount" class="nav-unread-count">{{ unreadCount > 99 ? '99+' : unreadCount }}</b></span>{{ t('common.messages') }}</RouterLink>
-      <RouterLink class="nav-item" :class="{ active: active('/profile') }" to="/profile"><span aria-hidden="true">◉</span>{{ t('common.profile') }}</RouterLink>
+      <RouterLink class="nav-item" :class="{ active: active('/inspirations') }" to="/inspirations"><el-icon aria-hidden="true"><Picture /></el-icon>{{ t('common.inspirations') }}</RouterLink>
+      <RouterLink class="nav-item" :class="{ active: route.path === '/inspirations/new' }" to="/inspirations/new"><el-icon aria-hidden="true"><Plus /></el-icon>{{ t('common.create') }}</RouterLink>
+      <RouterLink class="nav-item" :class="{ active: active('/ledger') }" to="/ledger"><el-icon aria-hidden="true"><Clock /></el-icon>{{ t('common.ledger') }}</RouterLink>
+      <RouterLink class="nav-item" :class="{ active: active('/schedule') }" to="/schedule"><el-icon aria-hidden="true"><Calendar /></el-icon>{{ t('common.schedule') }}</RouterLink>
+      <RouterLink class="nav-item" :class="{ active: active('/messages') }" to="/messages"><span class="nav-icon-wrap"><el-icon aria-hidden="true"><ChatDotRound /></el-icon><b v-if="unreadCount" class="nav-unread-count">{{ unreadCount > 99 ? '99+' : unreadCount }}</b></span>{{ t('common.messages') }}</RouterLink>
+      <RouterLink class="nav-item" :class="{ active: active('/profile') }" to="/profile"><el-icon aria-hidden="true"><User /></el-icon>{{ t('common.profile') }}</RouterLink>
     </nav>
     <div class="navigation-account">
       <div v-if="auth.user" class="nav-user"><el-avatar :size="34" :src="undefined">{{ auth.user.nickname.slice(0, 1) }}</el-avatar><span>{{ auth.user.nickname }}</span></div>
@@ -91,12 +93,12 @@ function active(path: string): boolean {
       <el-button class="sign-out" text @click="signOut">{{ t('common.logout') }}</el-button>
     </div>
     <nav class="mobile-nav" :aria-label="t('common.navigation')">
-      <RouterLink class="mobile-nav-item" :class="{ active: active('/inspirations') }" to="/inspirations"><span aria-hidden="true">▦</span><small>{{ t('common.inspirations') }}</small></RouterLink>
-      <RouterLink class="mobile-nav-item" :class="{ active: route.path === '/inspirations/new' }" to="/inspirations/new"><span aria-hidden="true">＋</span><small>{{ t('common.create') }}</small></RouterLink>
-      <RouterLink class="mobile-nav-item" :class="{ active: active('/ledger') }" to="/ledger"><span aria-hidden="true">◷</span><small>{{ t('common.ledger') }}</small></RouterLink>
-      <RouterLink class="mobile-nav-item" :class="{ active: active('/schedule') }" to="/schedule"><span aria-hidden="true">▦</span><small>{{ t('common.schedule') }}</small></RouterLink>
-      <RouterLink class="mobile-nav-item" :class="{ active: active('/messages') }" to="/messages"><span class="mobile-nav-icon-wrap"><span aria-hidden="true">◌</span><b v-if="unreadCount" class="mobile-unread-count">{{ unreadCount > 9 ? '9+' : unreadCount }}</b></span><small>{{ t('common.messages') }}</small></RouterLink>
-      <RouterLink class="mobile-nav-item" :class="{ active: active('/profile') }" to="/profile"><span aria-hidden="true">◉</span><small>{{ t('common.profile') }}</small></RouterLink>
+      <RouterLink class="mobile-nav-item" :class="{ active: active('/inspirations') }" to="/inspirations"><el-icon aria-hidden="true"><Picture /></el-icon><small>{{ t('common.inspirations') }}</small></RouterLink>
+      <RouterLink class="mobile-nav-item" :class="{ active: route.path === '/inspirations/new' }" to="/inspirations/new"><el-icon aria-hidden="true"><Plus /></el-icon><small>{{ t('common.create') }}</small></RouterLink>
+      <RouterLink class="mobile-nav-item" :class="{ active: active('/ledger') }" to="/ledger"><el-icon aria-hidden="true"><Clock /></el-icon><small>{{ t('common.ledger') }}</small></RouterLink>
+      <RouterLink class="mobile-nav-item" :class="{ active: active('/schedule') }" to="/schedule"><el-icon aria-hidden="true"><Calendar /></el-icon><small>{{ t('common.schedule') }}</small></RouterLink>
+      <RouterLink class="mobile-nav-item" :class="{ active: active('/messages') }" to="/messages"><span class="mobile-nav-icon-wrap"><el-icon aria-hidden="true"><ChatDotRound /></el-icon><b v-if="unreadCount" class="mobile-unread-count">{{ unreadCount > 9 ? '9+' : unreadCount }}</b></span><small>{{ t('common.messages') }}</small></RouterLink>
+      <RouterLink class="mobile-nav-item" :class="{ active: active('/profile') }" to="/profile"><el-icon aria-hidden="true"><User /></el-icon><small>{{ t('common.profile') }}</small></RouterLink>
     </nav>
   </aside>
 </template>

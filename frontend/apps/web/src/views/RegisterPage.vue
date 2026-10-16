@@ -4,6 +4,7 @@ import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
 import type { UploadFile } from 'element-plus'
 import { ApiError } from '../api/types'
+import BrandMark from '../components/BrandMark.vue'
 import LanguageSwitcher from '../components/LanguageSwitcher.vue'
 import ThemeSwitcher from '../components/ThemeSwitcher.vue'
 import { prepareImageUpload, type PreparedImageUpload } from '../imageUpload'
@@ -72,13 +73,13 @@ onBeforeUnmount(() => { if (avatar.value) URL.revokeObjectURL(avatar.value.previ
 <template>
   <main class="auth-page register-page">
     <section class="auth-art register-art" aria-hidden="true">
-      <div class="art-brand"><span class="brand-mark">n.</span><span>{{ t('common.brand') }}</span></div>
+      <div class="art-brand"><BrandMark /><span>{{ t('common.brand') }}</span></div>
       <div class="art-copy"><p class="eyebrow">{{ t('register.eyebrow') }}</p><h1>{{ t('register.title') }}</h1><p>{{ t('register.subtitle') }}</p></div>
       <div class="register-art-note">{{ t('register.artCaption') }}</div>
       <p class="art-caption">{{ t('common.footer') }}</p>
     </section>
     <section class="auth-panel">
-      <div class="auth-topbar"><RouterLink class="mobile-brand" to="/login"><span class="brand-mark">n.</span>{{ t('common.brand') }}</RouterLink><div class="auth-top-actions"><ThemeSwitcher /><LanguageSwitcher /></div></div>
+      <div class="auth-topbar"><RouterLink class="mobile-brand" to="/login"><BrandMark />{{ t('common.brand') }}</RouterLink><div class="auth-top-actions"><ThemeSwitcher /><LanguageSwitcher /></div></div>
       <div class="auth-form-wrap register-form-wrap">
         <div class="auth-heading"><p class="eyebrow">{{ t('register.formHint') }} · {{ step }}/2</p><h2>{{ step === 1 ? t('register.formTitle') : t('register.avatarTitle') }}</h2><p class="register-step-help">{{ step === 1 ? t('register.detailsHelp') : t('register.avatarHelp') }}</p></div>
         <el-form class="auth-form" label-position="top" @submit.prevent="step === 1 ? continueToAvatar() : submit()">

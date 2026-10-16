@@ -3,7 +3,9 @@ import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import { ArrowLeft, ArrowRight, Delete, Edit, Plus, TopRight } from '@element-plus/icons-vue'
 import AppHeader from '../components/AppHeader.vue'
+import WebhookProviderLogo from '../components/WebhookProviderLogo.vue'
 import { api } from '../api/client'
 import type { NoticeConfig, NoticeDelivery, NoticeMessage } from '../api/types'
 
@@ -30,6 +32,7 @@ const configError = ref(false)
 const editorOpen = ref(false)
 const editorBusy = ref(false)
 const editingID = ref('')
+const providerOptions: NoticeConfig['provider'][] = ['wecom', 'dingtalk', 'feishu']
 const form = reactive({
   provider: 'wecom' as NoticeConfig['provider'],
   name: '',
@@ -363,22 +366,22 @@ onBeforeUnmount(() => {
 
             <div v-if="item.deliveries?.length" class="delivery-list" @click.stop>
               <div v-for="delivery in item.deliveries" :key="delivery.business_id" class="delivery-row">
-                <span class="provider-chip">{{ providerName(delivery.provider) }} · {{ delivery.config_name }}</span>
+                <span class="provider-chip"><WebhookProviderLogo :provider="delivery.provider" size="small" /><span>{{ providerName(delivery.provider) }} · {{ delivery.config_name }}</span></span>
                 <span class="delivery-state" :class="`state-${delivery.status}`">{{ deliveryStatus(delivery) }}</span>
                 <button v-if="delivery.can_retry" class="inline-action" type="button" @click="retryDelivery(delivery)">{{ t('retry') }}</button>
               </div>
             </div>
             <p v-else class="no-delivery-status">{{ item.event_type === 'system.error_log.created' ? t('errorLogInternalOnly') : t('noWebhookStatus') }}</p>
 
-            <button v-if="item.resource_type === 'inspiration' && item.resource_business_id" class="open-resource" type="button" @click.stop="openMessage(item)">{{ t('goToInspiration') }} <span aria-hidden="true">↗</span></button>
+            <button v-if="item.resource_type === 'inspiration' && item.resource_business_id" class="open-resource" type="button" @click.stop="openMessage(item)">{{ t('goToInspiration') }} <el-icon aria-hidden="true"><TopRight /></el-icon></button>
           </div>
         </article>
       </div>
 
       <div v-if="messageTotal > pageSize" class="messages-pagination">
-        <button class="outline-action" type="button" :disabled="!hasPrevious" @click="currentPage--; loadMessages()">‹</button>
+        <button class="outline-action" type="button" :disabled="!hasPrevious" @click="currentPage--; loadMessages()"><el-icon aria-hidden="true"><ArrowLeft /></el-icon></button>
         <span>{{ currentPage }} / {{ Math.ceil(messageTotal / pageSize) }}</span>
-        <button class="outline-action" type="button" :disabled="!hasNext" @click="currentPage++; loadMessages()">›</button>
+        <button class="outline-action" type="button" :disabled="!hasNext" @click="currentPage++; loadMessages()"><el-icon aria-hidden="true"><ArrowRight /></el-icon></button>
       </div>
     </section>
 
@@ -389,7 +392,7 @@ onBeforeUnmount(() => {
           <p>{{ t('webhooks.description') }}</p>
           <small>{{ configCountText }}</small>
         </div>
-        <button class="primary-action" type="button" :disabled="configs.length >= maximumConfigs" @click="openCreateConfig">＋ {{ t('webhooks.add') }}</button>
+        <button class="primary-action" type="button" :disabled="configs.length >= maximumConfigs" @click="openCreateConfig"><el-icon aria-hidden="true"><Plus /></el-icon>{{ t('webhooks.add') }}</button>
       </div>
 
       <div v-if="loadingConfigs" class="messages-empty">{{ t('common.loading') }}</div>
@@ -402,15 +405,15 @@ onBeforeUnmount(() => {
       <div v-else class="webhook-list">
         <article v-for="item in configs" :key="item.business_id" class="webhook-card">
           <div class="webhook-card-copy">
-            <div class="webhook-card-title"><span class="provider-logo" :class="`provider-${item.provider}`">{{ providerName(item.provider).slice(0, 1) }}</span><div><h3>{{ item.name }}</h3><span>{{ providerName(item.provider) }} · {{ item.webhook_masked }}</span></div></div>
+            <div class="webhook-card-title"><WebhookProviderLogo :provider="item.provider" /><div><h3>{{ item.name }}</h3><span>{{ providerName(item.provider) }} · {{ item.webhook_masked }}</span></div></div>
             <small>{{ item.secret_configured ? t('webhooks.secretConfigured') : t('webhooks.noSecret') }}</small>
           </div>
           <div class="webhook-card-actions">
             <el-switch :model-value="item.enabled" :aria-label="item.enabled ? t('webhooks.enabled') : t('webhooks.disabled')" @change="toggleConfig(item, $event)" />
             <span v-if="testResults[item.business_id]" class="test-status">{{ deliveryStatus(testResults[item.business_id]) }}</span>
             <button class="outline-action" type="button" :disabled="['pending', 'sending', 'retry'].includes(testResults[item.business_id]?.status ?? '')" @click="testConfig(item)">{{ t('webhooks.test') }}</button>
-            <button class="icon-action" type="button" :aria-label="t('webhooks.edit')" @click="openEditConfig(item)">✎</button>
-            <button class="icon-action danger-action" type="button" :aria-label="t('webhooks.delete')" @click="deleteConfig(item)">×</button>
+            <button class="icon-action" type="button" :aria-label="t('webhooks.edit')" @click="openEditConfig(item)"><el-icon aria-hidden="true"><Edit /></el-icon></button>
+            <button class="icon-action danger-action" type="button" :aria-label="t('webhooks.delete')" @click="deleteConfig(item)"><el-icon aria-hidden="true"><Delete /></el-icon></button>
           </div>
         </article>
       </div>
@@ -420,9 +423,10 @@ onBeforeUnmount(() => {
       <form class="webhook-form" @submit.prevent="saveConfig">
         <label class="form-label">{{ t('webhooks.name') }}<el-input v-model="form.name" maxlength="80" show-word-limit /></label>
         <label class="form-label">{{ t('webhooks.provider') }}<el-select v-model="form.provider" class="provider-select">
-          <el-option value="wecom" :label="providerName('wecom')" />
-          <el-option value="dingtalk" :label="providerName('dingtalk')" />
-          <el-option value="feishu" :label="providerName('feishu')" />
+          <template #prefix><WebhookProviderLogo :provider="form.provider" size="small" /></template>
+          <el-option v-for="provider in providerOptions" :key="provider" :value="provider" :label="providerName(provider)">
+            <template #default><div class="provider-select-option"><WebhookProviderLogo :provider="provider" size="small" /><span>{{ providerName(provider) }}</span></div></template>
+          </el-option>
         </el-select></label>
         <p class="form-help">{{ t('webhooks.providerHelp') }}</p>
         <label class="form-label">{{ t('webhooks.address') }}<el-input v-model="form.webhook_url" autocomplete="off" placeholder="https://…" /></label>
