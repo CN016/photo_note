@@ -10,7 +10,9 @@
   "required": "Enter some text or attach at least one image.",
   "tooLong": "Feedback must be 2,000 characters or fewer.",
   "imageInvalid": "This image could not be read. Choose another one.",
-  "success": "Feedback sent. Thank you for sharing.",
+  "successTitle": "Thank you for your feedback",
+  "successMessage": "We received your feedback and will review it as soon as we can. Please bear with us.",
+  "done": "Done",
   "rateLimited": "Too many submissions. Try again in an hour.",
   "submitFailed": "Feedback could not be sent. Your draft is saved; try again later."
 }

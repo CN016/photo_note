@@ -124,9 +124,9 @@ func (service *NoticeService) PublishErrorLog(ctx context.Context, userID uuid.U
 
 const feedbackWebhookPartLimit = 3800
 
-// PublishFeedbackSubmitted 以稳定事件键创建完整站内反馈，并为启用的每个 webhook 配置生成安全分段。
-func (service *NoticeService) PublishFeedbackSubmitted(ctx context.Context, userID, feedbackID uuid.UUID, content string, imageURLs []string) error {
-	markdown, err := feedbackMarkdown(content, imageURLs)
+// PublishFeedbackSubmitted 以稳定事件键创建反馈正文、来源资料和图片链接，并为启用的 webhook 配置生成安全分段。
+func (service *NoticeService) PublishFeedbackSubmitted(ctx context.Context, userID, feedbackID uuid.UUID, reporter FeedbackReporter, content string, imageURLs []string) error {
+	markdown, err := feedbackMarkdown(reporter, content, imageURLs)
 	if err != nil {
 		return err
 	}
@@ -141,7 +141,8 @@ func (service *NoticeService) PublishFeedbackSubmitted(ctx context.Context, user
 		imageURLs = []string{}
 	}
 	payload, err := json.Marshal(map[string]any{
-		"title": "收到新的用户反馈", "text": content, "markdown": markdown, "image_urls": imageURLs,
+		"title": "收到新的用户反馈", "text": content, "markdown": markdown,
+		"image_urls": imageURLs, "reporter": reporter,
 	})
 	if err != nil {
 		return err
@@ -156,9 +157,25 @@ func (service *NoticeService) PublishFeedbackSubmitted(ctx context.Context, user
 	return repository.CreateFeedbackNotification(ctx, userID, feedbackID, eventKey, model.JSONB(payload), parts)
 }
 
-// feedbackMarkdown 将用户正文作为转义后的纯文本，并仅为服务端生成的图片 URL 构造 Markdown 图片引用。
-func feedbackMarkdown(content string, imageURLs []string) (string, error) {
-	sections := make([]string, 0, 1+len(imageURLs))
+// feedbackMarkdown 展示最少反馈人资料，将用户正文作为纯文本，并为服务端图片地址生成图片与显式查看链接。
+func feedbackMarkdown(reporter FeedbackReporter, content string, imageURLs []string) (string, error) {
+	sections := make([]string, 0, 2+len(imageURLs))
+	reporterName := strings.TrimSpace(reporter.Nickname)
+	if reporter.Guest {
+		if reporterName == "" {
+			reporterName = "游客"
+		}
+		sections = append(sections, "反馈人："+escapeFeedbackMarkdown(reporterName)+"（未登录）")
+	} else {
+		if reporterName == "" {
+			reporterName = "用户"
+		}
+		reporterLine := "反馈人：" + escapeFeedbackMarkdown(reporterName)
+		if reporter.Phone != "" {
+			reporterLine += "（手机号：" + escapeFeedbackMarkdown(reporter.Phone) + "）"
+		}
+		sections = append(sections, reporterLine)
+	}
 	if content != "" {
 		sections = append(sections, escapeFeedbackMarkdown(content))
 	}
@@ -167,7 +184,7 @@ func feedbackMarkdown(content string, imageURLs []string) (string, error) {
 		if err != nil || parsed.Scheme != "https" || parsed.Hostname() == "" || parsed.User != nil || parsed.RawQuery != "" || parsed.Fragment != "" {
 			return "", errors.New("反馈图片地址无效")
 		}
-		sections = append(sections, fmt.Sprintf("![反馈图片%d](%s)", index+1, imageURL))
+		sections = append(sections, fmt.Sprintf("![反馈图片%d](%s)\n[查看反馈图片%d](%s)", index+1, imageURL, index+1, imageURL))
 	}
 	return strings.Join(sections, "\n\n"), nil
 }
@@ -203,7 +220,7 @@ func splitFeedbackMarkdown(markdown string, maximumBytes int) ([]string, error) 
 	}
 	for offset := 0; offset < len(markdown); {
 		unit := ""
-		if strings.HasPrefix(markdown[offset:], "![反馈图片") {
+		if strings.HasPrefix(markdown[offset:], "![反馈图片") || strings.HasPrefix(markdown[offset:], "[查看反馈图片") {
 			end := strings.IndexByte(markdown[offset:], ')')
 			if end < 0 {
 				return nil, errors.New("反馈图片 Markdown 格式无效")
@@ -225,7 +242,7 @@ func splitFeedbackMarkdown(markdown string, maximumBytes int) ([]string, error) 
 			unit = markdown[offset : offset+size]
 		}
 		if len(unit) > maximumBytes {
-			return nil, errors.New("单个反馈图片引用超过 webhook 消息限制")
+			return nil, errors.New("单个反馈图片引用或链接超过 webhook 消息限制")
 		}
 		if current.Len()+len(unit) > maximumBytes {
 			flush()
@@ -647,6 +664,10 @@ func providerRequest(config model.NoticeConfig, delivery model.NoticeDelivery) (
 		return "", nil, err
 	}
 	title, message := noticeMessage(delivery)
+	if config.Provider == "feishu" && delivery.EventType == "feedback.submitted" {
+		// 飞书自定义机器人卡片的图片控件需要飞书 image_key；只配置 webhook 时提供外链入口。
+		message = feishuFeedbackLinksOnly(message)
+	}
 	var payload map[string]any
 	switch config.Provider {
 	case "wecom":
@@ -691,6 +712,28 @@ func providerRequest(config model.NoticeConfig, delivery model.NoticeDelivery) (
 		}
 	}
 	return parsed.String(), body, nil
+}
+
+// feishuFeedbackLinksOnly 移除飞书卡片不支持的外链图片语法，保留同一反馈中可点击的公共图片链接。
+func feishuFeedbackLinksOnly(markdown string) string {
+	const generatedImagePrefix = "![反馈图片"
+	var result strings.Builder
+	for offset := 0; offset < len(markdown); {
+		relative := strings.Index(markdown[offset:], generatedImagePrefix)
+		if relative < 0 {
+			result.WriteString(markdown[offset:])
+			break
+		}
+		start := offset + relative
+		result.WriteString(markdown[offset:start])
+		end := strings.IndexByte(markdown[start:], ')')
+		if end < 0 {
+			result.WriteString(markdown[start:])
+			break
+		}
+		offset = start + end + 1
+	}
+	return strings.ReplaceAll(result.String(), "\n\n\n[查看反馈图片", "\n\n[查看反馈图片")
 }
 
 // noticeMessage 仅从服务端生成的安全消息载荷选择固定中文描述，不把用户内容注入外发模板。

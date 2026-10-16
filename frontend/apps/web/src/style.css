@@ -506,6 +506,10 @@ button.image-anchor:hover .image-anchor-label { background: rgb(20 22 23 / 64%);
 .feedback-trigger { min-height: 48px; padding: 0 17px; box-shadow: 0 7px 20px rgb(43 56 68 / 18%); }
 .feedback-trigger-icon { display: inline-flex; width: 18px; height: 18px; flex: 0 0 auto; align-items: center; justify-content: center; }
 .feedback-panel { display: flex; flex-direction: column; gap: 15px; }
+.feedback-success { display: flex; min-height: 280px; flex-direction: column; align-items: center; justify-content: center; gap: 13px; padding: 26px 14px; text-align: center; }
+.feedback-success-mark { display: grid; width: 48px; height: 48px; place-items: center; border-radius: 50%; background: rgb(78 137 101 / 12%); color: #4e8965; font-size: 25px; font-weight: 700; }
+.feedback-success h3 { margin: 0; color: var(--ink); font-size: 17px; }
+.feedback-success p { max-width: 310px; margin: 0 0 6px; color: var(--muted); font-size: 12px; line-height: 1.7; }
 .feedback-description, .feedback-upload-help { margin: 0; color: var(--muted); font-size: 12px; line-height: 1.6; }
 .feedback-image-label { display: flex; justify-content: space-between; color: var(--ink-soft); font-size: 12px; font-weight: 700; }
 .feedback-image-label small { color: var(--muted); font-weight: 400; }
@@ -623,6 +627,7 @@ button.image-anchor:hover .image-anchor-label { background: rgb(20 22 23 / 64%);
 .read-state { flex: 0 0 auto; color: var(--muted); font-size: 10px; }
 .notification-card.unread .read-state { color: var(--accent-hover); font-weight: 700; }
 .notification-body { margin: 7px 0 9px; color: var(--ink-soft); font-size: 12px; line-height: 1.65; }
+.notification-reporter { margin: 7px 0 0; color: var(--muted); font-size: 11px; line-height: 1.5; }
 .feedback-message { white-space: pre-wrap; overflow-wrap: anywhere; }
 .feedback-image-list { display: flex; flex-wrap: wrap; gap: 8px; margin: 9px 0 11px; }
 .feedback-image-list img { display: block; width: min(180px, 100%); max-height: 220px; border: 1px solid var(--line); border-radius: 7px; object-fit: contain; background: var(--surface-soft); }
@@ -633,6 +638,7 @@ button.image-anchor:hover .image-anchor-label { background: rgb(20 22 23 / 64%);
 .provider-chip > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .delivery-part { color: var(--muted); font-size: 10px; white-space: nowrap; }
 .delivery-state { flex: 0 0 auto; color: var(--muted); font-size: 10px; }
+.delivery-error, .delivery-attempts { color: var(--muted); font-size: 10px; }
 .delivery-state.state-delivered { color: #4e8965; }
 .delivery-state.state-failed { color: #b85049; }
 .delivery-state.state-sending { color: var(--accent-hover); }

@@ -99,3 +99,17 @@ func (store *PostgresStore) CompleteFeedbackNotificationJob(ctx context.Context,
 	}
 	return nil
 }
+
+// FindFeedbackReporter 只读取反馈人的昵称和手机号，供管理员通知识别反馈来源。
+func (store *PostgresStore) FindFeedbackReporter(ctx context.Context, userID uuid.UUID) (string, string, error) {
+	var user struct {
+		Nickname string `gorm:"column:nickname"`
+		Phone    string `gorm:"column:phone"`
+	}
+	err := store.db.WithContext(ctx).Model(&model.User{}).
+		Select("nickname", "phone").Where("business_id = ?", userID).First(&user).Error
+	if err != nil {
+		return "", "", persistenceError(err)
+	}
+	return user.Nickname, user.Phone, nil
+}

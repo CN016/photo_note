@@ -124,6 +124,17 @@ function messageBody(item: NoticeMessage): string {
   return t('description')
 }
 
+/** 只展示反馈通知中已脱敏范围内的昵称、手机号或游客身份。 */
+function feedbackReporterText(item: NoticeMessage): string {
+  if (item.event_type !== 'feedback.submitted' || !item.payload.reporter) return ''
+  const reporter = item.payload.reporter
+  if (reporter.guest) return t('feedbackReporterGuest')
+  const nickname = reporter.nickname?.trim()
+  if (!nickname) return ''
+  if (!reporter.phone) return t('feedbackReporterName', { nickname })
+  return t('feedbackReporterDetails', { nickname, phone: reporter.phone })
+}
+
 /** 只渲染后端生成的 HTTPS 反馈图片链接，正文始终使用纯文本插值。 */
 function feedbackImages(item: NoticeMessage): string[] {
   if (item.event_type !== 'feedback.submitted' || !Array.isArray(item.payload.image_urls)) return []
@@ -139,15 +150,22 @@ function providerName(provider: string): string {
 }
 
 function deliveryStatus(delivery: NoticeDelivery): string {
+  const key = `delivery.${delivery.status}`
+  const translated = t(key)
+  return translated === key ? delivery.status : translated
+}
+
+function deliveryError(delivery: NoticeDelivery): string {
   if (delivery.last_error_code) {
-    if (delivery.last_error_code.startsWith('http_')) return t('delivery.http_error')
+    if (delivery.last_error_code.startsWith('http_')) {
+      return t('delivery.http_error', { status: delivery.last_error_code.slice('http_'.length) })
+    }
     const errorKey = `delivery.${delivery.last_error_code}`
     const translated = translate(errorKey)
     if (translated !== errorKey) return translated
+    return delivery.last_error_code
   }
-  const key = `delivery.${delivery.status}`
-  const translated = translate(key)
-  return translated === key ? delivery.status : translated
+  return ''
 }
 
 function replaceDelivery(updated: NoticeDelivery) {
@@ -369,6 +387,7 @@ onBeforeUnmount(() => {
               <h2>{{ messageTitle(item) }}</h2>
               <span class="read-state">{{ item.read_at ? t('readLabel') : t('unreadLabel') }}</span>
             </div>
+            <p v-if="feedbackReporterText(item)" class="notification-reporter">{{ feedbackReporterText(item) }}</p>
             <p class="notification-body" :class="{ 'feedback-message': item.event_type === 'feedback.submitted' }">{{ messageBody(item) }}</p>
             <div v-if="feedbackImages(item).length" class="feedback-image-list">
               <img v-for="(imageURL, index) in feedbackImages(item)" :key="imageURL" :src="imageURL" :alt="t('feedbackImage', { index: index + 1 })" loading="lazy" referrerpolicy="no-referrer" />
@@ -380,6 +399,8 @@ onBeforeUnmount(() => {
                 <span class="provider-chip"><WebhookProviderLogo :provider="delivery.provider" size="small" /><span>{{ providerName(delivery.provider) }} · {{ delivery.config_name }}</span></span>
                 <span v-if="delivery.part_count > 1" class="delivery-part">{{ t('part', { index: delivery.part_index, count: delivery.part_count }) }}</span>
                 <span class="delivery-state" :class="`state-${delivery.status}`">{{ deliveryStatus(delivery) }}</span>
+                <span v-if="deliveryError(delivery)" class="delivery-error">{{ deliveryError(delivery) }}</span>
+                <span v-if="['retry', 'failed'].includes(delivery.status) && delivery.attempt_count > 0" class="delivery-attempts">{{ t('delivery.attemptCount', { count: delivery.attempt_count }) }}</span>
                 <button v-if="delivery.can_retry" class="inline-action" type="button" @click="retryDelivery(delivery)">{{ t('retry') }}</button>
               </div>
             </div>

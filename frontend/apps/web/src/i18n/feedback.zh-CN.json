@@ -10,7 +10,9 @@
   "required": "请填写文字或至少上传一张图片。",
   "tooLong": "反馈文字不能超过 2000 字。",
   "imageInvalid": "无法读取图片，请换一张再试。",
-  "success": "反馈已提交，感谢你的建议。",
+  "successTitle": "感谢你的反馈",
+  "successMessage": "我们已收到你的反馈，会尽快查看，请耐心等待。",
+  "done": "知道了",
   "rateLimited": "提交次数过多，请一小时后再试。",
   "submitFailed": "反馈提交失败，内容已保留，请稍后重试。"
 }

@@ -24,13 +24,13 @@ API 默认通过宿主机 `127.0.0.1:8089` 提供服务，监听地址、请求�
 
 ### 消息中心与 webhook 通知
 
-登录用户可在共享 Web 应用 `/messages` 页查看灵感图处理、服务端错误和用户反馈通知，筛选未读消息、标记已读并打开关联灵感图。反馈正文以纯文本显示，反馈图片以内嵌图片显示。应用打开期间导航角标约每 30 秒刷新一次，并在应用内提示新消息；不提供浏览器关闭后的系统推送。
+登录用户可在共享 Web 应用 `/messages` 页查看灵感图处理、服务端错误和用户反馈通知，筛选未读消息、标记已读并打开关联灵感图。反馈通知显示反馈正文、反馈人昵称和手机号；游客反馈会标记为未登录。站内消息中的反馈图片以内嵌图片显示。提交反馈成功后，表单文字和图片预览会清空，并展示感谢与等待提示。应用打开期间导航角标约每 30 秒刷新一次，并在应用内提示新消息；不提供浏览器关闭后的系统推送。
 
 用户可在“Webhook 渠道”中创建多个企业微信、钉钉或飞书自定义机器人配置，停用的配置仍计入总数上限。配置数量上限来自私有 `app_configs` 项 `notice.max_webhooks_per_user`，迁移初始值为 20，运行时读取，配置更新后无需重启。支持启停、修改、软删除和异步测试；完整 webhook 地址和签名密钥只在创建/修改时提交，读取只返回平台主机遮罩和是否配置签名。编辑时空白 webhook 地址或签名密钥表示保留原值；清除签名需显式设置 `clear_signing_secret=true`。
 
 通知 API 均需 Bearer Access Token，并从 token 取得用户业务 UUID：`GET /api/v1/notifications?page=1&page_size=20&unread_only=false` 分页查询消息及各渠道投递状态，`GET /api/v1/notifications/unread-count` 读取角标数量，`PATCH /api/v1/notifications/{business_id}/read` 标记单条已读，`POST /api/v1/notifications/read-all` 标记全部已读。配置 API 为 `GET/POST /api/v1/notice-configs`、`PATCH/DELETE /api/v1/notice-configs/{business_id}` 和 `POST /api/v1/notice-configs/{business_id}/test`；测试接口只创建 outbox 并以 202 返回。用 `GET /api/v1/notice-deliveries/{business_id}` 查询投递状态，`POST /api/v1/notice-deliveries/{business_id}/retry` 重新排队最终失败的任务。
 
-后台事件在同一数据库事务中写入站内通知和各启用配置的 webhook outbox，独立 worker 负责外部 HTTP 请求，使用 12 秒超时、拒绝重定向和最多 5 次发送尝试。超长反馈 Markdown 会按保守的 3800 字节上限拆分，每个渠道的每段都有独立投递状态和重试入口。网络错误、HTTP 状态或平台业务码只转换成安全错误分类，不记录 webhook 地址、签名密钥或远端响应正文。投递失败仍可从站内消息查看并单渠道重试；灵感图事件要求当前 `image_key` 和 `async_version` 同时匹配，不为已删除或过期版本生成通知。新数据库应按序执行 `backend/migrations/000001` 至当前最新迁移；已有数据库升级前先备份并按顺序手动执行所有尚未应用的文件。`000011_create_notification_center.sql` 创建消息中心表，`000013_feedback_notifications.sql` 增加反馈任务和分段投递字段，两者均不建立外键。
+后台事件在同一数据库事务中写入站内通知和各启用配置的 webhook outbox，独立 worker 负责外部 HTTP 请求，使用 12 秒超时、拒绝重定向和最多 5 次发送尝试。超长反馈 Markdown 会按保守的 3800 字节上限拆分，每个渠道的每段都有独立投递状态和重试入口。消息中心分别展示发送状态、安全错误分类和尝试次数；`delivered` 表示 webhook 请求获得成功 HTTP 响应且未返回已识别的平台错误码，不代表群成员已阅读。网络错误、HTTP 状态或平台业务码只转换成安全错误分类，不记录 webhook 地址、签名密钥或远端响应正文。投递失败仍可从站内消息查看并单渠道重试；灵感图事件要求当前 `image_key` 和 `async_version` 同时匹配，不为已删除或过期版本生成通知。新数据库应按序执行 `backend/migrations/000001` 至当前最新迁移；已有数据库升级前先备份并按顺序手动执行所有尚未应用的文件。`000011_create_notification_center.sql` 创建消息中心表，`000013_feedback_notifications.sql` 增加反馈任务和分段投递字段，两者均不建立外键。
 
 ### 服务端错误日志与管理员通知
 
@@ -46,9 +46,11 @@ WHERE config_key = 'error_logs.admin_phone';
 
 ### 用户反馈通知与公共图片
 
-新反馈与 `feedback_notification_jobs` 任务在同一事务保存。后台 worker 按 `feedback.admin_phone` 查找已注册用户，并以稳定 `feedback.submitted:<feedback business_id>` 事件键创建站内通知和该用户启用渠道的 webhook outbox；不匹配用户时仅将任务标为安全错误状态，反馈仍保留。默认 `feedback.notify_admin=false`，无短信功能。启用前应设置独立手机号和 HTTPS 公共基础地址；地址可包含反向代理路径前缀，例如 `https://photo.016imcn.love/back`。手机号、开关与地址均为私有配置，业务代码只经统一配置服务读取。
+新反馈与 `feedback_notification_jobs` 任务在同一事务保存。后台 worker 按 `feedback.admin_phone` 查找已注册用户，并以稳定 `feedback.submitted:<feedback business_id>` 事件键创建站内通知和该用户启用渠道的 webhook outbox；通知包含完整反馈文字、反馈人昵称与手机号、图片 URL，不匹配接收用户时仅将任务标为安全错误状态，反馈仍保留。默认 `feedback.notify_admin=false`，无短信功能。启用前应设置独立手机号和 HTTPS 公共基础地址；地址可包含反向代理路径前缀，例如 `https://photo.016imcn.love/back`。手机号、开关与地址均为私有配置，业务代码只经统一配置服务读取。
 
 `http.public_base_url` 必须是 HTTPS 地址且包含主机名；允许配置反向代理路径前缀，但不允许查询参数、片段或用户凭据。worker 会在该地址后拼接反馈图片 API 路径生成绝对 URL，不采信请求 `Host`。反馈图片链接指向上方的无需鉴权读取接口；其他文件 key 不具有公共读取权限。新迁移 `backend/migrations/000013_feedback_notifications.sql` 会添加私有配置项、任务表与 webhook 分段列。运维应先应用迁移，再填入实际接收配置，最后启用开关：
+
+企业微信和钉钉通知同时发送图片 Markdown 与可点击图片链接。飞书自定义机器人卡片使用无需登录即可访问的反馈图片链接；自定义机器人配置只有 webhook 地址，无法取得飞书上传图片所需的 `image_key`，因此不能以内嵌飞书图片组件显示。飞书图片上传需要另行配置具备相应权限的应用凭证。
 
 ```sql
 UPDATE app_configs SET config_value = '<已注册用户手机号>', updated_at = now() WHERE config_key = 'feedback.admin_phone';

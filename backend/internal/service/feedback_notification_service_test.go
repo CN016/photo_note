@@ -13,10 +13,13 @@ import (
 )
 
 type feedbackNotificationRepositoryTest struct {
-	userID     uuid.UUID
-	lookupErr  error
-	lookedUp   string
-	lookupHits int
+	userID        uuid.UUID
+	lookupErr     error
+	lookedUp      string
+	lookupHits    int
+	reporterName  string
+	reporterPhone string
+	reporterErr   error
 }
 
 func (*feedbackNotificationRepositoryTest) ClaimFeedbackNotificationJob(context.Context) (model.FeedbackNotificationJob, model.Feedback, bool, error) {
@@ -33,6 +36,10 @@ func (repository *feedbackNotificationRepositoryTest) FindUserBusinessIDByPhone(
 	return repository.userID, repository.lookupErr
 }
 
+func (repository *feedbackNotificationRepositoryTest) FindFeedbackReporter(context.Context, uuid.UUID) (string, string, error) {
+	return repository.reporterName, repository.reporterPhone, repository.reporterErr
+}
+
 type feedbackNotificationSettingsTest struct {
 	enabled bool
 	phone   string
@@ -47,16 +54,18 @@ func (settings feedbackNotificationSettingsTest) FeedbackNotificationSettings(co
 type feedbackNotificationPublisherTest struct {
 	userID    uuid.UUID
 	feedback  uuid.UUID
+	reporter  FeedbackReporter
 	content   string
 	imageURLs []string
 	err       error
 	calls     int
 }
 
-func (publisher *feedbackNotificationPublisherTest) PublishFeedbackSubmitted(_ context.Context, userID, feedbackID uuid.UUID, content string, imageURLs []string) error {
+func (publisher *feedbackNotificationPublisherTest) PublishFeedbackSubmitted(_ context.Context, userID, feedbackID uuid.UUID, reporter FeedbackReporter, content string, imageURLs []string) error {
 	publisher.calls++
 	publisher.userID = userID
 	publisher.feedback = feedbackID
+	publisher.reporter = reporter
 	publisher.content = content
 	publisher.imageURLs = append([]string(nil), imageURLs...)
 	return publisher.err

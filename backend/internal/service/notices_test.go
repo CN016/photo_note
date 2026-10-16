@@ -146,7 +146,7 @@ func TestProviderRequestUsesPlatformSpecificPayloadsAndSignatures(t *testing.T) 
 // TestFeedbackWebhookMarkdownEscapingAndSplitting 保证输入不触发 Markdown 提及，且分段不拆 UTF-8 或图片链接。
 func TestFeedbackWebhookMarkdownEscapingAndSplitting(t *testing.T) {
 	imageURL := "https://images.example/api/v1/public-feedback-images/public_local_20261016_123e4567-e89b-12d3-a456-426614174000.png"
-	markdown, err := feedbackMarkdown("![伪造](https://attacker.example) <at user_id=\"all\">\n"+strings.Repeat("反馈内容", 900), []string{imageURL})
+	markdown, err := feedbackMarkdown(FeedbackReporter{Nickname: "测试用户", Phone: "13800138000"}, "![伪造](https://attacker.example) <at user_id=\"all\">\n"+strings.Repeat("反馈内容", 900), []string{imageURL})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -180,10 +180,7 @@ func TestFeedbackWebhookMarkdownEscapingAndSplitting(t *testing.T) {
 	}
 
 	boundaryContent := strings.Repeat("x", feedbackWebhookPartLimit-1) + "\\*tail"
-	boundaryMarkdown, err := feedbackMarkdown(boundaryContent, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
+	boundaryMarkdown := escapeFeedbackMarkdown(boundaryContent)
 	boundaryParts, err := splitFeedbackMarkdown(boundaryMarkdown, feedbackWebhookPartLimit)
 	if err != nil {
 		t.Fatal(err)
@@ -198,7 +195,7 @@ func TestFeedbackFeishuRequestUsesInteractiveMarkdownCard(t *testing.T) {
 	config := model.NoticeConfig{Provider: "feishu", WebhookURL: "https://open.feishu.cn/open-apis/bot/v2/hook/token"}
 	delivery := model.NoticeDelivery{
 		EventType: "feedback.submitted",
-		Payload:   model.JSONB(`{"title":"收到新的用户反馈（1/1）","markdown":"反馈正文\\n\\n![反馈图片1](https://images.example/image.png)"}`),
+		Payload:   model.JSONB(`{"title":"收到新的用户反馈（1/1）","markdown":"反馈正文\\n\\n![反馈图片1](https://images.example/image.png)\\n[查看反馈图片1](https://images.example/image.png)"}`),
 	}
 	_, body, err := providerRequest(config, delivery)
 	if err != nil {
@@ -219,8 +216,8 @@ func TestFeedbackFeishuRequestUsesInteractiveMarkdownCard(t *testing.T) {
 	if err := json.Unmarshal(body, &payload); err != nil {
 		t.Fatal(err)
 	}
-	if payload.MessageType != "interactive" || payload.Card.Schema != "2.0" || len(payload.Card.Body.Elements) != 1 || payload.Card.Body.Elements[0].Tag != "markdown" || !strings.Contains(payload.Card.Body.Elements[0].Content, "![反馈图片1]") {
-		t.Fatalf("Feishu card did not preserve feedback Markdown: %+v", payload)
+	if payload.MessageType != "interactive" || payload.Card.Schema != "2.0" || len(payload.Card.Body.Elements) != 1 || payload.Card.Body.Elements[0].Tag != "markdown" || strings.Contains(payload.Card.Body.Elements[0].Content, "![反馈图片1]") || !strings.Contains(payload.Card.Body.Elements[0].Content, "[查看反馈图片1]") {
+		t.Fatalf("Feishu card did not preserve a clickable feedback image link: %+v", payload)
 	}
 }
 

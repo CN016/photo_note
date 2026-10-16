@@ -18,11 +18,12 @@ import (
 // ErrFeedbackNotificationConfigInvalid 表示私有反馈通知配置值不符合业务约束。
 var ErrFeedbackNotificationConfigInvalid = errors.New("反馈通知配置无效")
 
-// FeedbackNotificationRepository 管理持久化任务，并只按手机号读取接收用户的业务 UUID。
+// FeedbackNotificationRepository 管理持久化任务，并读取接收用户和反馈人的最少资料。
 type FeedbackNotificationRepository interface {
 	ClaimFeedbackNotificationJob(context.Context) (model.FeedbackNotificationJob, model.Feedback, bool, error)
 	CompleteFeedbackNotificationJob(context.Context, uuid.UUID, int, string, string) error
 	FindUserBusinessIDByPhone(context.Context, string) (uuid.UUID, error)
+	FindFeedbackReporter(context.Context, uuid.UUID) (string, string, error)
 }
 
 // FeedbackNotificationSettingsReader 从统一配置服务读取开关、专用接收手机号和允许路径前缀的 HTTPS 公共地址。
@@ -32,7 +33,14 @@ type FeedbackNotificationSettingsReader interface {
 
 // FeedbackNotificationPublisher 将反馈安全载荷写入站内消息，并为目标用户创建 webhook outbox。
 type FeedbackNotificationPublisher interface {
-	PublishFeedbackSubmitted(context.Context, uuid.UUID, uuid.UUID, string, []string) error
+	PublishFeedbackSubmitted(context.Context, uuid.UUID, uuid.UUID, FeedbackReporter, string, []string) error
+}
+
+// FeedbackReporter 只向指定反馈接收人展示昵称、手机号或游客状态，不暴露账户业务 UUID。
+type FeedbackReporter struct {
+	Nickname string `json:"nickname"`
+	Phone    string `json:"phone,omitempty"`
+	Guest    bool   `json:"guest"`
 }
 
 // FeedbackNotificationService 持续领取已持久化的反馈通知任务；任何失败都不会回滚已保存反馈。
@@ -115,6 +123,22 @@ func (service *FeedbackNotificationService) process(ctx context.Context, feedbac
 		}
 		return "retry", "recipient_lookup_failed"
 	}
+	reporter := FeedbackReporter{Nickname: "游客", Guest: true}
+	if feedback.UserID != nil {
+		nickname, reporterPhone, reporterErr := service.repository.FindFeedbackReporter(ctx, *feedback.UserID)
+		if reporterErr != nil {
+			if fault.Is(reporterErr, 404, "not_found") {
+				reporter = FeedbackReporter{Nickname: "账号已不存在"}
+			} else {
+				return "retry", "feedback_reporter_lookup_failed"
+			}
+		} else {
+			reporter = FeedbackReporter{Nickname: strings.TrimSpace(nickname), Phone: reporterPhone}
+			if reporter.Nickname == "" {
+				reporter.Nickname = "用户"
+			}
+		}
+	}
 	imageURLs := make([]string, 0, len(feedback.ImageKeys))
 	for _, imageKey := range feedback.ImageKeys {
 		key := string(imageKey)
@@ -124,7 +148,7 @@ func (service *FeedbackNotificationService) process(ctx context.Context, feedbac
 		}
 		imageURLs = append(imageURLs, strings.TrimRight(publicBaseURL, "/")+"/api/v1/public-feedback-images/"+url.PathEscape(key))
 	}
-	if err := service.notices.PublishFeedbackSubmitted(ctx, userID, feedback.BusinessID, feedback.Content, imageURLs); err != nil {
+	if err := service.notices.PublishFeedbackSubmitted(ctx, userID, feedback.BusinessID, reporter, feedback.Content, imageURLs); err != nil {
 		return "retry", "notification_publish_failed"
 	}
 	return "succeeded", ""

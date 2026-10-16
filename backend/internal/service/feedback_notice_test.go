@@ -32,10 +32,11 @@ func TestPublishFeedbackSubmittedKeepsFullPayloadAndStableIdempotencyKey(t *test
 	notices := NewNoticeService(repository, nil)
 	feedbackID := uuid.New()
 	userID := uuid.New()
+	reporter := FeedbackReporter{Nickname: "反馈用户", Phone: "13800138000"}
 	content := "完整反馈正文\n包含第二行"
 	imageURL := "https://photos.example/api/v1/public-feedback-images/public_local_20261016_123e4567-e89b-12d3-a456-426614174000.png"
 	for attempt := 0; attempt < 2; attempt++ {
-		if err := notices.PublishFeedbackSubmitted(context.Background(), userID, feedbackID, content, []string{imageURL}); err != nil {
+		if err := notices.PublishFeedbackSubmitted(context.Background(), userID, feedbackID, reporter, content, []string{imageURL}); err != nil {
 			t.Fatal(err)
 		}
 	}

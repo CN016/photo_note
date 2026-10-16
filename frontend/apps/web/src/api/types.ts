@@ -115,6 +115,11 @@ export interface NoticeMessage {
     markdown?: string
     image_urls?: string[]
     title?: string
+    reporter?: {
+      nickname: string
+      phone?: string
+      guest?: boolean
+    }
   }
   read_at: string | null
   created_at: string
