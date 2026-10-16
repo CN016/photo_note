@@ -45,6 +45,12 @@
     "http_error": "HTTP 请求失败（状态码 {status}）",
     "attemptCount": "已尝试 {count}/5 次",
     "invalid_provider_request": "配置格式无效",
+    "feishu_feedback_image_invalid": "反馈图片资料无效",
+    "feishu_image_config_invalid": "飞书图片上传凭证未填写完整",
+    "feishu_image_config_unavailable": "无法读取飞书图片上传配置",
+    "feishu_image_upload_unavailable": "反馈图片存储暂不可用",
+    "feishu_image_auth_failed": "飞书应用认证失败",
+    "feishu_image_upload_failed": "飞书图片上传失败",
     "config_unavailable": "配置已删除",
     "config_disabled": "渠道已停用",
     "response_read_error": "读取响应失败"

@@ -243,6 +243,23 @@ func (service *RuntimeConfigService) FeedbackNotificationSettings(ctx context.Co
 	return true, phone, strings.TrimRight(publicBaseURL, "/"), nil
 }
 
+// FeishuFeedbackImageUploadSettings 读取反馈图片原生投递使用的私有飞书应用凭证；两项均为空时保留 webhook 外链模式。
+func (service *RuntimeConfigService) FeishuFeedbackImageUploadSettings(ctx context.Context) (string, string, bool, error) {
+	values, err := service.reader.ReadConfigValues(ctx, []string{"feedback.feishu_app_id", "feedback.feishu_app_secret"})
+	if err != nil {
+		return "", "", false, fmt.Errorf("读取飞书反馈图片上传配置失败: %w", err)
+	}
+	appID := strings.TrimSpace(values["feedback.feishu_app_id"])
+	appSecret := strings.TrimSpace(values["feedback.feishu_app_secret"])
+	if appID == "" && appSecret == "" {
+		return "", "", false, nil
+	}
+	if appID == "" || appSecret == "" {
+		return "", "", false, ErrFeishuFeedbackImageConfigInvalid
+	}
+	return appID, appSecret, true, nil
+}
+
 // ListPublicConfigValues 从统一配置 repository 读取已开放配置，并按 key 排序以提供稳定响应顺序。
 // keys 为空时返回全部开放项；指定 key 时，私有项和不存在项都会被 repository 过滤掉。
 func (service *RuntimeConfigService) ListPublicConfigValues(ctx context.Context, keys []string) ([]PublicConfigValue, error) {

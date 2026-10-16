@@ -4,7 +4,7 @@
 
 首版后端为跨平台图片与文本编辑器提供账户、标签、灵感图和文件读写接口。技术栈采用 Go、Gin、GORM、PostgreSQL 和 Redis。`backend/` 已包含服务代码、版本化 SQL、PostgreSQL 17、Redis 和 API 的 Docker Compose 配置；数据库迁移由 PostgreSQL 空数据卷首次启动时执行初始化 SQL，服务本身不自动运行 GORM AutoMigrate。
 
-PostgreSQL 保存配置、用户、标签和灵感图；Redis 保存访问令牌、刷新令牌及其会话索引。`backend/docker-compose.yml` 同时启动 PostgreSQL 17、Redis 7 和 Gin API；数据库初始化 SQL 在空数据卷首次启动时创建 schema 并写入服务默认配置。`app_configs` 只保存非秘密配置；PostgreSQL/Redis 连接参数和连接凭证由服务运行环境提供，HTTP 与认证运行参数由统一配置服务从表中读取。
+PostgreSQL 保存配置、用户、标签和灵感图；Redis 保存访问令牌、刷新令牌及其会话索引。`backend/docker-compose.yml` 同时启动 PostgreSQL 17、Redis 7 和 Gin API；数据库初始化 SQL 在空数据卷首次启动时创建 schema 并写入服务默认配置。`app_configs` 统一保存服务配置，包括仅供后端读取的私密配置；秘密值必须保持 `is_public=false`，HTTP 与认证运行参数由统一配置服务从表中读取。PostgreSQL/Redis 连接参数和连接凭证仍由服务运行环境提供。
 
 从仓库根目录复制 `backend/.env.example` 为 `backend/.env` 并替换两组随机密码，然后运行 `docker compose -f backend/docker-compose.yml up -d --build`。Compose 和 API 默认使用 `POSTGRES_USER` 作为数据库账号；这是 PostgreSQL 初始化管理员账号，便于本地快速部署。生产环境可预先创建权限受限账号，并通过 `DB_USER`、`DB_PASSWORD` 覆盖。宿主机 PostgreSQL 和 API 分别绑定到 `127.0.0.1:5432`、`127.0.0.1:8089`；Redis 仅在 Compose 内部网络开放。PostgreSQL 数据保存在 `backend/postgres17_data/`，Redis 数据保存在 Compose 命名卷中；普通 `docker compose down` 不会删除数据。初始化 SQL 仅在空数据目录首次启动时执行；后续结构变更需按版本手动应用迁移文件。
 
@@ -38,11 +38,11 @@ GORM 迁移设置 `DisableForeignKeyConstraintWhenMigrating: true`，模型避�
 | 字段 | 类型 | 规则 / 用途 |
 | --- | --- | --- |
 | `config_key` | `text` | 非空、唯一 |
-| `config_value` | `text` | 非空，保存非秘密配置值 |
+| `config_value` | `text` | 非空，保存配置值；秘密配置只允许作为私有项保存 |
 | `description` | `text` | 配置说明 |
 | `is_public` | `boolean` | 非空，默认 `false`；仅为 `true` 时公开配置值 |
 
-只有 `is_public=true` 的配置值可以通过无需鉴权的 `GET /api/v1/configs/public` 读取；响应仅包含 key 和 value，私有项及不存在项均不会返回。可不传参数读取全部开放项，也可重复传入 `keys` 参数筛选，例如 `?keys=frontend.theme&keys=frontend.upload_limit`。公开配置不得包含密码、密钥、令牌等秘密。服务通过统一配置服务按 key 加载 `app.mode`、`http.listen_addr`、HTTP 请求体上限和超时、Access/Refresh Token 时长、文件存储根目录和单文件大小上限；`files.active_store_type` 在每次上传时重新读取，使存储类型切换对下一次写入生效。连接 PostgreSQL 和 Redis 所需的地址、账号及密码保留在运行环境中。`000002_seed_runtime_config.sql` 和 `000003_seed_file_storage_config.sql` 为新环境提供非秘密初始值；缺少必需配置项时服务拒绝启动。
+只有 `is_public=true` 的配置值可以通过无需鉴权的 `GET /api/v1/configs/public` 读取；响应仅包含 key 和 value，私有项及不存在项均不会返回。可不传参数读取全部开放项，也可重复传入 `keys` 参数筛选，例如 `?keys=frontend.theme&keys=frontend.upload_limit`。公开配置不得包含密码、密钥、令牌等秘密；密码、应用密钥和签名材料等只能作为 `is_public=false` 的私有配置由后端读取。服务通过统一配置服务按 key 加载 `app.mode`、`http.listen_addr`、HTTP 请求体上限和超时、Access/Refresh Token 时长、文件存储根目录和单文件大小上限；`files.active_store_type` 在每次上传时重新读取，使存储类型切换对下一次写入生效。连接 PostgreSQL 和 Redis 所需的地址、账号及密码保留在运行环境中。`000002_seed_runtime_config.sql` 和 `000003_seed_file_storage_config.sql` 为新环境提供非秘密初始值；缺少必需配置项时服务拒绝启动。
 
 ### 3.2 `users` 用户表
 
@@ -186,7 +186,7 @@ JSON 请求和响应使用 UTF-8；日期时间以 RFC 3339 格式返回。创�
 
 当前已部署契约为后端 2.0.0；此处较早的 V1 设计描述已由后续规则替代。注册仅使用 `POST /api/v2/auth/register` multipart，手机号为 11 位数字、密码为 8 至 128 个字符、昵称最多 64 个字符且头像必传；旧 `POST /api/v1/auth/register` 返回 `426 upgrade_required`。登录只接受 11 位数字，兼容旧客户端输入的 `+86` 加 11 位号码并映射到数据库中的 11 位值；手机号不存在和密码错误继续使用相同的 `401` 语义。
 
-反馈正文最多 2000 个 Unicode 字符，最多 5 张图片，至少提交正文或一张图片；单图受 `files.max_upload_bytes` 限制。每个客户端 IP 每小时最多提交 5 次。IP 仅从配置的可信代理链解析，Redis 键保存 IP 摘要。反馈图片 storekey 与正文写入 `feedbacks`，反馈内容不写入日志。新迁移 `000013_feedback_notifications.sql` 建立持久化通知任务并为 webhook 投递增加分段序号；长正文按安全字节上限拆分，UTF-8 字符和图片引用保持完整，每段独立显示投递状态并可单独重试。通知开关默认关闭，不接入短信；启用时使用独立 `feedback.admin_phone` 查找现有账户。
+反馈正文最多 2000 个 Unicode 字符，最多 5 张图片，至少提交正文或一张图片；单图受 `files.max_upload_bytes` 限制。每个客户端 IP 每小时最多提交 5 次。IP 仅从配置的可信代理链解析，Redis 键保存 IP 摘要。反馈图片 storekey 与正文写入 `feedbacks`，反馈内容不写入日志。新迁移 `000013_feedback_notifications.sql` 建立持久化通知任务并为 webhook 投递增加分段序号；长正文按安全字节上限拆分，UTF-8 字符和图片引用保持完整，每段独立显示投递状态并可单独重试。通知开关默认关闭，不接入短信；启用时使用独立 `feedback.admin_phone` 查找现有账户。飞书的 Markdown 文本组件不把标准 `![...](URL)` 语法作为原生图片；当私有配置 `feedback.feishu_app_id` 和 `feedback.feishu_app_secret` 均已设置时，后台用启用机器人能力且具有图片资源上传权限的自建应用上传反馈图片，再以自定义机器人 `post` 富文本的 `img` 节点投递。没有凭证时发送可点击公共图片链接。凭证由 `000014_seed_feishu_feedback_image_upload.sql` 增加，缺失不影响反馈保存和原有链接通知。
 
 注册和登录的 `data` 包含当前用户资料和 `tokens`：
 

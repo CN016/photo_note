@@ -18,6 +18,9 @@ import (
 // ErrFeedbackNotificationConfigInvalid 表示私有反馈通知配置值不符合业务约束。
 var ErrFeedbackNotificationConfigInvalid = errors.New("反馈通知配置无效")
 
+// ErrFeishuFeedbackImageConfigInvalid 表示飞书图片上传凭证只配置了 App ID 或 App Secret 其中一项。
+var ErrFeishuFeedbackImageConfigInvalid = errors.New("飞书反馈图片上传配置不完整")
+
 // FeedbackNotificationRepository 管理持久化任务，并读取接收用户和反馈人的最少资料。
 type FeedbackNotificationRepository interface {
 	ClaimFeedbackNotificationJob(context.Context) (model.FeedbackNotificationJob, model.Feedback, bool, error)

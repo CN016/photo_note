@@ -78,6 +78,7 @@ func run() error {
 		return err
 	}
 	notices := service.NewNoticeService(repository, runtimeConfigService)
+	notices.SetFeedbackImageStore(fileManager)
 	errorLogs := service.NewErrorLogService(repository, runtimeConfigService, notices)
 	notices.SetErrorLogService(errorLogs)
 	feedbackNotifications := service.NewFeedbackNotificationService(repository, runtimeConfigService, notices)

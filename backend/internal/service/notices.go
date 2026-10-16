@@ -52,15 +52,16 @@ type noticeLimitReader interface {
 
 // NoticeService 管理站内消息、用户 webhook 配置和独立异步投递工作循环。
 type NoticeService struct {
-	repository NoticeRepository
-	limits     noticeLimitReader
-	client     *http.Client
-	errorLogs  *ErrorLogService
+	repository          NoticeRepository
+	limits              noticeLimitReader
+	client              *http.Client
+	errorLogs           *ErrorLogService
+	feishuFeedbackImage *feishuFeedbackImageUploader
 }
 
 // NewNoticeService 创建带有限网络超时且拒绝自动跟随重定向的通知服务。
 func NewNoticeService(repository NoticeRepository, limits noticeLimitReader) *NoticeService {
-	return &NoticeService{
+	service := &NoticeService{
 		repository: repository,
 		limits:     limits,
 		client: &http.Client{
@@ -70,6 +71,10 @@ func NewNoticeService(repository NoticeRepository, limits noticeLimitReader) *No
 			},
 		},
 	}
+	if settings, ok := limits.(feishuFeedbackImageUploadSettingsReader); ok {
+		service.feishuFeedbackImage = newFeishuFeedbackImageUploader(settings, service.client)
+	}
+	return service
 }
 
 // SetErrorLogService 接收通知 worker 自身的失败事件，避免后台错误只停留在容器标准输出。
@@ -554,7 +559,12 @@ func (service *NoticeService) RunDeliveryWorker(ctx context.Context) {
 
 // deliver 对目标机器人使用有界 HTTP 客户端，返回稳定错误码而不返回响应正文、地址或秘密。
 func (service *NoticeService) deliver(parent context.Context, delivery model.NoticeDelivery, config model.NoticeConfig) string {
-	requestCtx, cancel := context.WithTimeout(parent, 12*time.Second)
+	requestTimeout := 12 * time.Second
+	if config.Provider == "feishu" && delivery.EventType == "feedback.submitted" {
+		// 飞书原生图片路径包含令牌获取、图片上传和 webhook 投递多个有界请求。
+		requestTimeout = 90 * time.Second
+	}
+	requestCtx, cancel := context.WithTimeout(parent, requestTimeout)
 	defer cancel()
 	if err := validateNoticeConfig(config.Provider, config.Name, config.WebhookURL, config.SigningSecret); err != nil {
 		return "invalid_provider_request"
@@ -562,6 +572,16 @@ func (service *NoticeService) deliver(parent context.Context, delivery model.Not
 	requestURL, body, err := providerRequest(config, delivery)
 	if err != nil {
 		return "invalid_provider_request"
+	}
+	if config.Provider == "feishu" && delivery.EventType == "feedback.submitted" && service.feishuFeedbackImage != nil {
+		imageRequestURL, imageRequestBody, handled, errorCode := service.feishuFeedbackImage.prepare(requestCtx, config, delivery)
+		if errorCode != "" {
+			return errorCode
+		}
+		if handled {
+			requestURL = imageRequestURL
+			body = imageRequestBody
+		}
 	}
 	request, err := http.NewRequestWithContext(requestCtx, http.MethodPost, requestURL, bytes.NewReader(body))
 	if err != nil {
@@ -714,7 +734,7 @@ func providerRequest(config model.NoticeConfig, delivery model.NoticeDelivery) (
 	return parsed.String(), body, nil
 }
 
-// feishuFeedbackLinksOnly 移除飞书卡片不支持的外链图片语法，保留同一反馈中可点击的公共图片链接。
+// feishuFeedbackLinksOnly 在链接回退模式中移除不会被卡片 Markdown 转成图片控件的语法，并保留同一反馈的可点击链接。
 func feishuFeedbackLinksOnly(markdown string) string {
 	const generatedImagePrefix = "![反馈图片"
 	var result strings.Builder

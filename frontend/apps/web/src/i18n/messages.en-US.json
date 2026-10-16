@@ -45,6 +45,12 @@
     "http_error": "HTTP request failed (status {status})",
     "attemptCount": "Attempt {count} of 5",
     "invalid_provider_request": "Invalid configuration",
+    "feishu_feedback_image_invalid": "Feedback image data is invalid",
+    "feishu_image_config_invalid": "Feishu image upload credentials are incomplete",
+    "feishu_image_config_unavailable": "Feishu image upload configuration is unavailable",
+    "feishu_image_upload_unavailable": "Feedback image storage is unavailable",
+    "feishu_image_auth_failed": "Feishu app authentication failed",
+    "feishu_image_upload_failed": "Feishu image upload failed",
     "config_unavailable": "Configuration deleted",
     "config_disabled": "Channel disabled",
     "response_read_error": "Response could not be read"
