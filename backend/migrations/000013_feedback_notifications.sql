@@ -46,9 +46,9 @@ COMMENT ON COLUMN feedback_notification_jobs.last_error_code IS '最近一次安
 
 INSERT INTO app_configs (business_id, config_key, config_value, description, is_public)
 VALUES
-    ('d7b2f77a-ff2b-4d44-9db5-8be001013001', 'feedback.notify_admin', 'false', '是否在后台异步通知指定的已有管理员账户接收新反馈。', false),
-    ('d7b2f77a-ff2b-4d44-9db5-8be001013002', 'feedback.admin_phone', '', '新反馈站内通知的专用接收用户手机号，必须对应已注册账户。', false),
-    ('d7b2f77a-ff2b-4d44-9db5-8be001013003', 'http.public_base_url', '', '用于生成反馈公共图片绝对链接的 HTTPS 基础地址，可包含路径前缀，不包含查询参数、片段或凭据。', false)
+    (gen_random_uuid(), 'feedback.notify_admin', 'false', '是否在后台异步通知指定的已有管理员账户接收新反馈。', false),
+    (gen_random_uuid(), 'feedback.admin_phone', '', '新反馈站内通知的专用接收用户手机号，必须对应已注册账户。', false),
+    (gen_random_uuid(), 'http.public_base_url', '', '用于生成反馈公共图片绝对链接的 HTTPS 基础地址，可包含路径前缀，不包含查询参数、片段或凭据。', false)
 ON CONFLICT (config_key) DO NOTHING;
 
 COMMIT;
