@@ -278,6 +278,32 @@ func (repository *metadataTestRepository) UpdateInspirationImageMetadataIfVersio
 	repository.record.ImageMetadata = MergeInspirationImageMetadata(repository.record.ImageMetadata, metadata)
 	return true, nil
 }
+func (repository *metadataTestRepository) RemoveInspirationSourceImageKeyIfVersion(_ context.Context, userID, inspirationID uuid.UUID, imageKey string, version int64, sourceKey string) (bool, error) {
+	if repository.record.UserID != userID || repository.record.BusinessID != inspirationID || repository.record.ImageKey != imageKey || repository.record.AsyncVersion != version {
+		return false, nil
+	}
+	var data map[string]json.RawMessage
+	if json.Unmarshal(repository.record.Data, &data) != nil || data == nil {
+		return false, nil
+	}
+	var currentSourceKey string
+	if json.Unmarshal(data["source_image_key"], &currentSourceKey) != nil || currentSourceKey != sourceKey {
+		return false, nil
+	}
+	delete(data, "source_image_key")
+	encoded, err := json.Marshal(data)
+	if err != nil {
+		return false, err
+	}
+	repository.record.Data = model.JSONB(encoded)
+	return true, nil
+}
+func (repository *metadataTestRepository) IsInspirationFileReferenced(_ context.Context, imageKey string, exceptInspirationID uuid.UUID) (bool, error) {
+	if repository.record.BusinessID != exceptInspirationID && (repository.record.ImageKey == imageKey || sourceImageKeyFromData(repository.record.Data) == imageKey) {
+		return true, nil
+	}
+	return false, nil
+}
 func (repository *metadataTestRepository) DeleteInspiration(context.Context, uuid.UUID, uuid.UUID) error {
 	return nil
 }
@@ -293,6 +319,10 @@ func (files *metadataTestFiles) Open(key string) (io.ReadCloser, int64, string, 
 }
 func (files *metadataTestFiles) Replace(_ context.Context, key string, content []byte) error {
 	files.contents[key] = append([]byte(nil), content...)
+	return nil
+}
+func (files *metadataTestFiles) Delete(_ context.Context, key string) error {
+	delete(files.contents, key)
 	return nil
 }
 

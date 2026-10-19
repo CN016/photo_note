@@ -26,7 +26,6 @@ import (
 
 // NoticeRepository 抽象用户隔离的站内消息、私有渠道设置和可恢复 webhook outbox 持久化。
 type NoticeRepository interface {
-	CreateInspirationNotification(context.Context, uuid.UUID, uuid.UUID, string, int64, string, string, model.JSONB) (model.Notification, bool, error)
 	CountNoticeConfigs(context.Context, uuid.UUID) (int64, error)
 	CreateNoticeConfig(context.Context, *model.NoticeConfig, int) error
 	ListNoticeConfigs(context.Context, uuid.UUID) ([]model.NoticeConfig, error)
@@ -80,31 +79,6 @@ func NewNoticeService(repository NoticeRepository, limits noticeLimitReader) *No
 // SetErrorLogService 接收通知 worker 自身的失败事件，避免后台错误只停留在容器标准输出。
 func (service *NoticeService) SetErrorLogService(errorLogs *ErrorLogService) {
 	service.errorLogs = errorLogs
-}
-
-// PublishInspirationCompressionResult 只发布指定当前版本的终态事件，旧代次或已删除灵感图不产生任何消息。
-func (service *NoticeService) PublishInspirationCompressionResult(ctx context.Context, userID, inspirationID uuid.UUID, imageKey string, version int64, succeeded bool) error {
-	state := "failed"
-	eventType := "inspiration.compression.failed"
-	message := "灵感图图片处理失败，请检查该灵感图并重新上传图片。"
-	if succeeded {
-		state = "succeeded"
-		eventType = "inspiration.compression.succeeded"
-		message = "灵感图图片处理已完成。"
-	}
-	eventKey := fmt.Sprintf("inspiration.compression:%s:%d", inspirationID, version)
-	payload, err := json.Marshal(map[string]any{
-		"result": state, "async_version": version, "message": message,
-	})
-	if err != nil {
-		return err
-	}
-	_, _, err = service.repository.CreateInspirationNotification(ctx, userID, inspirationID, imageKey, version, eventType, eventKey, model.JSONB(payload))
-	if fault.Is(err, 404, "not_found") {
-		// 处理过程中图片已删除或进入了新代次，这个工作结果已经过期。
-		return nil
-	}
-	return err
 }
 
 // PublishErrorLog 为系统配置指定的管理员创建站内消息，不把内部诊断写入管理员的外部 webhook。

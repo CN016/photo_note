@@ -392,7 +392,7 @@ async function loadSelectedFile(file: File): Promise<void> {
   } finally { if (version === decodeVersion) loading.value = false }
 }
 
-/** 打开既有记录时优先读取原图扩展 key，旧记录则兼容使用 image_key。 */
+/** 打开既有记录时读取压缩后的工作图，避免依赖后台会回收的原图 key。 */
 async function loadExisting(): Promise<void> {
   loading.value = true
   error.value = ''
@@ -405,9 +405,8 @@ async function loadExisting(): Promise<void> {
     filename.value = loaded.file_name || t('gallery.untitled')
     documentData.value = parseEditorDocument(loaded.data)
     history = new DocumentHistory(documentData.value)
-    const sourceKey = typeof loaded.data.source_image_key === 'string' ? loaded.data.source_image_key : loaded.image_key
-    const original = await api.download(sourceKey)
-    const decoded = await decodeImagePreview(original)
+    const workImage = await api.download(loaded.image_key)
+    const decoded = await decodeImagePreview(workImage)
     sourceCanvas.value = decoded.canvas
     downsampled.value = decoded.wasDownsampled
     const storedProfile = isColorAnalysis(loaded.data.color_analysis) ? loaded.data.color_analysis : null

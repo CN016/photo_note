@@ -159,6 +159,12 @@ func (*imageMetadataAPITestRepository) UpdateInspirationFileMetadataIfVersion(co
 func (*imageMetadataAPITestRepository) UpdateInspirationImageMetadataIfVersion(context.Context, uuid.UUID, uuid.UUID, string, int64, model.InspirationImageMetadata) (bool, error) {
 	return false, nil
 }
+func (*imageMetadataAPITestRepository) RemoveInspirationSourceImageKeyIfVersion(context.Context, uuid.UUID, uuid.UUID, string, int64, string) (bool, error) {
+	return false, nil
+}
+func (*imageMetadataAPITestRepository) IsInspirationFileReferenced(context.Context, string, uuid.UUID) (bool, error) {
+	return false, nil
+}
 func (*imageMetadataAPITestRepository) DeleteInspiration(context.Context, uuid.UUID, uuid.UUID) error {
 	return nil
 }

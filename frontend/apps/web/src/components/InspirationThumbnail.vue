@@ -17,7 +17,7 @@ let requestVersion = 0
 
 const imageName = computed(() => props.record.file_name || t('gallery.untitled'))
 const imageLabel = computed(() => t('gallery.openImage', { name: imageName.value }))
-const sourceKey = computed(() => typeof props.record.data?.source_image_key === 'string' ? props.record.data.source_image_key : props.record.image_key)
+const imageKey = computed(() => props.record.image_key)
 
 /** 懒加载触发后鉴权读取图片并生成缩略图地址，过期请求会立即释放地址。 */
 async function loadPreview() {
@@ -25,7 +25,7 @@ async function loadPreview() {
   loading.value = true
   failed.value = false
   try {
-    const blob = await api.download(sourceKey.value)
+    const blob = await api.download(imageKey.value)
     const url = await previewObjectUrl(blob)
     if (version !== requestVersion) { URL.revokeObjectURL(url); return }
     imageUrl.value = url
@@ -33,7 +33,7 @@ async function loadPreview() {
   finally { if (version === requestVersion) loading.value = false }
 }
 
-watch(sourceKey, () => {
+watch(imageKey, () => {
   if (imageUrl.value) URL.revokeObjectURL(imageUrl.value)
   imageUrl.value = null
   if (element.value && observer === null) void loadPreview()

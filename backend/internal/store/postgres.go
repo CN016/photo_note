@@ -489,6 +489,14 @@ func (store *PostgresStore) FindInspirationByBusinessID(ctx context.Context, use
 
 // UpdateInspiration 更新 service 已验证字段，并限定当前用户避免通过 UUID 越权写入。
 func (store *PostgresStore) UpdateInspiration(ctx context.Context, userID, inspirationID uuid.UUID, updates map[string]any) (model.Inspiration, error) {
+	if rawData, ok := updates["data"].(model.JSONB); ok {
+		encoded := string(rawData)
+		// 普通数据编辑不得自行清除待处理原图，也不得把压缩完成后已清理的旧 key 重新写回。
+		updates["data"] = gorm.Expr(
+			"CASE WHEN data->'source_image_key' IS NOT NULL THEN ((?::jsonb - 'source_image_key') || jsonb_build_object('source_image_key', data->'source_image_key')) ELSE (?::jsonb - 'source_image_key') END",
+			encoded, encoded,
+		)
+	}
 	updates["updated_at"] = time.Now().UTC()
 	result := store.db.WithContext(ctx).Model(&model.Inspiration{}).
 		Where("user_id = ? AND business_id = ?", userID, inspirationID).Updates(updates)
@@ -523,6 +531,36 @@ func (store *PostgresStore) UpdateInspirationFileMetadataIfVersion(ctx context.C
 		return false, persistenceError(result.Error)
 	}
 	return result.RowsAffected > 0, nil
+}
+
+// RemoveInspirationSourceImageKeyIfVersion 仅在当前图片代次及原图 key 仍匹配时移除 JSON 中的原图引用。
+func (store *PostgresStore) RemoveInspirationSourceImageKeyIfVersion(ctx context.Context, userID, inspirationID uuid.UUID, imageKey string, asyncVersion int64, sourceImageKey string) (bool, error) {
+	result := store.db.WithContext(ctx).Model(&model.Inspiration{}).
+		Where("user_id = ? AND business_id = ? AND image_key = ? AND async_version = ?", userID, inspirationID, imageKey, asyncVersion).
+		Where("data ->> 'source_image_key' = ?", sourceImageKey).
+		Updates(map[string]any{
+			"data":       gorm.Expr("data - ?", "source_image_key"),
+			"updated_at": time.Now().UTC(),
+		})
+	if result.Error != nil {
+		return false, persistenceError(result.Error)
+	}
+	return result.RowsAffected > 0, nil
+}
+
+// IsInspirationFileReferenced 检查文件 key 是否仍被任意灵感图作为工作图或原图引用。
+func (store *PostgresStore) IsInspirationFileReferenced(ctx context.Context, imageKey string, exceptInspirationID uuid.UUID) (bool, error) {
+	var inspiration model.Inspiration
+	err := store.db.WithContext(ctx).Select("business_id").
+		Where("business_id <> ? AND (image_key = ? OR data ->> 'source_image_key' = ?)", exceptInspirationID, imageKey, imageKey).
+		Limit(1).Take(&inspiration).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return false, nil
+	}
+	if err != nil {
+		return false, persistenceError(err)
+	}
+	return true, nil
 }
 
 // UpdateInspirationImageMetadataIfVersion 在图片 key 和异步代次匹配时仅覆盖服务端已读到的非空值，并原子合并扩展标签。

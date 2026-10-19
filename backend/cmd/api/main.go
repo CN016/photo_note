@@ -84,7 +84,6 @@ func run() error {
 	feedbackNotifications := service.NewFeedbackNotificationService(repository, runtimeConfigService, notices)
 	feedbackNotifications.SetErrorLogService(errorLogs)
 	inspirations := service.NewInspirationService(repository, fileManager, runtimeConfig.MaxUploadBytes)
-	inspirations.SetCompressionNotifier(notices)
 	inspirations.SetErrorLogService(errorLogs)
 	dependencies := httpapi.Dependencies{
 		Auth:                  service.NewAuthService(repository, tokens, passwords),

@@ -35,33 +35,30 @@ type InspirationRepository interface {
 	UpdateInspirationWithAsyncVersion(context.Context, uuid.UUID, uuid.UUID, map[string]any) (model.Inspiration, error)
 	UpdateInspirationFileMetadataIfVersion(context.Context, uuid.UUID, uuid.UUID, string, int64, *string, *int64) (bool, error)
 	UpdateInspirationImageMetadataIfVersion(context.Context, uuid.UUID, uuid.UUID, string, int64, model.InspirationImageMetadata) (bool, error)
+	RemoveInspirationSourceImageKeyIfVersion(context.Context, uuid.UUID, uuid.UUID, string, int64, string) (bool, error)
+	IsInspirationFileReferenced(context.Context, string, uuid.UUID) (bool, error)
 	DeleteInspiration(context.Context, uuid.UUID, uuid.UUID) error
 }
 
-// InspirationFileStore 提供按 storekey 读取和覆盖内容的能力，service 不依赖本地磁盘目录布局。
+// InspirationFileStore 提供按 storekey 读取、覆盖和删除内容的能力，service 不依赖本地磁盘目录布局。
 type InspirationFileStore interface {
 	Open(string) (io.ReadCloser, int64, string, error)
 	Replace(context.Context, string, []byte) error
+	Delete(context.Context, string) error
 }
 
 // InspirationService 校验编辑数据、标签归属和图片文件信息，所有资源范围来自 access token 用户 UUID。
 type InspirationService struct {
-	inspirations       InspirationRepository
-	files              InspirationFileStore
-	errorLogs          *ErrorLogService
-	compressionNotices InspirationCompressionNotifier
-	maxImageBytes      int64
-	readImageMetadata  func(context.Context, []byte) (model.InspirationImageMetadata, error)
-	fileLocks          storeKeyLocks
-	compressionMutex   sync.Mutex
-	compressionCond    *sync.Cond
-	compressionJobs    []inspirationCompressionJob
-	compressionActive  int
-}
-
-// InspirationCompressionNotifier 只接收可展示的异步处理终态，外部 webhook 本身由 notice outbox worker 独立发送。
-type InspirationCompressionNotifier interface {
-	PublishInspirationCompressionResult(context.Context, uuid.UUID, uuid.UUID, string, int64, bool) error
+	inspirations      InspirationRepository
+	files             InspirationFileStore
+	errorLogs         *ErrorLogService
+	maxImageBytes     int64
+	readImageMetadata func(context.Context, []byte) (model.InspirationImageMetadata, error)
+	fileLocks         storeKeyLocks
+	compressionMutex  sync.Mutex
+	compressionCond   *sync.Cond
+	compressionJobs   []inspirationCompressionJob
+	compressionActive int
 }
 
 const (
@@ -130,11 +127,6 @@ func NewInspirationService(inspirations InspirationRepository, files Inspiration
 // SetErrorLogService 将后台图片处理故障接入统一错误日志表。
 func (service *InspirationService) SetErrorLogService(errorLogs *ErrorLogService) {
 	service.errorLogs = errorLogs
-}
-
-// SetCompressionNotifier 注入异步任务终态发布器；未配置时图片压缩仍可独立运行。
-func (service *InspirationService) SetCompressionNotifier(notifier InspirationCompressionNotifier) {
-	service.compressionNotices = notifier
 }
 
 // InspirationInput 是创建或局部更新时已解析的业务数据，不包含 user_id 或数据库 id。
@@ -424,9 +416,6 @@ func (service *InspirationService) runCompressionWorker() {
 			} else {
 				log.Printf("灵感图异步图片处理失败，错误类型=%T", err)
 			}
-			if service.compressionNotices != nil {
-				service.publishCompressionNotice(job, false)
-			}
 		}
 
 		service.compressionMutex.Lock()
@@ -435,7 +424,7 @@ func (service *InspirationService) runCompressionWorker() {
 	}
 }
 
-// processCompressionJob 在 storekey 锁内压缩文件，并在文件覆盖及元数据写回前分别核对异步代次。
+// processCompressionJob 在 storekey 锁内压缩文件，核对异步代次后写回元数据并清理不再使用的原图。
 func (service *InspirationService) processCompressionJob(job inspirationCompressionJob) error {
 	ctx, cancel := context.WithTimeout(context.Background(), inspirationCompressionTimeout)
 	defer cancel()
@@ -479,10 +468,68 @@ func (service *InspirationService) processCompressionJob(job inspirationCompress
 	if err != nil || !updated {
 		return err
 	}
-	if service.compressionNotices != nil {
-		service.publishCompressionNotice(job, true)
-	}
+	service.removeCompressedSourceImage(ctx, job, sourceImageKeyFromData(current.Data))
 	return nil
+}
+
+// sourceImageKeyFromData 读取编辑器单独上传的原图 key；缺失或无效 JSON 均按没有原图引用处理。
+func sourceImageKeyFromData(data model.JSONB) string {
+	var document struct {
+		SourceImageKey string `json:"source_image_key"`
+	}
+	if json.Unmarshal(data, &document) != nil {
+		return ""
+	}
+	return strings.TrimSpace(document.SourceImageKey)
+}
+
+// removeCompressedSourceImage 先确认其他记录未引用原图，再删除文件并按当前代次清除本记录引用。
+// 任一清理步骤失败都会记录后台错误并保留可重试的引用，不影响已经完成的压缩结果。
+func (service *InspirationService) removeCompressedSourceImage(ctx context.Context, job inspirationCompressionJob, sourceKey string) {
+	if sourceKey == "" {
+		return
+	}
+	if sourceKey == job.imageKey {
+		service.clearCompressedSourceImageReference(ctx, job, sourceKey)
+		return
+	}
+	if _, err := filestore.ParseKey(sourceKey); err != nil {
+		service.clearCompressedSourceImageReference(ctx, job, sourceKey)
+		return
+	}
+	if service.files == nil {
+		service.captureOriginalImageCleanupError(errors.New("灵感图文件存储未初始化，无法删除原图"))
+		return
+	}
+	referenced, err := service.inspirations.IsInspirationFileReferenced(ctx, sourceKey, job.inspirationID)
+	if err != nil {
+		service.captureOriginalImageCleanupError(err)
+		return
+	}
+	if !referenced {
+		if err := service.files.Delete(ctx, sourceKey); err != nil {
+			service.captureOriginalImageCleanupError(mapInspirationFileError(err))
+			return
+		}
+	}
+	service.clearCompressedSourceImageReference(ctx, job, sourceKey)
+}
+
+// clearCompressedSourceImageReference 只清理仍指向本次压缩代次和原图 key 的 JSON 字段。
+func (service *InspirationService) clearCompressedSourceImageReference(ctx context.Context, job inspirationCompressionJob, sourceKey string) {
+	if _, err := service.inspirations.RemoveInspirationSourceImageKeyIfVersion(ctx, job.userID, job.inspirationID,
+		job.imageKey, job.asyncVersion, sourceKey); err != nil {
+		service.captureOriginalImageCleanupError(err)
+	}
+}
+
+// captureOriginalImageCleanupError 记录原图回收失败，诊断信息不包含 storekey 或本地文件路径。
+func (service *InspirationService) captureOriginalImageCleanupError(err error) {
+	if service.errorLogs != nil {
+		service.errorLogs.CaptureBackground("inspiration_original_file_cleanup_failed", err)
+		return
+	}
+	log.Printf("灵感图原图文件清理失败，错误类型=%T", err)
 }
 
 // extractAndSaveOriginalMetadata 在压缩前从原图提取属性；任何读取或解析故障都只跳过属性补充，不阻断压缩。
@@ -490,13 +537,9 @@ func (service *InspirationService) extractAndSaveOriginalMetadata(ctx context.Co
 	if service.files == nil {
 		return
 	}
-	var document struct {
-		SourceImageKey string `json:"source_image_key"`
-	}
-	_ = json.Unmarshal(current.Data, &document)
 	keys := make([]string, 0, 2)
-	if document.SourceImageKey != "" {
-		keys = append(keys, document.SourceImageKey)
+	if sourceKey := sourceImageKeyFromData(current.Data); sourceKey != "" {
+		keys = append(keys, sourceKey)
 	}
 	if len(keys) == 0 || keys[0] != job.imageKey {
 		keys = append(keys, job.imageKey)
@@ -541,27 +584,6 @@ func (service *InspirationService) extractAndSaveOriginalMetadata(ctx context.Co
 			return
 		}
 		return
-	}
-}
-
-// publishCompressionNotice 在后台有限重试创建终态通知；通知存储短暂不可用时不把成功压缩误报成失败。
-func (service *InspirationService) publishCompressionNotice(job inspirationCompressionJob, succeeded bool) {
-	var lastErr error
-	for attempt := 0; attempt < 3; attempt++ {
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		lastErr = service.compressionNotices.PublishInspirationCompressionResult(ctx, job.userID, job.inspirationID, job.imageKey, job.asyncVersion, succeeded)
-		cancel()
-		if lastErr == nil {
-			return
-		}
-		if attempt < 2 {
-			time.Sleep(250 * time.Millisecond)
-		}
-	}
-	if service.errorLogs != nil {
-		service.errorLogs.CaptureBackground("inspiration_compression_notice_failed", lastErr)
-	} else {
-		log.Printf("灵感图异步通知创建失败，错误类型=%T", lastErr)
 	}
 }
 

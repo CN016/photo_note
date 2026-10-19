@@ -14,58 +14,6 @@ import (
 	"gorm.io/gorm/clause"
 )
 
-// CreateInspirationNotification 在事务内核对灵感图当前代次、插入幂等站内消息并为启用渠道创建 outbox 任务。
-func (store *PostgresStore) CreateInspirationNotification(ctx context.Context, userID, inspirationID uuid.UUID, imageKey string, asyncVersion int64, eventType, eventKey string, payload model.JSONB) (model.Notification, bool, error) {
-	var notification model.Notification
-	created := false
-	err := store.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		var current model.Inspiration
-		if err := tx.Select("business_id").Where("user_id = ? AND business_id = ? AND image_key = ? AND async_version = ?", userID, inspirationID, imageKey, asyncVersion).First(&current).Error; err != nil {
-			return persistenceError(err)
-		}
-		notification = model.Notification{
-			BaseModel: model.BaseModel{BusinessID: uuid.New(), CreatedAt: time.Now().UTC(), UpdatedAt: time.Now().UTC()},
-			UserID:    userID, EventType: eventType, EventKey: eventKey, ResourceType: "inspiration",
-			ResourceBusinessID: &inspirationID, Payload: payload,
-		}
-		result := tx.Clauses(clause.OnConflict{Columns: []clause.Column{{Name: "user_id"}, {Name: "event_key"}}, DoNothing: true}).Create(&notification)
-		if result.Error != nil {
-			return persistenceError(result.Error)
-		}
-		if result.RowsAffected == 0 {
-			created = false
-			return nil
-		}
-		created = true
-		var configs []model.NoticeConfig
-		if err := tx.Where("user_id = ? AND enabled = TRUE AND deleted_at IS NULL", userID).Order("created_at ASC").Find(&configs).Error; err != nil {
-			return persistenceError(err)
-		}
-		now := time.Now().UTC()
-		for _, config := range configs {
-			delivery := model.NoticeDelivery{
-				BaseModel: model.BaseModel{BusinessID: uuid.New(), CreatedAt: now, UpdatedAt: now},
-				UserID:    userID, DeliveryKind: "notification", NotificationBusinessID: &notification.BusinessID,
-				NoticeConfigBusinessID: config.BusinessID, Provider: config.Provider, ConfigName: config.Name,
-				EventType: eventType, Payload: append(model.JSONB(nil), payload...), PartIndex: 1, PartCount: 1, Status: "pending", NextAttemptAt: now,
-			}
-			if err := tx.Create(&delivery).Error; err != nil {
-				return persistenceError(err)
-			}
-		}
-		return nil
-	})
-	if err != nil {
-		return model.Notification{}, false, err
-	}
-	if !created {
-		if err := store.db.WithContext(ctx).Where("user_id = ? AND event_key = ?", userID, eventKey).First(&notification).Error; err != nil {
-			return model.Notification{}, false, persistenceError(err)
-		}
-	}
-	return notification, created, nil
-}
-
 // CreateFeedbackNotification 在事务中按稳定事件键创建站内消息，并为每个启用渠道和 Markdown 分段创建独立 outbox。
 func (store *PostgresStore) CreateFeedbackNotification(ctx context.Context, userID, feedbackID uuid.UUID, eventKey string, payload model.JSONB, parts []string) error {
 	if len(parts) == 0 || !json.Valid(payload) {
