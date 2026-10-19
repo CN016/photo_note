@@ -9,7 +9,7 @@ export function defaultAuthenticatedRoute(): string {
   return isMobile ? '/workbench' : '/inspirations'
 }
 
-/** 页面边界按账号、灵感图列表和编辑工作区拆分，适合后续壳应用复用。 */
+/** 页面边界按账号、灵感图列表、批量新增和编辑工作区拆分，适合后续壳应用复用。 */
 export const router = createRouter({
   history: createWebHistory(),
   routes: [
@@ -21,7 +21,7 @@ export const router = createRouter({
     { path: '/workbench', name: 'workbench', component: () => import('./views/WorkbenchPage.vue') },
     { path: '/inspirations', name: 'gallery', component: () => import('./views/GalleryPage.vue') },
     { path: '/inspirations/statistics', name: 'inspiration-statistics', component: () => import('./views/InspirationStatisticsPage.vue') },
-    { path: '/inspirations/new', name: 'new-inspiration', component: () => import('./views/EditorPage.vue') },
+    { path: '/inspirations/new', name: 'new-inspiration', component: () => import('./views/InspirationUploadPage.vue') },
     { path: '/inspirations/:id', name: 'edit-inspiration', component: () => import('./views/EditorPage.vue') },
     { path: '/ledger', name: 'ledger', component: () => import('./views/LedgerPage.vue') },
     { path: '/schedule', name: 'schedule', component: () => import('./views/SchedulePage.vue') },

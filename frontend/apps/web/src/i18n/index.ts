@@ -11,6 +11,8 @@ import statisticsZh from './statistics.zh-CN.json'
 import statisticsEn from './statistics.en-US.json'
 import editorZh from './editor.zh-CN.json'
 import editorEn from './editor.en-US.json'
+import inspirationUploadZh from './inspiration-upload.zh-CN.json'
+import inspirationUploadEn from './inspiration-upload.en-US.json'
 import maintenanceZh from './maintenance.zh-CN.json'
 import maintenanceEn from './maintenance.en-US.json'
 import profileZh from './profile.zh-CN.json'
@@ -36,8 +38,8 @@ export const i18n = createI18n({
   locale: localStorage.getItem('photo-nini.locale') === 'en-US' ? 'en-US' : 'zh-CN',
   fallbackLocale: 'zh-CN',
   messages: {
-    'zh-CN': { common: commonZh, login: loginZh, register: registerZh, gallery: galleryZh, statistics: statisticsZh, editor: editorZh, maintenance: maintenanceZh, profile: profileZh, feedback: feedbackZh, ledger: ledgerZh, schedule: scheduleZh, plans: plansZh, workbench: workbenchZh, messages: messagesZh, console: consoleZh },
-    'en-US': { common: commonEn, login: loginEn, register: registerEn, gallery: galleryEn, statistics: statisticsEn, editor: editorEn, maintenance: maintenanceEn, profile: profileEn, feedback: feedbackEn, ledger: ledgerEn, schedule: scheduleEn, plans: plansEn, workbench: workbenchEn, messages: messagesEn, console: consoleEn },
+    'zh-CN': { common: commonZh, login: loginZh, register: registerZh, gallery: galleryZh, statistics: statisticsZh, editor: editorZh, inspirationUpload: inspirationUploadZh, maintenance: maintenanceZh, profile: profileZh, feedback: feedbackZh, ledger: ledgerZh, schedule: scheduleZh, plans: plansZh, workbench: workbenchZh, messages: messagesZh, console: consoleZh },
+    'en-US': { common: commonEn, login: loginEn, register: registerEn, gallery: galleryEn, statistics: statisticsEn, editor: editorEn, inspirationUpload: inspirationUploadEn, maintenance: maintenanceEn, profile: profileEn, feedback: feedbackEn, ledger: ledgerEn, schedule: scheduleEn, plans: plansEn, workbench: workbenchEn, messages: messagesEn, console: consoleEn },
   },
 })
 
