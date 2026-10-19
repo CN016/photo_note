@@ -430,3 +430,36 @@ type NoticeDelivery struct {
 
 // TableName 固定 webhook 投递模型使用与版本化 SQL 迁移一致的表名。
 func (NoticeDelivery) TableName() string { return "notice_deliveries" }
+
+// Plan 保存当前用户的一次性计划；删除使用软删除，避免已发通知失去可追溯资源。
+type Plan struct {
+	BaseModel
+	UserID          uuid.UUID  `gorm:"column:user_id;type:uuid;not null;index"`
+	Title           string     `gorm:"column:title;type:varchar(120);not null"`
+	Description     string     `gorm:"column:description;type:text;not null;default:''"`
+	StartsAt        time.Time  `gorm:"column:starts_at;type:timestamptz;not null;index"`
+	CoverEmoji      string     `gorm:"column:cover_emoji;type:varchar(32);not null;default:''"`
+	CoverImageKey   string     `gorm:"column:cover_image_key;type:text;not null;default:''"`
+	Status          string     `gorm:"column:plan_status;type:varchar(16);not null;default:'active'"`
+	CompletedAt     *time.Time `gorm:"column:completed_at;type:timestamptz"`
+	DeletedAt       *time.Time `gorm:"column:deleted_at;type:timestamptz"`
+	ReminderOffsets []int      `gorm:"-" json:"-"`
+}
+
+// TableName 固定计划模型使用与版本化 SQL 迁移一致的表名。
+func (Plan) TableName() string { return "plans" }
+
+// PlanReminder 保存单条相对计划开始时间的持久化提醒任务和配置状态。
+type PlanReminder struct {
+	BaseModel
+	UserID         uuid.UUID  `gorm:"column:user_id;type:uuid;not null;index"`
+	PlanBusinessID uuid.UUID  `gorm:"column:plan_business_id;type:uuid;not null;index"`
+	LeadMinutes    int        `gorm:"column:lead_minutes;type:integer;not null"`
+	RemindAt       time.Time  `gorm:"column:remind_at;type:timestamptz;not null"`
+	Status         string     `gorm:"column:reminder_status;type:varchar(16);not null;default:'pending'"`
+	Configured     bool       `gorm:"column:is_configured;type:boolean;not null;default:true"`
+	SentAt         *time.Time `gorm:"column:sent_at;type:timestamptz"`
+}
+
+// TableName 固定计划提醒模型使用与版本化 SQL 迁移一致的表名。
+func (PlanReminder) TableName() string { return "plan_reminders" }

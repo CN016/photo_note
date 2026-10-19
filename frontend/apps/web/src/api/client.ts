@@ -1,4 +1,4 @@
-import { ApiError, type ApiEnvelope, type ApiErrorEnvelope, type AuthResponse, type ConsoleConfigRecord, type ConsoleFeedbackRecord, type ConsoleInspirationRecord, type ConsoleUserRecord, type InspirationImageMetadata, type InspirationRecord, type InspirationStatistics, type LedgerFields, type LedgerImportItem, type LedgerImportResult, type LedgerRecord, type NoticeConfig, type NoticeConfigList, type NoticeDelivery, type NotificationPage, type PageResult, type ScheduleBooking, type ScheduleBookingReceipt, type ScheduleFields, type ScheduleOccurrence, type SchedulePublicSlot, type ScheduleShare, type TagRecord, type TokenPair, type UserProfile } from './types'
+import { ApiError, type ApiEnvelope, type ApiErrorEnvelope, type AuthResponse, type ConsoleConfigRecord, type ConsoleFeedbackRecord, type ConsoleInspirationRecord, type ConsoleUserRecord, type InspirationImageMetadata, type InspirationRecord, type InspirationStatistics, type LedgerFields, type LedgerImportItem, type LedgerImportResult, type LedgerRecord, type NoticeConfig, type NoticeConfigList, type NoticeDelivery, type NotificationPage, type PageResult, type PlanFields, type PlanRecord, type ScheduleBooking, type ScheduleBookingReceipt, type ScheduleFields, type ScheduleOccurrence, type SchedulePublicSlot, type ScheduleShare, type TagRecord, type TokenPair, type UserProfile } from './types'
 import { API_REQUEST_ORIGIN } from './config'
 
 /** V1 业务路由统一加版本前缀；环境变量只提供服务主机。 */
@@ -153,6 +153,11 @@ export const api = {
   logout() { return request<void>('/auth/logout', { method: 'POST' }) },
   /** 读取当前登录用户资料。 */
   currentUser() { return request<UserProfile>('/users/me') },
+  /** 每次打开计划表单时绕过缓存，读取管理员当前公开的 emoji 配置。 */
+  publicConfigs(keys: string[]) {
+    const params = new URLSearchParams({ keys: keys.join(',') })
+    return request<{ items: Array<{ key: string; value: string }> }>(`/configs/public?${params.toString()}`, { cache: 'no-store' }, false)
+  },
   /** 只提交资料中发生变化的字段。 */
   updateProfile(patch: { nickname?: string; avatar_key?: string }) { return request<UserProfile>('/users/me', { method: 'PATCH', body: JSON.stringify(patch) }) },
   /** 更新 Argon2id 凭据；服务端保留当前会话并撤销同一用户其他设备。 */
@@ -303,6 +308,18 @@ export const api = {
   revokeScheduleShare() { return request<{ enabled: boolean }>('/schedule/share', { method: 'DELETE' }) },
   /** 游客读取分享用户的开放时段，接口不携带登录令牌。 */
   publicScheduleSlots(token: string, from: string, to: string) { return request<{ items: SchedulePublicSlot[] }>(`/book/${encodeURIComponent(token)}/slots?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`, {}, false) },
+  /** 按用户隔离读取计划和当前提醒配置。 */
+  plans() { return request<{ items: PlanRecord[] }>('/plans') },
+  /** 读取一条本人计划供通知跳转或编辑页面使用。 */
+  plan(id: string) { return request<PlanRecord>(`/plans/${encodeURIComponent(id)}`) },
+  /** 创建计划；未填写提醒时由服务端设置提前一小时。 */
+  createPlan(fields: PlanFields) { return request<PlanRecord>('/plans', { method: 'POST', body: JSON.stringify(fields) }) },
+  /** 修改计划字段；未提供 reminder_offsets 时保留当前提醒。 */
+  updatePlan(id: string, patch: Partial<PlanFields>) { return request<PlanRecord>(`/plans/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify(patch) }) },
+  /** 将计划标为完成并取消未发送提醒。 */
+  completePlan(id: string) { return request<PlanRecord>(`/plans/${encodeURIComponent(id)}/complete`, { method: 'POST' }) },
+  /** 删除计划并取消未发送提醒。 */
+  deletePlan(id: string) { return request<void>(`/plans/${encodeURIComponent(id)}`, { method: 'DELETE' }) },
   /** 游客提交姓名、电话、备注和具体开放发生项。 */
   requestScheduleBooking(token: string, input: { schedule_id: string; start_at: string; name: string; phone: string; note: string }) { return request<ScheduleBookingReceipt>(`/book/${encodeURIComponent(token)}/requests`, { method: 'POST', body: JSON.stringify(input) }, false) },
   /** 创建灵感图；image_key 指向服务端可能压缩的工作副本。 */

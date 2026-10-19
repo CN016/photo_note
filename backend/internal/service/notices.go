@@ -136,6 +136,17 @@ func (service *NoticeService) PublishFeedbackSubmitted(ctx context.Context, user
 	return repository.CreateFeedbackNotification(ctx, userID, feedbackID, eventKey, model.JSONB(payload), parts)
 }
 
+// PublishPlanReminder 将到期计划提醒交给数据库事务，同时写入站内通知和每个已启用 webhook 的 outbox。
+func (service *NoticeService) PublishPlanReminder(ctx context.Context, reminderID uuid.UUID) (bool, error) {
+	repository, ok := service.repository.(interface {
+		CreatePlanReminderNotification(context.Context, uuid.UUID) (bool, error)
+	})
+	if !ok {
+		return false, errors.New("plan reminder notification repository is not configured")
+	}
+	return repository.CreatePlanReminderNotification(ctx, reminderID)
+}
+
 // feedbackMarkdown 展示最少反馈人资料，将用户正文作为纯文本，并为服务端图片地址生成图片与显式查看链接。
 func feedbackMarkdown(reporter FeedbackReporter, content string, imageURLs []string) (string, error) {
 	sections := make([]string, 0, 2+len(imageURLs))

@@ -1,0 +1,77 @@
+{
+  "title": "Plans",
+  "subtitle": "Plan what is next and get a reminder at the right time.",
+  "loading": "Loading plans…",
+  "loadError": "Plans are unavailable right now. Check your connection and try again.",
+  "retry": "Retry",
+  "tabs": {
+    "today": "Today",
+    "plans": "Plans",
+    "completed": "Completed"
+  },
+  "groups": {
+    "overdue": "Overdue",
+    "today": "Today",
+    "week": "This week",
+    "year": "This year",
+    "other": "Later",
+    "completed": "Completed"
+  },
+  "empty": {
+    "today": "There are no plans due today.",
+    "plans": "There are no upcoming plans yet.",
+    "completed": "There are no completed plans yet.",
+    "hint": "Create a plan for the next thing you want to do."
+  },
+  "actions": {
+    "add": "New plan",
+    "edit": "Edit",
+    "complete": "Complete",
+    "delete": "Delete",
+    "save": "Save plan",
+    "saving": "Saving…",
+    "cancel": "Cancel",
+    "addReminder": "Add reminder",
+    "removeReminder": "Remove this reminder",
+    "uploadCover": "Upload image",
+    "replaceCover": "Replace image",
+    "chooseEmoji": "Choose cover emoji"
+  },
+  "form": {
+    "newTitle": "New plan",
+    "editTitle": "Edit plan",
+    "title": "Title",
+    "titlePlaceholder": "For example: Book a checkup",
+    "description": "Description",
+    "descriptionPlaceholder": "Add details (optional)",
+    "startsAt": "Plan time",
+    "timezone": "Entered in China Standard Time",
+    "cover": "Cover",
+    "emoji": "Common emoji",
+    "image": "Upload image",
+    "imageSelected": "Image cover selected",
+    "reminders": "Reminders",
+    "reminderHelp": "Up to three. Lead time is relative to the plan time.",
+    "minutesBefore": "minutes before",
+    "defaultReminder": "If left unset, a reminder is sent one hour before.",
+    "emojiLoadFailed": "Could not load the latest emoji list. Retry, or upload an image cover.",
+    "coverLoadFailed": "Image upload failed. Check the file and try again.",
+    "saved": "Plan saved.",
+    "completed": "Plan marked complete.",
+    "deleted": "Plan deleted.",
+    "validation": "Check the title, time, cover, and reminder settings.",
+    "deleteConfirm": "Delete “{title}”? Unsent reminders will also be cancelled.",
+    "completeConfirm": "Mark “{title}” as complete? Unsent reminders will be cancelled.",
+    "maxReminders": "You can set up to three reminders.",
+    "fileType": "Choose an image file."
+  },
+  "cover": {
+    "imageAlt": "Plan cover image",
+    "loading": "Loading image…",
+    "unavailable": "Image unavailable"
+  },
+  "reminderLabel": "{minutes} minutes before",
+  "overdueBy": "{days} days overdue",
+  "todayAt": "Today at {time}",
+  "dateAt": "{date} · {time}"
+}

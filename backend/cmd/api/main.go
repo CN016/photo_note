@@ -85,6 +85,8 @@ func run() error {
 	feedbackNotifications.SetErrorLogService(errorLogs)
 	inspirations := service.NewInspirationService(repository, fileManager, runtimeConfig.MaxUploadBytes)
 	inspirations.SetErrorLogService(errorLogs)
+	plans := service.NewPlanService(repository, fileManager, runtimeConfig.MaxUploadBytes, notices, runtimeConfigService)
+	plans.SetErrorLogService(errorLogs)
 	dependencies := httpapi.Dependencies{
 		Auth:                  service.NewAuthService(repository, tokens, passwords),
 		Users:                 service.NewUserService(repository),
@@ -102,6 +104,7 @@ func run() error {
 		Feedback:              service.NewFeedbackService(repository, tokens, runtimeConfig.FeedbackMaxTextChars, runtimeConfig.FeedbackMaxImages, runtimeConfig.FeedbackPerIPPerHour),
 		Ledger:                service.NewLedgerService(repository),
 		Schedule:              service.NewScheduleService(repository, tokens, runtimeConfig.SchedulePerIPPerHour),
+		Plans:                 plans,
 		Notices:               notices,
 		TrustedProxyCIDRs:     runtimeConfig.TrustedProxyCIDRs,
 		ErrorLogs:             errorLogs,
@@ -128,6 +131,11 @@ func run() error {
 	go func() {
 		defer close(feedbackNotificationWorkerDone)
 		feedbackNotifications.Run(shutdownContext)
+	}()
+	planReminderWorkerDone := make(chan struct{})
+	go func() {
+		defer close(planReminderWorkerDone)
+		plans.RunReminderWorker(shutdownContext)
 	}()
 	errorLogWorkerDone := make(chan struct{})
 	errorLogContext, cancelErrorLogs := context.WithCancel(context.Background())
@@ -170,6 +178,11 @@ func run() error {
 		}
 		select {
 		case <-feedbackNotificationWorkerDone:
+		case <-shutdown.Done():
+			return shutdown.Err()
+		}
+		select {
+		case <-planReminderWorkerDone:
 		case <-shutdown.Done():
 			return shutdown.Err()
 		}

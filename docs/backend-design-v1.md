@@ -180,6 +180,12 @@ GORM 关联迁移默认可能创建外键；配置 `DisableForeignKeyConstraintW
 | `GET /inspirations/{business_id}` | AT | 路径业务 UUID | 灵感图详情 |
 | `PATCH /inspirations/{business_id}` | AT | 可选 `tag_ids`, `tag_names`, `image_key`, `file_name`, `data`, `image_metadata` | 更新后的灵感图及文件与图片属性 |
 | `DELETE /inspirations/{business_id}` | AT | 路径业务 UUID | `204` |
+| `GET /plans` | AT | 无 | 当前用户未删除的计划列表与当前提醒偏移 |
+| `POST /plans` | AT | `title`, `description`, `starts_at`, `cover_emoji` 或 `cover_image_key`, `reminder_offsets` | 新计划及业务 UUID |
+| `GET /plans/{business_id}` | AT | 路径业务 UUID | 当前用户计划详情 |
+| `PATCH /plans/{business_id}` | AT | 可选计划字段；未提供提醒偏移时保留当前设置 | 更新后的计划与提醒设置 |
+| `POST /plans/{business_id}/complete` | AT | 路径业务 UUID | 完成后的计划；未发送提醒已取消 |
+| `DELETE /plans/{business_id}` | AT | 路径业务 UUID | `204`；软删除并取消未发送提醒 |
 | `POST /files` | AT | multipart/form-data，单个文件字段 `file` | `storekey` |
 | `GET /files/{storekey}` | AT | 根据 key 中的存储类型读取文件 | 二进制文件流 |
 
@@ -206,9 +212,9 @@ GORM 关联迁移默认可能创建外键；配置 `DisableForeignKeyConstraintW
 
 JSON 请求和响应使用 UTF-8；日期时间以 RFC 3339 格式返回。创建请求不得传 `id`、`business_id`、`user_id` 或时间字段，这些由服务端生成或从 token 得出。更新请求只修改列出的字段，未提供字段保持原值；`tag_ids: []` 表示清空所有标签。响应对象不得包含自增 `id`、`password` 或 `password_hash`。文件下载返回原始二进制流，不使用 JSON 封套。
 
-健康检查成功时返回 `{"data":{"status":"ok","version":"2.8.0"},"request_id":"..."}`。版本号来自 `backend/internal/version/version.go`，后端代码、接口、配置、数据库迁移或构建配置的每个改动批次都需按 `AGENTS.md` 递增。
+健康检查成功时返回 `{"data":{"status":"ok","version":"2.9.0"},"request_id":"..."}`。版本号来自 `backend/internal/version/version.go`，后端代码、接口、配置、数据库迁移或构建配置的每个改动批次都需按 `AGENTS.md` 递增。
 
-当前代码版本为后端 2.8.0；此处较早的 V1 设计描述已由后续规则替代。注册仅使用 `POST /api/v2/auth/register` multipart，手机号为 11 位数字、密码为 8 至 128 个字符、昵称最多 64 个字符且头像必传；旧 `POST /api/v1/auth/register` 返回 `426 upgrade_required`。登录只接受 11 位数字，兼容旧客户端输入的 `+86` 加 11 位号码并映射到数据库中的 11 位值；手机号不存在和密码错误继续使用相同的 `401` 语义。
+当前代码版本为后端 2.9.0；此处较早的 V1 设计描述已由后续规则替代。注册仅使用 `POST /api/v2/auth/register` multipart，手机号为 11 位数字、密码为 8 至 128 个字符、昵称最多 64 个字符且头像必传；旧 `POST /api/v1/auth/register` 返回 `426 upgrade_required`。登录只接受 11 位数字，兼容旧客户端输入的 `+86` 加 11 位号码并映射到数据库中的 11 位值；手机号不存在和密码错误继续使用相同的 `401` 语义。
 
 反馈正文最多 2000 个 Unicode 字符，最多 5 张图片，至少提交正文或一张图片；单图受 `files.max_upload_bytes` 限制。每个客户端 IP 每小时最多提交 5 次。IP 仅从配置的可信代理链解析，Redis 键保存 IP 摘要。反馈图片 storekey 与正文写入 `feedbacks`，反馈内容不写入日志。新迁移 `000013_feedback_notifications.sql` 建立持久化通知任务并为 webhook 投递增加分段序号；长正文按安全字节上限拆分，UTF-8 字符和图片引用保持完整，每段独立显示投递状态并可单独重试。通知开关默认关闭，不接入短信；启用时使用独立 `feedback.admin_phone` 查找现有账户。飞书的 Markdown 文本组件不把标准 `![...](URL)` 语法作为原生图片；当私有配置 `feedback.feishu_app_id` 和 `feedback.feishu_app_secret` 均已设置时，后台用启用机器人能力且具有图片资源上传权限的自建应用上传反馈图片，再以自定义机器人 `post` 富文本的 `img` 节点投递。没有凭证时发送可点击公共图片链接。凭证由 `000014_seed_feishu_feedback_image_upload.sql` 增加，缺失不影响反馈保存和原有链接通知。
 
@@ -271,9 +277,19 @@ JSON 请求和响应使用 UTF-8；日期时间以 RFC 3339 格式返回。创�
 
 当前前端在桌面和移动 Web 共用 `/schedule` 管理页：月历显示标题/时间摘要并支持选择日期查看完整档期，7/14/自定义 1–90 天视图显示完整卡片； `/book/:shareToken` 为无账号访客页。当前环境通过 Go 测试、独立 PostgreSQL 迁移与并发容量集成用例、前端单元测试及生产构建；未覆盖微信小程序/原生壳真机体验、生产代理链和生产规模并发压力。重复开放时段结束日期是冲突校验要求，因此 UI 会要求设置结束日期。
 
+### 计划管理与提醒
+
+后端 `2.9.0` 新增独立 `/plans` 模块，迁移 `000018_plan_management.sql` 创建 `plans` 与 `plan_reminders`。计划按业务 UUID 关联提醒并按 `user_id` 隔离；两张表有唯一业务 UUID、查询索引和中文表/字段注释，不创建外键。计划为单次开始时刻，API 使用 RFC 3339，Web 输入固定按 `Asia/Shanghai` 解释，数据库保存 `timestamptz`。计划支持标题、描述、emoji 或私有图片 storekey 封面、完成和软删除；不包含周期重复或间隔记录流程。
+
+`plans.cover_emojis` 是公开且非秘密的 JSON 字符串数组配置，迁移提供常用初始值；管理员可在配置台维护，Web 每次打开新增/编辑表单时使用 `no-store` 重新读取。图片沿用鉴权文件上传，服务端拒绝公共 storekey 并对实际内容完整解码验证 JPEG、PNG、GIF 或 WebP；文件 V1 不记录归属或提供删除，弃用的封面文件可能成为未引用文件。
+
+计划提醒配置为提前分钟数，最多三条；未设置或空数组按提前 60 分钟处理。`plan_reminders` 持久化每条到期任务。API 进程启动时先补查一次，此后每分钟使用 `CURRENT_TIMESTAMP` 查询已到期且计划尚未开始的任务；计划已逾期、完成或删除时取消未发送任务，提醒时间已过但计划仍在未来时下一轮补发。发送事务按计划行和提醒行加锁并重新验证状态，站内消息以提醒业务 UUID 派生稳定事件键；只有消息首次插入时，才在同一事务中为所有已启用 webhook 写入 outbox，随后标记提醒已发送。数据库或事务暂时失败时任务保持 pending，下一分钟继续处理。修改时间或提醒时事务取消旧 pending 并生成新任务，已发送提醒保留历史且不会因编辑重复发送。
+
+接口为 `GET/POST /api/v1/plans`、`GET/PATCH/DELETE /api/v1/plans/{business_id}` 和 `POST /api/v1/plans/{business_id}/complete`。API 响应只返回业务 UUID 和用户展示字段，不返回自增 ID 或用户 UUID。计划通知使用事件类型 `plan.reminder.due`，载荷只包含标题与开始时间；通知详情跳转到计划页，不包含描述、封面文件或 webhook 凭据。
+
 ### 实施验收
 
-- 检查所有五张业务表均包含通用字段，业务 UUID 均唯一，内部 `id` 不出现在 API 契约中。
+- 检查各项目业务表均包含通用字段，业务 UUID 均唯一，内部 `id` 不出现在 API 契约中。
 - 检查标签和灵感图均有 `user_id` 索引；标签数组保存标签业务 UUID 并配置 GIN 索引。
 - 检查文档与 `AGENTS.md` 对无外键、GORM 配置和 SQL 脚本归档规则一致。
 - 检查所有受保护 API、刷新轮换、会话退出和 Redis 故障语义都要求 Redis 校验。

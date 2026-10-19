@@ -1,0 +1,77 @@
+{
+  "title": "计划",
+  "subtitle": "把要做的事安排好，在合适的时间收到提醒。",
+  "loading": "正在读取计划…",
+  "loadError": "计划暂时无法读取，请检查网络后重试。",
+  "retry": "重试",
+  "tabs": {
+    "today": "今天",
+    "plans": "计划",
+    "completed": "已完成"
+  },
+  "groups": {
+    "overdue": "已逾期",
+    "today": "今天",
+    "week": "本周",
+    "year": "本年",
+    "other": "其他",
+    "completed": "已完成"
+  },
+  "empty": {
+    "today": "今天没有待办计划。",
+    "plans": "还没有之后的计划。",
+    "completed": "还没有已完成的计划。",
+    "hint": "新建计划，安排下一件要做的事。"
+  },
+  "actions": {
+    "add": "新建计划",
+    "edit": "编辑",
+    "complete": "完成",
+    "delete": "删除",
+    "save": "保存计划",
+    "saving": "正在保存…",
+    "cancel": "取消",
+    "addReminder": "添加提醒",
+    "removeReminder": "移除此提醒",
+    "uploadCover": "上传图片",
+    "replaceCover": "更换图片",
+    "chooseEmoji": "选择封面 emoji"
+  },
+  "form": {
+    "newTitle": "新建计划",
+    "editTitle": "编辑计划",
+    "title": "标题",
+    "titlePlaceholder": "例如：预约体检",
+    "description": "描述",
+    "descriptionPlaceholder": "补充计划内容（选填）",
+    "startsAt": "计划时间",
+    "timezone": "按中国标准时间填写",
+    "cover": "封面",
+    "emoji": "常用 emoji",
+    "image": "上传图片",
+    "imageSelected": "已选择图片封面",
+    "reminders": "提醒",
+    "reminderHelp": "最多三条；提前分钟数相对于计划时间计算。",
+    "minutesBefore": "分钟前提醒",
+    "defaultReminder": "未设置时默认提前 1 小时提醒。",
+    "emojiLoadFailed": "无法读取最新 emoji 配置，请重试；也可以上传图片封面。",
+    "coverLoadFailed": "图片上传失败，请检查文件后重试。",
+    "saved": "计划已保存。",
+    "completed": "计划已完成。",
+    "deleted": "计划已删除。",
+    "validation": "请检查标题、时间、封面和提醒设置。",
+    "deleteConfirm": "删除“{title}”？未发送的提醒也会取消。",
+    "completeConfirm": "将“{title}”标记为已完成？未发送的提醒会取消。",
+    "maxReminders": "最多可以设置三条提醒。",
+    "fileType": "请选择图片文件。"
+  },
+  "cover": {
+    "imageAlt": "计划图片封面",
+    "loading": "正在读取图片…",
+    "unavailable": "图片不可用"
+  },
+  "reminderLabel": "提前 {minutes} 分钟",
+  "overdueBy": "逾期 {days} 天",
+  "todayAt": "今天 {time}",
+  "dateAt": "{date} · {time}"
+}

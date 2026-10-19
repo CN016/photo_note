@@ -8,6 +8,7 @@ import BrandMark from '../components/BrandMark.vue'
 import LanguageSwitcher from '../components/LanguageSwitcher.vue'
 import ThemeSwitcher from '../components/ThemeSwitcher.vue'
 import { useAuthStore } from '../stores/auth'
+import { defaultAuthenticatedRoute } from '../router'
 
 const { t } = useI18n()
 const auth = useAuthStore()
@@ -39,7 +40,7 @@ async function submit() {
   if (!phoneValid.value) { error.value = t('login.phoneInvalid'); return }
   if (Array.from(password.value).length < 8 || Array.from(password.value).length > 128) { error.value = t('common.errors.validation_failed'); return }
   busy.value = true
-  try { await auth.signIn(phone.value.trim(), password.value); await router.replace('/inspirations') }
+  try { await auth.signIn(phone.value.trim(), password.value); await router.replace(defaultAuthenticatedRoute()) }
   catch (cause) { error.value = errorText(cause) }
   finally { busy.value = false }
 }

@@ -9,6 +9,7 @@ import LanguageSwitcher from '../components/LanguageSwitcher.vue'
 import ThemeSwitcher from '../components/ThemeSwitcher.vue'
 import { prepareImageUpload, type PreparedImageUpload } from '../imageUpload'
 import { useAuthStore } from '../stores/auth'
+import { defaultAuthenticatedRoute } from '../router'
 
 const { t } = useI18n()
 const auth = useAuthStore()
@@ -62,7 +63,7 @@ async function submit() {
   busy.value = true
   try {
     await auth.signUp(phone.value, password.value, nickname.value.trim(), avatar.value.blob, avatar.value.filename)
-    await router.replace('/inspirations')
+    await router.replace(defaultAuthenticatedRoute())
   } catch (cause) { error.value = errorText(cause) }
   finally { busy.value = false }
 }

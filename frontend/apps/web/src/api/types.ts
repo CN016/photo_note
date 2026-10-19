@@ -223,6 +223,25 @@ export interface LedgerImportResult {
   updated: number
 }
 
+/** 计划创建和更新使用的业务字段；starts_at 为含时区的 RFC3339 时间戳。 */
+export interface PlanFields {
+  title: string
+  description: string
+  starts_at: string
+  cover_emoji: string
+  cover_image_key: string
+  reminder_offsets: number[]
+}
+
+/** 当前用户可见的一次性计划，不包含用户 UUID、数据库主键或提醒任务标识。 */
+export interface PlanRecord extends PlanFields {
+  business_id: string
+  status: 'active' | 'completed'
+  completed_at: string | null
+  created_at: string
+  updated_at: string
+}
+
 /** webhook 单渠道的异步投递状态；错误码不含远端响应正文或连接地址。 */
 export interface NoticeDelivery {
   business_id: string
@@ -254,6 +273,7 @@ export interface NoticeMessage {
     markdown?: string
     image_urls?: string[]
     title?: string
+    starts_at?: string
     reporter?: {
       nickname: string
       phone?: string

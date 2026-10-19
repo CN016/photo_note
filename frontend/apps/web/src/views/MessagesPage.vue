@@ -113,6 +113,7 @@ function messageTitle(item: NoticeMessage): string {
   if (item.event_type === 'inspiration.compression.failed') return t('compressionFailed')
   if (item.event_type === 'system.error_log.created') return t('errorLogCreated')
   if (item.event_type === 'feedback.submitted') return t('feedbackSubmitted')
+  if (item.event_type === 'plan.reminder.due') return t('planReminderDue')
   return t('title')
 }
 
@@ -132,6 +133,12 @@ function messageBody(item: NoticeMessage): string {
     })
   }
   if (item.event_type === 'feedback.submitted') return item.payload.text || t('feedbackImagesOnly')
+  if (item.event_type === 'plan.reminder.due') {
+    return t('planReminderBody', {
+      title: item.payload.title || t('planReminderDue'),
+      time: item.payload.starts_at ? new Intl.DateTimeFormat(locale.value, { timeZone: 'Asia/Shanghai', dateStyle: 'medium', timeStyle: 'short' }).format(new Date(item.payload.starts_at)) : '',
+    })
+  }
   return t('description')
 }
 
@@ -202,7 +209,7 @@ async function watchDelivery(deliveryID: string, configID?: string) {
   }
 }
 
-/** 点击站内消息时先确认已读，再仅跳转到后端标记的灵感图资源。 */
+/** 点击站内消息时先确认已读，再按后端标记跳转到灵感图或计划资源。 */
 async function openMessage(item: NoticeMessage) {
   if (!item.read_at) {
     const businessID = auth.user?.business_id ?? ''
@@ -222,6 +229,8 @@ async function openMessage(item: NoticeMessage) {
   }
   if (item.resource_type === 'inspiration' && item.resource_business_id) {
     await router.push(`/inspirations/${encodeURIComponent(item.resource_business_id)}`)
+  } else if (item.resource_type === 'plan' && item.resource_business_id) {
+    await router.push('/plans')
   }
 }
 
@@ -426,6 +435,7 @@ onBeforeUnmount(() => {
             <p v-else class="no-delivery-status">{{ item.event_type === 'system.error_log.created' ? t('errorLogInternalOnly') : t('noWebhookStatus') }}</p>
 
             <button v-if="item.resource_type === 'inspiration' && item.resource_business_id" class="open-resource" type="button" @click.stop="openMessage(item)">{{ t('goToInspiration') }} <el-icon aria-hidden="true"><TopRight /></el-icon></button>
+            <button v-if="item.resource_type === 'plan' && item.resource_business_id" class="open-resource" type="button" @click.stop="openMessage(item)">{{ t('goToPlan') }} <el-icon aria-hidden="true"><TopRight /></el-icon></button>
           </div>
         </article>
       </div>

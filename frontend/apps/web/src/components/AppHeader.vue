@@ -3,7 +3,7 @@ import { computed, onBeforeUnmount, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { ElNotification } from 'element-plus'
-import { Calendar, ChatDotRound, Clock, Picture, Setting, User } from '@element-plus/icons-vue'
+import { Calendar, Clock, House, List, Picture, Setting, User } from '@element-plus/icons-vue'
 import { useAuthStore } from '../stores/auth'
 import { useAppShellStore } from '../stores/appShell'
 import BrandMark from './BrandMark.vue'
@@ -15,7 +15,6 @@ const auth = useAuthStore()
 const router = useRouter()
 const route = useRoute()
 const appShell = useAppShellStore()
-const unreadCount = computed(() => appShell.unreadCount)
 const avatarSrc = computed(() => {
   const user = auth.user
   return user && appShell.avatarBusinessID === user.business_id && appShell.avatarStoreKey === user.avatar_key ? appShell.avatarSrc : ''
@@ -74,7 +73,7 @@ function active(path: string): boolean {
       <RouterLink class="nav-item" :class="{ active: active('/inspirations') }" to="/inspirations"><el-icon aria-hidden="true"><Picture /></el-icon>{{ t('common.inspirations') }}</RouterLink>
       <RouterLink class="nav-item" :class="{ active: active('/ledger') }" to="/ledger"><el-icon aria-hidden="true"><Clock /></el-icon>{{ t('common.ledger') }}</RouterLink>
       <RouterLink class="nav-item" :class="{ active: active('/schedule') }" to="/schedule"><el-icon aria-hidden="true"><Calendar /></el-icon>{{ t('common.schedule') }}</RouterLink>
-      <RouterLink class="nav-item" :class="{ active: active('/messages') }" to="/messages"><span class="nav-icon-wrap"><el-icon aria-hidden="true"><ChatDotRound /></el-icon><b v-if="unreadCount" class="nav-unread-count">{{ unreadCount > 99 ? '99+' : unreadCount }}</b></span>{{ t('common.messages') }}</RouterLink>
+      <RouterLink class="nav-item" :class="{ active: active('/plans') }" to="/plans"><el-icon aria-hidden="true"><List /></el-icon>{{ t('common.plans') }}</RouterLink>
       <RouterLink class="nav-item" :class="{ active: active('/profile') }" to="/profile"><el-icon aria-hidden="true"><User /></el-icon>{{ t('common.profile') }}</RouterLink>
       <RouterLink v-if="auth.user?.is_admin" class="nav-item" :class="{ active: active('/atelier-7f3c9a2e') }" to="/atelier-7f3c9a2e"><el-icon aria-hidden="true"><Setting /></el-icon>{{ t('common.console') }}</RouterLink>
     </nav>
@@ -83,13 +82,11 @@ function active(path: string): boolean {
       <div class="navigation-preferences"><ThemeSwitcher /><LanguageSwitcher /></div>
       <el-button class="sign-out" text @click="signOut">{{ t('common.logout') }}</el-button>
     </div>
-    <nav class="mobile-nav" :class="{ 'has-console': auth.user?.is_admin }" :aria-label="t('common.navigation')">
+    <nav class="mobile-nav" :aria-label="t('common.navigation')">
+      <RouterLink class="mobile-nav-item" :class="{ active: active('/workbench') }" to="/workbench" :aria-label="t('common.workbench')"><el-icon aria-hidden="true"><House /></el-icon><small>{{ t('common.mobileWorkbench') }}</small></RouterLink>
       <RouterLink class="mobile-nav-item" :class="{ active: active('/inspirations') }" to="/inspirations"><el-icon aria-hidden="true"><Picture /></el-icon><small>{{ t('common.inspirations') }}</small></RouterLink>
-      <RouterLink class="mobile-nav-item" :class="{ active: active('/ledger') }" to="/ledger"><el-icon aria-hidden="true"><Clock /></el-icon><small>{{ t('common.ledger') }}</small></RouterLink>
-      <RouterLink class="mobile-nav-item" :class="{ active: active('/schedule') }" to="/schedule"><el-icon aria-hidden="true"><Calendar /></el-icon><small>{{ t('common.schedule') }}</small></RouterLink>
-      <RouterLink class="mobile-nav-item" :class="{ active: active('/messages') }" to="/messages"><span class="mobile-nav-icon-wrap"><el-icon aria-hidden="true"><ChatDotRound /></el-icon><b v-if="unreadCount" class="mobile-unread-count">{{ unreadCount > 9 ? '9+' : unreadCount }}</b></span><small>{{ t('common.messages') }}</small></RouterLink>
-      <RouterLink class="mobile-nav-item" :class="{ active: active('/profile') }" to="/profile"><el-icon aria-hidden="true"><User /></el-icon><small>{{ t('common.profile') }}</small></RouterLink>
-      <RouterLink v-if="auth.user?.is_admin" class="mobile-nav-item" :class="{ active: active('/atelier-7f3c9a2e') }" to="/atelier-7f3c9a2e"><el-icon aria-hidden="true"><Setting /></el-icon><small>{{ t('common.console') }}</small></RouterLink>
+      <RouterLink class="mobile-nav-item" :class="{ active: active('/ledger') }" to="/ledger"><el-icon aria-hidden="true"><Clock /></el-icon><small>{{ t('common.mobileLedger') }}</small></RouterLink>
+      <RouterLink class="mobile-nav-item" :class="{ active: active('/profile') }" to="/profile"><el-icon aria-hidden="true"><User /></el-icon><small>{{ t('common.mobileProfile') }}</small></RouterLink>
     </nav>
   </aside>
 </template>

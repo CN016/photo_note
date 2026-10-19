@@ -56,6 +56,7 @@ type Dependencies struct {
 	Feedback              *service.FeedbackService
 	Ledger                *service.LedgerService
 	Schedule              *service.ScheduleService
+	Plans                 *service.PlanService
 	Notices               *service.NoticeService
 	TrustedProxyCIDRs     []string
 	ErrorLogs             *service.ErrorLogService
@@ -145,6 +146,12 @@ func Router(dependencies Dependencies) *gin.Engine {
 	protected.GET("/schedule/share", getScheduleShareHandler(dependencies.Schedule))
 	protected.POST("/schedule/share", createScheduleShareHandler(dependencies.Schedule))
 	protected.DELETE("/schedule/share", revokeScheduleShareHandler(dependencies.Schedule))
+	protected.GET("/plans", listPlansHandler(dependencies.Plans))
+	protected.POST("/plans", createPlanHandler(dependencies.Plans))
+	protected.GET("/plans/:business_id", getPlanHandler(dependencies.Plans))
+	protected.PATCH("/plans/:business_id", patchPlanHandler(dependencies.Plans))
+	protected.POST("/plans/:business_id/complete", completePlanHandler(dependencies.Plans))
+	protected.DELETE("/plans/:business_id", deletePlanHandler(dependencies.Plans))
 	protected.GET("/notifications", listNotificationsHandler(dependencies.Notices))
 	protected.GET("/notifications/unread-count", unreadNotificationCountHandler(dependencies.Notices))
 	protected.PATCH("/notifications/:business_id/read", markNotificationReadHandler(dependencies.Notices))

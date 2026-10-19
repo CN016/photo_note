@@ -1,0 +1,15 @@
+{
+  "eyebrow": "你的空间",
+  "title": "工作台",
+  "subtitle": "从这里前往 Photo Nini 的各项功能。",
+  "allMenus": "全部菜单",
+  "descriptions": {
+    "inspirations": "浏览、整理和编辑灵感图",
+    "ledger": "记录并查看日常收支",
+    "schedule": "管理档期与预约",
+    "plans": "安排计划并设置提醒",
+    "messages": "查看站内消息和通知状态",
+    "profile": "管理个人资料与通知渠道",
+    "console": "管理用户、配置和反馈"
+  }
+}
