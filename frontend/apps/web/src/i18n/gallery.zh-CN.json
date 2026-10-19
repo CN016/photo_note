@@ -8,6 +8,7 @@
   "searchPlaceholder": "寻找一张灵感图",
   "filters": "灵感图筛选与排序",
   "filterTags": "按标签筛选",
+  "tags": "标签",
   "tagMatch": "标签匹配方式",
   "matchAny": "匹配任一标签",
   "matchAll": "匹配全部标签",
@@ -29,6 +30,8 @@
   "openImage": "打开灵感图：{name}",
   "created": "收藏于 {date}",
   "editCopySize": "编辑副本 {size}",
+  "moreTags": "+{count}",
+  "moreTagsTooltip": "其余标签：{tags}",
   "loadingImage": "图片加载中",
   "imageUnavailable": "图片暂不可用"
 }

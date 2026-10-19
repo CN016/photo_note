@@ -177,8 +177,12 @@ export const api = {
   },
   /** 查询当前账号的拍摄参数分布；后台仅返回分类计数，不传输图片记录明细。 */
   inspirationStatistics() { return request<InspirationStatistics>('/inspirations/statistics') },
-  /** 获取当前用户标签，以业务 UUID 作为图库过滤值。 */
-  tags() { return request<{ items: TagRecord[] }>('/tags') },
+  /** 按当前用户和可选名称搜索分页标签；page_size 最大为服务端允许的 100 条。 */
+  tags(page = 1, pageSize = 20, query = '') {
+    const params = new URLSearchParams({ page: String(page), page_size: String(pageSize) })
+    if (query.trim()) params.set('q', query.trim())
+    return request<PageResult<TagRecord>>(`/tags?${params.toString()}`)
+  },
   /** 读取单张灵感图文档。 */
   inspiration(id: string) { return request<InspirationRecord>(`/inspirations/${encodeURIComponent(id)}`) },
   /** 上传原始图片字节；文件名和类型由浏览器 FormData 提交。 */
@@ -309,6 +313,10 @@ export const api = {
   updateInspiration(id: string, data: Record<string, unknown>, imageMetadata?: InspirationImageMetadata) {
     const body = imageMetadata ? { data, image_metadata: imageMetadata } : { data }
     return request<InspirationRecord>(`/inspirations/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify(body) })
+  },
+  /** 只提交标签名称并立即替换该灵感图的标签集合；标签 UUID 由服务端解析。 */
+  updateInspirationTags(id: string, tagNames: string[]) {
+    return request<InspirationRecord>(`/inspirations/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify({ tag_names: tagNames }) })
   },
 }
 

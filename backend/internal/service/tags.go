@@ -12,7 +12,7 @@ import (
 
 // TagRepository 定义标签 service 所需的用户隔离查询及引用清理操作。
 type TagRepository interface {
-	ListTags(context.Context, uuid.UUID, int, int) ([]model.Tag, int64, error)
+	ListTags(context.Context, uuid.UUID, string, int, int) ([]model.Tag, int64, error)
 	CreateTag(context.Context, *model.Tag) error
 	FindTagByBusinessID(context.Context, uuid.UUID, uuid.UUID) (model.Tag, error)
 	UpdateTag(context.Context, uuid.UUID, uuid.UUID, string) (model.Tag, error)
@@ -29,9 +29,13 @@ func NewTagService(tags TagRepository) *TagService {
 	return &TagService{tags: tags}
 }
 
-// List 返回当前用户自己的分页标签列表，分页参数由 HTTP 层预先限定范围。
-func (service *TagService) List(ctx context.Context, userID uuid.UUID, page PageRequest) (Page[model.Tag], error) {
-	items, total, err := service.tags.ListTags(ctx, userID, page.Offset, page.PageSize)
+// List 按当前用户和可选名称关键字分页读取标签，分页参数由 HTTP 层预先限定范围。
+func (service *TagService) List(ctx context.Context, userID uuid.UUID, query string, page PageRequest) (Page[model.Tag], error) {
+	query = strings.TrimSpace(query)
+	if len(query) > 200 {
+		return Page[model.Tag]{}, fault.InvalidRequest("q 长度不能超过 200 个字节")
+	}
+	items, total, err := service.tags.ListTags(ctx, userID, query, page.Offset, page.PageSize)
 	if err != nil {
 		return Page[model.Tag]{}, err
 	}
@@ -77,4 +81,22 @@ func validateTagContent(content string) (string, error) {
 		return "", fault.InvalidField("content", "标签内容长度必须为 1 至 64 个字符")
 	}
 	return content, nil
+}
+
+// normalizeTagNames 校验并去重整组标签名；名称去首尾空格后按大小写精确匹配。
+func normalizeTagNames(names []string) ([]string, error) {
+	normalized := make([]string, 0, len(names))
+	seen := make(map[string]struct{}, len(names))
+	for _, name := range names {
+		content := strings.TrimSpace(name)
+		if length := utf8.RuneCountInString(content); length < 1 || length > 64 {
+			return nil, fault.InvalidField("tag_names", "每个标签名必须为 1 至 64 个字符")
+		}
+		if _, exists := seen[content]; exists {
+			continue
+		}
+		seen[content] = struct{}{}
+		normalized = append(normalized, content)
+	}
+	return normalized, nil
 }

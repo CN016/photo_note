@@ -171,14 +171,14 @@ GORM 关联迁移默认可能创建外键；配置 `DisableForeignKeyConstraintW
 | `GET /users/me` | AT | 无 | 当前用户 `business_id`、昵称、手机号、头像 key、`is_admin` 和时间字段 |
 | `PATCH /users/me` | AT | 可选 `nickname`, `avatar_key` | 更新后的当前用户资料 |
 | `POST /users/me/password` | AT | `current_password`, `new_password` | `204`；保留当前设备并撤销其他设备会话 |
-| `GET /tags` | AT | 分页参数 | 当前用户标签列表 |
+| `GET /tags` | AT | 分页参数、可选名称关键词 `q` | 当前用户标签列表 |
 | `POST /tags` | AT | `content` | 新建标签及其业务 UUID |
 | `PATCH /tags/{business_id}` | AT | `content` | 更新后的标签 |
 | `DELETE /tags/{business_id}` | AT | 删除标签并清理灵感图引用 | `204` |
 | `GET /inspirations` | AT | 分页参数、可选文件名关键字 `q`、可重复传 `tag_ids` 和 `tag_match=any\|all`、`sort` | 当前用户灵感图列表 |
 | `POST /inspirations` | AT | `tag_ids`, `image_key`, 可选 `file_name`, `data`, `image_metadata` | 新建灵感图及其业务 UUID、文件与图片属性 |
 | `GET /inspirations/{business_id}` | AT | 路径业务 UUID | 灵感图详情 |
-| `PATCH /inspirations/{business_id}` | AT | 可选 `tag_ids`, `image_key`, `file_name`, `data`, `image_metadata` | 更新后的灵感图及文件与图片属性 |
+| `PATCH /inspirations/{business_id}` | AT | 可选 `tag_ids`, `tag_names`, `image_key`, `file_name`, `data`, `image_metadata` | 更新后的灵感图及文件与图片属性 |
 | `DELETE /inspirations/{business_id}` | AT | 路径业务 UUID | `204` |
 | `POST /files` | AT | multipart/form-data，单个文件字段 `file` | `storekey` |
 | `GET /files/{storekey}` | AT | 根据 key 中的存储类型读取文件 | 二进制文件流 |
@@ -206,9 +206,9 @@ GORM 关联迁移默认可能创建外键；配置 `DisableForeignKeyConstraintW
 
 JSON 请求和响应使用 UTF-8；日期时间以 RFC 3339 格式返回。创建请求不得传 `id`、`business_id`、`user_id` 或时间字段，这些由服务端生成或从 token 得出。更新请求只修改列出的字段，未提供字段保持原值；`tag_ids: []` 表示清空所有标签。响应对象不得包含自增 `id`、`password` 或 `password_hash`。文件下载返回原始二进制流，不使用 JSON 封套。
 
-健康检查成功时返回 `{"data":{"status":"ok","version":"2.6.0"},"request_id":"..."}`。版本号来自 `backend/internal/version/version.go`，后端代码、接口、配置、数据库迁移或构建配置的每个改动批次都需按 `AGENTS.md` 递增。
+健康检查成功时返回 `{"data":{"status":"ok","version":"2.8.0"},"request_id":"..."}`。版本号来自 `backend/internal/version/version.go`，后端代码、接口、配置、数据库迁移或构建配置的每个改动批次都需按 `AGENTS.md` 递增。
 
-当前已部署契约为后端 2.6.0；此处较早的 V1 设计描述已由后续规则替代。注册仅使用 `POST /api/v2/auth/register` multipart，手机号为 11 位数字、密码为 8 至 128 个字符、昵称最多 64 个字符且头像必传；旧 `POST /api/v1/auth/register` 返回 `426 upgrade_required`。登录只接受 11 位数字，兼容旧客户端输入的 `+86` 加 11 位号码并映射到数据库中的 11 位值；手机号不存在和密码错误继续使用相同的 `401` 语义。
+当前代码版本为后端 2.8.0；此处较早的 V1 设计描述已由后续规则替代。注册仅使用 `POST /api/v2/auth/register` multipart，手机号为 11 位数字、密码为 8 至 128 个字符、昵称最多 64 个字符且头像必传；旧 `POST /api/v1/auth/register` 返回 `426 upgrade_required`。登录只接受 11 位数字，兼容旧客户端输入的 `+86` 加 11 位号码并映射到数据库中的 11 位值；手机号不存在和密码错误继续使用相同的 `401` 语义。
 
 反馈正文最多 2000 个 Unicode 字符，最多 5 张图片，至少提交正文或一张图片；单图受 `files.max_upload_bytes` 限制。每个客户端 IP 每小时最多提交 5 次。IP 仅从配置的可信代理链解析，Redis 键保存 IP 摘要。反馈图片 storekey 与正文写入 `feedbacks`，反馈内容不写入日志。新迁移 `000013_feedback_notifications.sql` 建立持久化通知任务并为 webhook 投递增加分段序号；长正文按安全字节上限拆分，UTF-8 字符和图片引用保持完整，每段独立显示投递状态并可单独重试。通知开关默认关闭，不接入短信；启用时使用独立 `feedback.admin_phone` 查找现有账户。飞书的 Markdown 文本组件不把标准 `![...](URL)` 语法作为原生图片；当私有配置 `feedback.feishu_app_id` 和 `feedback.feishu_app_secret` 均已设置时，后台用启用机器人能力且具有图片资源上传权限的自建应用上传反馈图片，再以自定义机器人 `post` 富文本的 `img` 节点投递。没有凭证时发送可点击公共图片链接。凭证由 `000014_seed_feishu_feedback_image_upload.sql` 增加，缺失不影响反馈保存和原有链接通知。
 
@@ -240,9 +240,11 @@ JSON 请求和响应使用 UTF-8；日期时间以 RFC 3339 格式返回。创�
 
 刷新请求为 `{ "refresh_token": "..." }`，响应 `data.tokens`，不要求有效 Access Token。`GET /users/me` 和 `PATCH /users/me` 的资料对象使用 `business_id`、`nickname`、`phone`、`avatar_key`、`is_admin`、`created_at`、`updated_at` 字段；PATCH 仅允许更新昵称和头像 key，`is_admin` 由受信角色接口管理。
 
-标签创建和更新请求为 `{ "content": "标签内容" }`，内容最多 64 个字符。标签响应为 `{ "business_id": "uuid", "content": "...", "created_at": "...", "updated_at": "..." }`。标签列表的 `data` 为 `{ "items": [...], "page": 1, "page_size": 20, "total": 0 }`。
+标签创建和更新请求为 `{ "content": "标签内容" }`，内容最多 64 个字符；同一用户不能创建或改名为已存在的标签内容。标签响应为 `{ "business_id": "uuid", "content": "...", "created_at": "...", "updated_at": "..." }`。标签列表的 `data` 为 `{ "items": [...], "page": 1, "page_size": 20, "total": 0 }`，可通过可选 `q` 对名称执行不区分大小写的包含搜索。
 
-灵感图创建请求示例：`{ "tag_ids": ["uuid"], "image_key": "local_yyyymmdd_uuid.ext", "file_name": "原始文件名.png", "data": { "schema_version": 1, "source_image_key": "local_yyyymmdd_original.ext" }, "image_metadata": { "source_file_size": 123456, "source_last_modified_at": "2026-04-15T01:06:00Z", "extra": {} } }`。`image_metadata` 中已知字段可空且数值单位固定，`source_file_size` 表示原图字节数，不接受后端压缩结果覆盖。`image_key` 为上传接口返回的 storekey 时，后端读取文件；大于 1 MB 的静态图片会原位覆盖压缩后的内容，不改变 storekey，并根据最终字节计算 `file_hash` 和 `file_size`。`file_size` 是压缩后实际存储的字节数，不接受客户端设置；创建和显式更新 `image_key` 都会重新计算。压缩不透明图片会输出 JPEG，带透明像素的图片会输出 PNG；动画 GIF/WebP 大于目标大小时拒绝保存；下载以实际内容而不是 storekey 扩展名设置 MIME 类型。`file_name` 可选，缺省为空字符串，最多 255 个字符。`data` 必须是 JSON 对象并带正整数 `schema_version`；其他编辑数据字段由编辑器文档版本定义并原样保存。详情/创建/更新响应对象包含 `image_metadata`，列表响应为节省负载省略该字段；各已知属性键参见 `backend/migrations/000016_add_inspiration_image_metadata.sql`。灵感图响应仍包含 `business_id`、`tag_ids`、`image_key`、`file_name`、`file_hash`、`file_size`、`data`、`created_at`、`updated_at`。列表使用同一分页结构。
+灵感图创建请求示例：`{ "tag_ids": ["uuid"], "image_key": "local_yyyymmdd_uuid.ext", "file_name": "原始文件名.png", "data": { "schema_version": 1, "source_image_key": "local_yyyymmdd_original.ext" }, "image_metadata": { "source_file_size": 123456, "source_last_modified_at": "2026-04-15T01:06:00Z", "extra": {} } }`。`image_metadata` 中已知字段可空且数值单位固定，`source_file_size` 表示原图字节数，不接受后端压缩结果覆盖。`image_key` 为上传接口返回的 storekey 时，后端读取文件；大于 1 MB 的静态图片会原位覆盖压缩后的内容，不改变 storekey，并根据最终字节计算 `file_hash` 和 `file_size`。`file_size` 是压缩后实际存储的字节数，不接受客户端设置；创建和显式更新 `image_key` 都会重新计算。压缩不透明图片会输出 JPEG，带透明像素的图片会输出 PNG；动画 GIF/WebP 大于目标大小时拒绝保存；下载以实际内容而不是 storekey 扩展名设置 MIME 类型。`file_name` 可选，缺省为空字符串，最多 255 个字符。`data` 必须是 JSON 对象并带正整数 `schema_version`；其他编辑数据字段由编辑器文档版本定义并原样保存。详情/创建/更新响应对象包含 `image_metadata`，列表响应为节省负载省略该字段；各已知属性键参见 `backend/migrations/000016_add_inspiration_image_metadata.sql`。灵感图响应包含 `business_id`、`tag_ids`、`tag_names`、`image_key`、`file_name`、`file_hash`、`file_size`、`data`、`created_at`、`updated_at`。列表使用同一分页结构。
+
+灵感图标签名称通过 `PATCH /inspirations/{business_id}` 的 `tag_names` 字符串数组整体替换；空数组清空标签。服务端去除每个名称首尾空格，按当前用户和大小写精确匹配已有标签，没有匹配项时创建标签，并在同一事务内更新灵感图。请求中重复名称会合并；每个标签名须为 1 至 64 个字符。`tag_ids` 保留供旧客户端使用，但与 `tag_names` 不能同时传入。响应中的 `tag_names` 与 `tag_ids` 顺序对应。迁移 `000017_dedupe_inspiration_tags.sql` 合并同一用户的既有重复标签、迁移灵感图引用并建立 `(user_id, content)` 唯一索引。
 
 标签检索 `tag_match` 默认 `any`：命中任一指定标签；`all`：必须同时包含所有指定标签；不传 `tag_ids` 时不按标签过滤。`tag_ids` 以重复 query 参数传入，例如 `?tag_ids=uuid1&tag_ids=uuid2&tag_match=all`。用户归属从 token 得出；访问其他用户的资源统一返回 `404`。列表对象和详情对象都只返回业务 UUID，不返回自增 `id`。
 

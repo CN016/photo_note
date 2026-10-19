@@ -144,8 +144,12 @@ func (store *PostgresStore) UpdateUserProfile(ctx context.Context, userID uuid.U
 }
 
 // ListTags 按当前用户隔离地分页查询标签，并单独统计匹配总数用于稳定分页响应。
-func (store *PostgresStore) ListTags(ctx context.Context, userID uuid.UUID, offset, limit int) ([]model.Tag, int64, error) {
+func (store *PostgresStore) ListTags(ctx context.Context, userID uuid.UUID, search string, offset, limit int) ([]model.Tag, int64, error) {
 	query := store.db.WithContext(ctx).Model(&model.Tag{}).Where("user_id = ?", userID)
+	if search != "" {
+		pattern := "%" + strings.NewReplacer("\\", "\\\\", "%", "\\%", "_", "\\_").Replace(search) + "%"
+		query = query.Where("content ILIKE ? ESCAPE E'\\\\'", pattern)
+	}
 	var total int64
 	if err := query.Count(&total).Error; err != nil {
 		return nil, 0, persistenceError(err)
@@ -228,6 +232,11 @@ func (store *PostgresStore) CreateInspiration(ctx context.Context, inspiration *
 	if err := store.db.WithContext(ctx).Create(inspiration).Error; err != nil {
 		return persistenceError(err)
 	}
+	items := []model.Inspiration{*inspiration}
+	if err := populateInspirationTagNames(ctx, store.db, inspiration.UserID, items); err != nil {
+		return err
+	}
+	*inspiration = items[0]
 	return nil
 }
 
@@ -260,6 +269,9 @@ func (store *PostgresStore) ListInspirations(ctx context.Context, userID uuid.UU
 	}
 	if err := query.Order(order).Offset(offset).Limit(limit).Find(&items).Error; err != nil {
 		return nil, 0, persistenceError(err)
+	}
+	if err := populateInspirationTagNames(ctx, store.db, userID, items); err != nil {
+		return nil, 0, err
 	}
 	return items, total, nil
 }
@@ -484,7 +496,52 @@ func (store *PostgresStore) FindInspirationByBusinessID(ctx context.Context, use
 	if err != nil {
 		return model.Inspiration{}, persistenceError(err)
 	}
-	return inspiration, nil
+	items := []model.Inspiration{inspiration}
+	if err := populateInspirationTagNames(ctx, store.db, userID, items); err != nil {
+		return model.Inspiration{}, err
+	}
+	return items[0], nil
+}
+
+// populateInspirationTagNames 批量读取当前用户标签名称，并按灵感图 tag_ids 的顺序填充展示字段。
+func populateInspirationTagNames(ctx context.Context, db *gorm.DB, userID uuid.UUID, items []model.Inspiration) error {
+	ids := make([]uuid.UUID, 0)
+	seen := make(map[uuid.UUID]struct{})
+	for index := range items {
+		items[index].TagNames = make([]string, 0, len(items[index].TagIDs))
+		for _, value := range items[index].TagIDs {
+			tagID, err := uuid.Parse(value)
+			if err != nil {
+				return fault.Internal(err)
+			}
+			if _, exists := seen[tagID]; exists {
+				continue
+			}
+			seen[tagID] = struct{}{}
+			ids = append(ids, tagID)
+		}
+	}
+	if len(ids) == 0 {
+		return nil
+	}
+	var tags []model.Tag
+	if err := db.WithContext(ctx).Select("business_id", "content").
+		Where("user_id = ? AND business_id IN ?", userID, ids).Find(&tags).Error; err != nil {
+		return persistenceError(err)
+	}
+	namesByID := make(map[uuid.UUID]string, len(tags))
+	for _, tag := range tags {
+		namesByID[tag.BusinessID] = tag.Content
+	}
+	for index := range items {
+		for _, value := range items[index].TagIDs {
+			tagID, _ := uuid.Parse(value) // UUID 数组由 PostgreSQL 类型约束保证格式有效。
+			if name, exists := namesByID[tagID]; exists {
+				items[index].TagNames = append(items[index].TagNames, name)
+			}
+		}
+	}
+	return nil
 }
 
 // UpdateInspiration 更新 service 已验证字段，并限定当前用户避免通过 UUID 越权写入。
@@ -518,6 +575,87 @@ func (store *PostgresStore) UpdateInspirationWithAsyncVersion(ctx context.Contex
 	}
 	if result.RowsAffected == 0 {
 		return model.Inspiration{}, fault.NotFound()
+	}
+	items := []model.Inspiration{inspiration}
+	if err := populateInspirationTagNames(ctx, store.db, userID, items); err != nil {
+		return model.Inspiration{}, err
+	}
+	return items[0], nil
+}
+
+// UpdateInspirationWithTagNames 在同一事务中复用或新建用户标签并更新灵感图，确保名称解析与绑定不会部分提交。
+func (store *PostgresStore) UpdateInspirationWithTagNames(ctx context.Context, userID, inspirationID uuid.UUID, names []string, updates map[string]any, incrementAsyncVersion bool) (model.Inspiration, error) {
+	var inspiration model.Inspiration
+	err := store.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		writeFields := make(map[string]any, len(updates)+3)
+		for key, value := range updates {
+			writeFields[key] = value
+		}
+		newTags := make([]model.Tag, 0, len(names))
+		for _, name := range names {
+			newTags = append(newTags, model.Tag{BaseModel: model.BaseModel{BusinessID: uuid.New()}, UserID: userID, Content: name})
+		}
+		if len(newTags) > 0 {
+			if err := tx.Clauses(clause.OnConflict{
+				Columns:   []clause.Column{{Name: "user_id"}, {Name: "content"}},
+				DoNothing: true,
+			}).Create(&newTags).Error; err != nil {
+				return persistenceError(err)
+			}
+		}
+
+		nameIDs := make(map[string]uuid.UUID, len(names))
+		if len(names) > 0 {
+			var tags []model.Tag
+			if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).
+				Where("user_id = ? AND content IN ?", userID, names).Find(&tags).Error; err != nil {
+				return persistenceError(err)
+			}
+			for _, tag := range tags {
+				nameIDs[tag.Content] = tag.BusinessID
+			}
+		}
+		tagIDs := make(pq.StringArray, 0, len(names))
+		for _, name := range names {
+			tagID, exists := nameIDs[name]
+			if !exists {
+				return fault.Internal(errors.New("标签创建后未能按用户和名称读取"))
+			}
+			tagIDs = append(tagIDs, tagID.String())
+		}
+		writeFields["tag_ids"] = tagIDs
+		writeFields["updated_at"] = time.Now().UTC()
+		if incrementAsyncVersion {
+			writeFields["async_version"] = gorm.Expr("async_version + 1")
+		}
+		if rawData, ok := writeFields["data"].(model.JSONB); ok {
+			encoded := string(rawData)
+			// 普通数据编辑不能清除后台待处理原图，也不能恢复已清理的原图 key。
+			writeFields["data"] = gorm.Expr(
+				"CASE WHEN data->'source_image_key' IS NOT NULL THEN ((?::jsonb - 'source_image_key') || jsonb_build_object('source_image_key', data->'source_image_key')) ELSE (?::jsonb - 'source_image_key') END",
+				encoded, encoded,
+			)
+		}
+		result := tx.Model(&model.Inspiration{}).
+			Where("user_id = ? AND business_id = ?", userID, inspirationID).Updates(writeFields)
+		if result.Error != nil {
+			return persistenceError(result.Error)
+		}
+		if result.RowsAffected == 0 {
+			return fault.NotFound()
+		}
+		if err := tx.Where("user_id = ? AND business_id = ?", userID, inspirationID).First(&inspiration).Error; err != nil {
+			return persistenceError(err)
+		}
+		items := []model.Inspiration{inspiration}
+		if err := populateInspirationTagNames(ctx, tx, userID, items); err != nil {
+			return err
+		}
+		inspiration = items[0]
+		return nil
+	})
+	if err != nil {
+		return model.Inspiration{}, err
 	}
 	return inspiration, nil
 }

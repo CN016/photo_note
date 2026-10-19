@@ -8,6 +8,7 @@
   "searchPlaceholder": "Find an inspiration image",
   "filters": "Filter and sort inspirations",
   "filterTags": "Filter by tags",
+  "tags": "Tags",
   "tagMatch": "Tag matching",
   "matchAny": "Match any selected tag",
   "matchAll": "Match all selected tags",
@@ -29,6 +30,8 @@
   "openImage": "Open inspiration: {name}",
   "created": "Saved {date}",
   "editCopySize": "Edit copy {size}",
+  "moreTags": "+{count}",
+  "moreTagsTooltip": "More tags: {tags}",
   "loadingImage": "Loading image",
   "imageUnavailable": "Image unavailable"
 }

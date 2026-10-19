@@ -262,6 +262,10 @@ func (repository *metadataTestRepository) UpdateInspiration(context.Context, uui
 func (repository *metadataTestRepository) UpdateInspirationWithAsyncVersion(context.Context, uuid.UUID, uuid.UUID, map[string]any) (model.Inspiration, error) {
 	return repository.record, nil
 }
+func (repository *metadataTestRepository) UpdateInspirationWithTagNames(_ context.Context, _ uuid.UUID, _ uuid.UUID, names []string, _ map[string]any, _ bool) (model.Inspiration, error) {
+	repository.record.TagNames = append([]string{}, names...)
+	return repository.record, nil
+}
 func (repository *metadataTestRepository) UpdateInspirationFileMetadataIfVersion(_ context.Context, userID, inspirationID uuid.UUID, imageKey string, version int64, hash *string, size *int64) (bool, error) {
 	if repository.record.UserID != userID || repository.record.BusinessID != inspirationID || repository.record.ImageKey != imageKey || repository.record.AsyncVersion != version {
 		return false, nil

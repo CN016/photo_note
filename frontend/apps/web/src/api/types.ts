@@ -44,6 +44,8 @@ export interface AuthResponse {
 export interface InspirationRecord {
   business_id: string
   tag_ids: string[]
+  /** 对应 tag_ids 的展示名称；旧服务端响应可能暂时不包含该字段。 */
+  tag_names?: string[]
   image_key: string
   file_name: string
   file_hash: string | null

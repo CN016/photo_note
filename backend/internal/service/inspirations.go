@@ -33,6 +33,7 @@ type InspirationRepository interface {
 	FindInspirationByBusinessID(context.Context, uuid.UUID, uuid.UUID) (model.Inspiration, error)
 	UpdateInspiration(context.Context, uuid.UUID, uuid.UUID, map[string]any) (model.Inspiration, error)
 	UpdateInspirationWithAsyncVersion(context.Context, uuid.UUID, uuid.UUID, map[string]any) (model.Inspiration, error)
+	UpdateInspirationWithTagNames(context.Context, uuid.UUID, uuid.UUID, []string, map[string]any, bool) (model.Inspiration, error)
 	UpdateInspirationFileMetadataIfVersion(context.Context, uuid.UUID, uuid.UUID, string, int64, *string, *int64) (bool, error)
 	UpdateInspirationImageMetadataIfVersion(context.Context, uuid.UUID, uuid.UUID, string, int64, model.InspirationImageMetadata) (bool, error)
 	RemoveInspirationSourceImageKeyIfVersion(context.Context, uuid.UUID, uuid.UUID, string, int64, string) (bool, error)
@@ -132,6 +133,7 @@ func (service *InspirationService) SetErrorLogService(errorLogs *ErrorLogService
 // InspirationInput 是创建或局部更新时已解析的业务数据，不包含 user_id 或数据库 id。
 type InspirationInput struct {
 	TagIDs        []uuid.UUID
+	TagNames      []string
 	ImageKey      string
 	FileName      string
 	Data          json.RawMessage
@@ -224,11 +226,22 @@ func (service *InspirationService) Get(ctx context.Context, userID, inspirationI
 	return service.inspirations.FindInspirationByBusinessID(ctx, userID, inspirationID)
 }
 
-// Update 保留未提交字段；提交有效 storekey 时先递增异步代次并保存记录，再排队处理图片。
-func (service *InspirationService) Update(ctx context.Context, userID, inspirationID uuid.UUID, input InspirationInput, tagIDsSet, imageKeySet, fileNameSet, dataSet, imageMetadataSet bool) (model.Inspiration, error) {
-	updates := make(map[string]any, 8)
+// Update 保留未提交字段；标签名称解析在 repository 事务中完成，提交有效 storekey 时再递增代次并排队处理图片。
+func (service *InspirationService) Update(ctx context.Context, userID, inspirationID uuid.UUID, input InspirationInput, tagIDsSet, tagNamesSet, imageKeySet, fileNameSet, dataSet, imageMetadataSet bool) (model.Inspiration, error) {
+	if tagIDsSet && tagNamesSet {
+		return model.Inspiration{}, fault.InvalidRequest("tag_ids 和 tag_names 不能同时传入")
+	}
+	updates := make(map[string]any, 10)
 	storeKeyImage := false
 	var existing model.Inspiration
+	tagNames := input.TagNames
+	if tagNamesSet {
+		var err error
+		tagNames, err = normalizeTagNames(tagNames)
+		if err != nil {
+			return model.Inspiration{}, err
+		}
+	}
 	if imageKeySet {
 		input.ImageKey = strings.TrimSpace(input.ImageKey)
 		if input.ImageKey == "" {
@@ -292,7 +305,20 @@ func (service *InspirationService) Update(ctx context.Context, userID, inspirati
 		}
 	}
 	if len(updates) == 0 {
-		return model.Inspiration{}, fault.InvalidRequest("至少提供 tag_ids、image_key、file_name、data 或 image_metadata 中的一个字段")
+		if !tagNamesSet {
+			return model.Inspiration{}, fault.InvalidRequest("至少提供 tag_ids、image_key、file_name、data 或 image_metadata 中的一个字段")
+		}
+	}
+	if tagNamesSet {
+		updated, err := service.inspirations.UpdateInspirationWithTagNames(ctx, userID, inspirationID, tagNames, updates, storeKeyImage)
+		if err != nil {
+			return model.Inspiration{}, err
+		}
+		if storeKeyImage {
+			service.enqueueCompression(inspirationCompressionJob{userID: userID, inspirationID: inspirationID,
+				imageKey: input.ImageKey, asyncVersion: updated.AsyncVersion})
+		}
+		return updated, nil
 	}
 	if storeKeyImage {
 		updated, err := service.inspirations.UpdateInspirationWithAsyncVersion(ctx, userID, inspirationID, updates)

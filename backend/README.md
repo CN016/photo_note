@@ -24,6 +24,8 @@ API 默认通过宿主机 `127.0.0.1:8089` 提供服务，监听地址、请求�
 
 灵感图拍摄统计使用需鉴权的 `GET /api/v1/inspirations/statistics`。接口按 Access Token 中的用户业务 UUID 在 PostgreSQL 聚合，只返回数量和分类键，不读取文件内容，也不返回 GPS、原图 key 或设备序列号。响应包含图片总数、至少含一种拍摄参数的图片数，以及最近 12 个 UTC 日历月的收藏数；分类包括相机型号和镜头型号 TOP 5、焦段、光圈、ISO、曝光时间、闪光灯、画面方向、百万像素和色彩空间。焦段优先使用 35mm 等效焦距，否则使用实际焦距；缺失属性不会计入对应分组。该功能复用 `000016` 图片属性列，不新增迁移。
 
+灵感图标签可通过 `GET /api/v1/tags?q=关键词` 搜索；详情更新接口接受 `tag_names` 数组并整体替换标签，标签名称由服务端按当前用户解析或创建。现有数据库升级前应先备份，再执行 `backend/migrations/000017_dedupe_inspiration_tags.sql` 合并同名标签并创建唯一索引；服务不会自动执行迁移。
+
 账本使用 `ledger_records` 表逐笔保存已完成收支和可恢复草稿；金额在数据库中保存为整数分，API 使用两位小数的十进制字符串。所有 `/api/v1/ledger/*` 接口均需 Bearer Access Token，并从令牌读取用户业务 UUID 限定查询和写入。`GET /api/v1/ledger/records?from=YYYY-MM-DD&to=YYYY-MM-DD` 返回日期范围内的正式记录及当前用户的未完成草稿；`POST /api/v1/ledger/records` 创建草稿，`PATCH /api/v1/ledger/records/{business_id}/draft` 自动保存快照并校验草稿修订号，`POST /api/v1/ledger/records/{business_id}/complete` 完成草稿或应用编辑，`DELETE /api/v1/ledger/records/{business_id}` 删除记录，`POST /api/v1/ledger/import` 在单个事务中导入完整记录。正式分析不包含草稿；编辑已完成记录期间，统计仍按原正式字段计算。旧营收日历 JSON/CSV 导入时类型默认为收入。已有数据库升级前先备份 PostgreSQL，再确认并按顺序应用尚未执行的版本化迁移；账本表迁移为 `backend/migrations/000009_create_ledger_records.sql`，API 不会自动执行 SQL。
 
 ### 消息中心与 webhook 通知

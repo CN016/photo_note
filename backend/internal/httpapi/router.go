@@ -935,7 +935,12 @@ func listTagsHandler(tags *service.TagService) gin.HandlerFunc {
 			writeError(c, err)
 			return
 		}
-		result, err := tags.List(c.Request.Context(), claims.UserBusinessID, page)
+		query, err := optionalQueryString(c, "q")
+		if err != nil {
+			writeError(c, err)
+			return
+		}
+		result, err := tags.List(c.Request.Context(), claims.UserBusinessID, query, page)
 		if err != nil {
 			writeError(c, err)
 			return
@@ -1036,6 +1041,7 @@ func deleteTagHandler(tags *service.TagService) gin.HandlerFunc {
 type inspirationResponse struct {
 	BusinessID    uuid.UUID                       `json:"business_id"`
 	TagIDs        []string                        `json:"tag_ids"`
+	TagNames      []string                        `json:"tag_names"`
 	ImageKey      string                          `json:"image_key"`
 	FileName      string                          `json:"file_name"`
 	FileHash      *string                         `json:"file_hash"`
@@ -1052,8 +1058,9 @@ func inspirationDTO(inspiration model.Inspiration, includeImageMetadata bool) in
 	for _, tagID := range inspiration.TagIDs {
 		tagIDs = append(tagIDs, tagID)
 	}
+	tagNames := append([]string{}, inspiration.TagNames...)
 	data := json.RawMessage(append([]byte(nil), inspiration.Data...))
-	response := inspirationResponse{BusinessID: inspiration.BusinessID, TagIDs: tagIDs, ImageKey: inspiration.ImageKey,
+	response := inspirationResponse{BusinessID: inspiration.BusinessID, TagIDs: tagIDs, TagNames: tagNames, ImageKey: inspiration.ImageKey,
 		FileName: inspiration.FileName, FileHash: inspiration.FileHash, FileSize: inspiration.FileSize,
 		Data: data, CreatedAt: inspiration.CreatedAt, UpdatedAt: inspiration.UpdatedAt}
 	if includeImageMetadata {
@@ -1186,7 +1193,7 @@ func getInspirationHandler(inspirations *service.InspirationService) gin.Handler
 	}
 }
 
-// patchInspirationHandler 根据字段存在性执行局部更新，tag_ids 空数组用于清除全部标签。
+// patchInspirationHandler 根据字段存在性执行局部更新；tag_ids 与 tag_names 空数组都用于清除全部标签。
 func patchInspirationHandler(inspirations *service.InspirationService) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		claims, err := authContext(c)
@@ -1204,12 +1211,17 @@ func patchInspirationHandler(inspirations *service.InspirationService) gin.Handl
 			writeError(c, err)
 			return
 		}
-		if err := allowFields(fields, "tag_ids", "image_key", "file_name", "data", "image_metadata"); err != nil {
+		if err := allowFields(fields, "tag_ids", "tag_names", "image_key", "file_name", "data", "image_metadata"); err != nil {
 			writeError(c, err)
 			return
 		}
 		var input service.InspirationInput
 		_, tagIDsSet := fields["tag_ids"]
+		_, tagNamesSet := fields["tag_names"]
+		if tagIDsSet && tagNamesSet {
+			writeError(c, fault.InvalidRequest("tag_ids 和 tag_names 不能同时传入"))
+			return
+		}
 		_, imageKeySet := fields["image_key"]
 		_, fileNameSet := fields["file_name"]
 		_, dataSet := fields["data"]
@@ -1221,6 +1233,16 @@ func patchInspirationHandler(inspirations *service.InspirationService) gin.Handl
 			}
 			if err := json.Unmarshal(raw, &input.TagIDs); err != nil || input.TagIDs == nil {
 				writeError(c, fault.InvalidRequest("tag_ids 必须是 UUID 数组"))
+				return
+			}
+		}
+		if raw, exists := fields["tag_names"]; exists {
+			if bytes.Equal(bytes.TrimSpace(raw), []byte("null")) {
+				writeError(c, fault.InvalidRequest("tag_names 必须是字符串数组；清空标签请传空数组"))
+				return
+			}
+			if err := json.Unmarshal(raw, &input.TagNames); err != nil || input.TagNames == nil {
+				writeError(c, fault.InvalidRequest("tag_names 必须是字符串数组"))
 				return
 			}
 		}
@@ -1251,7 +1273,7 @@ func patchInspirationHandler(inspirations *service.InspirationService) gin.Handl
 			}
 		}
 		inspiration, err := inspirations.Update(c.Request.Context(), claims.UserBusinessID, inspirationID,
-			input, tagIDsSet, imageKeySet, fileNameSet, dataSet, imageMetadataSet)
+			input, tagIDsSet, tagNamesSet, imageKeySet, fileNameSet, dataSet, imageMetadataSet)
 		if err != nil {
 			writeError(c, err)
 			return

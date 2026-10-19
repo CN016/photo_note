@@ -57,6 +57,25 @@ func TestInspirationMetadataCreatePatchDetailAndList(t *testing.T) {
 		t.Fatalf("changing images should not retain the previous original size: %v", patchEnvelope.Data.ImageMetadata.SourceFileSize)
 	}
 
+	tagPatch := metadataAPICall(t, router, http.MethodPatch, "/api/v1/inspirations/"+id,
+		`{"tag_names":[" 旅行 ","旅行","摄影"]}`)
+	if tagPatch.Code != http.StatusOK || !strings.Contains(tagPatch.Body.String(), `"tag_names":["旅行","摄影"]`) {
+		t.Fatalf("tag name patch status = %d, body = %s", tagPatch.Code, tagPatch.Body.String())
+	}
+	clearedTags := metadataAPICall(t, router, http.MethodPatch, "/api/v1/inspirations/"+id, `{"tag_names":[]}`)
+	if clearedTags.Code != http.StatusOK || !strings.Contains(clearedTags.Body.String(), `"tag_names":[]`) {
+		t.Fatalf("empty tag_names should clear all tags: status=%d body=%s", clearedTags.Code, clearedTags.Body.String())
+	}
+	legacyTagIDs := metadataAPICall(t, router, http.MethodPatch, "/api/v1/inspirations/"+id, `{"tag_ids":[]}`)
+	if legacyTagIDs.Code != http.StatusOK {
+		t.Fatalf("legacy tag_ids update should remain supported: status=%d body=%s", legacyTagIDs.Code, legacyTagIDs.Body.String())
+	}
+	ambiguousTags := metadataAPICall(t, router, http.MethodPatch, "/api/v1/inspirations/"+id,
+		`{"tag_ids":[],"tag_names":[]}`)
+	if ambiguousTags.Code != http.StatusBadRequest {
+		t.Fatalf("tag_ids and tag_names should be mutually exclusive: status=%d body=%s", ambiguousTags.Code, ambiguousTags.Body.String())
+	}
+
 	detail := metadataAPICall(t, router, http.MethodGet, "/api/v1/inspirations/"+id, "")
 	if detail.Code != http.StatusOK || !strings.Contains(detail.Body.String(), `"image_metadata"`) {
 		t.Fatalf("detail did not return image metadata: status=%d body=%s", detail.Code, detail.Body.String())
@@ -123,6 +142,20 @@ func (repository *imageMetadataAPITestRepository) UpdateInspiration(ctx context.
 }
 func (repository *imageMetadataAPITestRepository) UpdateInspirationWithAsyncVersion(ctx context.Context, userID, itemID uuid.UUID, updates map[string]any) (model.Inspiration, error) {
 	return repository.applyUpdate(userID, itemID, updates, true)
+}
+func (repository *imageMetadataAPITestRepository) UpdateInspirationWithTagNames(_ context.Context, userID, itemID uuid.UUID, names []string, updates map[string]any, increment bool) (model.Inspiration, error) {
+	item, err := repository.applyUpdate(userID, itemID, updates, increment)
+	if err != nil {
+		return model.Inspiration{}, err
+	}
+	for index := range repository.items {
+		if repository.items[index].BusinessID == itemID && repository.items[index].UserID == userID {
+			repository.items[index].TagNames = append([]string{}, names...)
+			item = repository.items[index]
+			break
+		}
+	}
+	return item, nil
 }
 func (repository *imageMetadataAPITestRepository) applyUpdate(userID, itemID uuid.UUID, updates map[string]any, increment bool) (model.Inspiration, error) {
 	for index := range repository.items {

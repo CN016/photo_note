@@ -45,6 +45,13 @@ const saving = ref(false)
 const busyPhase = ref('')
 const error = ref('')
 const status = ref('')
+const tagNames = ref<string[]>([])
+const tagOptions = ref<string[]>([])
+const tagOptionsLoading = ref(false)
+const tagSaving = ref(false)
+const tagSearchError = ref('')
+const tagSaveError = ref('')
+const tagSaveStatus = ref('')
 const colorAnalysis = ref<ColorAnalysis | null>(null)
 const colorAnalysisError = ref('')
 const colorAnalysisSaving = ref(false)
@@ -66,6 +73,9 @@ let rgbBefore: string | null = null
 let resizeObserver: ResizeObserver | null = null
 let selectionStart: { x: number; y: number } | null = null
 let colorWritePromise: Promise<void> | null = null
+let tagWritePromise: Promise<void> | null = null
+let tagSearchTimer: number | undefined
+let tagSearchVersion = 0
 let suppressAnchorClick = false
 
 /** 详情页只展示已采集到的属性；元数据中的空值不会占据面板空间。 */
@@ -401,6 +411,9 @@ async function loadExisting(): Promise<void> {
   try {
     const loaded = await api.inspiration(itemId.value)
     record.value = loaded
+    tagNames.value = [...(loaded.tag_names ?? [])]
+    tagOptions.value = [...tagNames.value]
+    searchTagOptions('')
     imageMetadata.value = loaded.image_metadata ?? null
     filename.value = loaded.file_name || t('gallery.untitled')
     documentData.value = parseEditorDocument(loaded.data)
@@ -426,6 +439,70 @@ async function loadExisting(): Promise<void> {
     observeStage()
   } catch (cause) { error.value = localError(cause, t('editor.loadError')) }
   finally { loading.value = false }
+}
+
+/** 通过带用户范围的分页接口远程检索标签名称，保留当前已选项供多选框稳定显示。 */
+function searchTagOptions(query: string): void {
+  if (tagSearchTimer !== undefined) window.clearTimeout(tagSearchTimer)
+  const version = ++tagSearchVersion
+  tagSearchError.value = ''
+  tagSearchTimer = window.setTimeout(async () => {
+    tagOptionsLoading.value = true
+    try {
+      const result = await api.tags(1, 100, query)
+      if (version !== tagSearchVersion) return
+      tagOptions.value = [...new Set([...tagNames.value, ...result.items.map(tag => tag.content)])]
+    } catch (cause) {
+      if (version === tagSearchVersion) {
+        tagSearchError.value = localError(cause, t('editor.tagSearchFailed'))
+      }
+    } finally {
+      if (version === tagSearchVersion) {
+        tagOptionsLoading.value = false
+        tagSearchTimer = undefined
+      }
+    }
+  }, 160)
+}
+
+/** 标签变更立即提交完整名称集合；失败时恢复服务端确认过的选择，避免误显示未保存内容。 */
+async function saveTagNames(names: string[]): Promise<void> {
+  const current = record.value
+  if (!current || tagSaving.value) return
+  const nextNames = [...new Set(names.map(name => name.trim()).filter(Boolean))]
+  const previousNames = [...(current.tag_names ?? [])]
+  if (nextNames.length === previousNames.length && nextNames.every((name, index) => name === previousNames[index])) {
+    tagNames.value = previousNames
+    return
+  }
+
+  tagNames.value = nextNames
+  tagOptions.value = [...new Set([...nextNames, ...tagOptions.value])]
+  tagSaveError.value = ''
+  tagSaveStatus.value = ''
+  tagSaving.value = true
+  const pending = (async () => {
+    try {
+      const updated = await api.updateInspirationTags(current.business_id, nextNames)
+      if (record.value?.business_id === current.business_id) {
+        const savedNames = updated.tag_names ?? nextNames
+        record.value = { ...record.value, tag_ids: updated.tag_ids, tag_names: savedNames, updated_at: updated.updated_at }
+        tagNames.value = [...savedNames]
+        tagOptions.value = [...new Set([...savedNames, ...tagOptions.value])]
+        tagSaveStatus.value = t('editor.tagSaved')
+      }
+    } catch (cause) {
+      if (record.value?.business_id === current.business_id) tagNames.value = [...(record.value.tag_names ?? previousNames)]
+      tagSaveError.value = localError(cause, t('editor.tagSaveFailed'))
+    } finally {
+      tagSaving.value = false
+    }
+  })()
+  tagWritePromise = pending
+  void pending.finally(() => {
+    if (tagWritePromise === pending) tagWritePromise = null
+  })
+  await pending
 }
 
 /** 画布更新合并到下一帧，避免 RGB 拖动时重复做高分辨率像素循环。 */
@@ -726,6 +803,7 @@ onMounted(() => {
 
 /** 通过页内返回或浏览器导航离开时，同样确认是否丢弃已有灵感图的未保存调整。 */
 onBeforeRouteLeave(async () => {
+  if (tagWritePromise) await tagWritePromise
   if (!isExisting.value || !isEditing.value || !hasUnsavedChanges.value) return true
   try {
     await ElMessageBox.confirm(t('editor.discardChangesText'), t('editor.discardChangesTitle'), {
@@ -739,6 +817,8 @@ onBeforeRouteLeave(async () => {
 
 onBeforeUnmount(() => {
   decodeVersion += 1
+  tagSearchVersion += 1
+  if (tagSearchTimer !== undefined) window.clearTimeout(tagSearchTimer)
   if (frameRequest) cancelAnimationFrame(frameRequest)
   resizeObserver?.disconnect()
   releaseCanvas(sourceCanvas.value)
@@ -838,6 +918,36 @@ onBeforeUnmount(() => {
             <div v-if="colorAnalysisError" class="profile-retry-row">
               <el-button text :disabled="colorAnalysisSaving || saving" @click="retryColorAnalysis">{{ t('editor.colorAnalysisRetry') }}</el-button>
             </div>
+          </section>
+
+          <section v-if="isExisting" class="control-section inspiration-tags-section" :aria-label="t('editor.tags')">
+            <div class="section-title-row">
+              <h2>{{ t('editor.tags') }}</h2>
+              <span v-if="tagSaving" class="profile-saving" role="status">{{ t('editor.tagSaving') }}</span>
+            </div>
+            <el-select
+              v-model="tagNames"
+              class="inspiration-tag-select"
+              multiple
+              filterable
+              remote
+              allow-create
+              clearable
+              default-first-option
+              collapse-tags
+              collapse-tags-tooltip
+              :max-collapse-tags="2"
+              :remote-method="searchTagOptions"
+              :loading="tagOptionsLoading"
+              :disabled="tagSaving || loading"
+              :placeholder="t('editor.tagSearchPlaceholder')"
+              @change="saveTagNames"
+            >
+              <el-option v-for="name in tagOptions" :key="name" :label="name" :value="name" />
+            </el-select>
+            <p v-if="tagSearchError" class="profile-error" role="alert">{{ tagSearchError }}</p>
+            <p v-else-if="tagSaveError" class="profile-error" role="alert">{{ tagSaveError }}</p>
+            <p v-else-if="tagSaveStatus" class="tag-save-status" role="status">{{ tagSaveStatus }}</p>
           </section>
 
           <section v-if="!isEditing && hasImageMetadata" class="control-section image-metadata-section" :aria-label="t('editor.metadataPanelTitle')">

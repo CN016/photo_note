@@ -134,6 +134,21 @@ onBeforeUnmount(() => { if (searchTimer !== undefined) window.clearTimeout(searc
             <InspirationThumbnail :record="item" />
             <div class="card-caption">
               <span class="card-title">{{ item.file_name || t('gallery.untitled') }}</span>
+              <div v-if="item.tag_names?.length" class="card-tags" :aria-label="t('gallery.tags')">
+                <el-tag v-for="name in (item.tag_names ?? []).slice(0, 3)" :key="name" class="inspiration-card-tag" effect="plain" size="small">{{ name }}</el-tag>
+                <el-tooltip
+                  v-if="(item.tag_names?.length ?? 0) > 3"
+                  :content="(item.tag_names ?? []).slice(3).join(' · ')"
+                  placement="top"
+                >
+                  <el-tag
+                    class="inspiration-card-tag inspiration-card-tag-overflow"
+                    effect="plain"
+                    size="small"
+                    :aria-label="t('gallery.moreTagsTooltip', { tags: (item.tag_names ?? []).slice(3).join(' · ') })"
+                  >{{ t('gallery.moreTags', { count: (item.tag_names?.length ?? 0) - 3 }) }}</el-tag>
+                </el-tooltip>
+              </div>
               <div class="card-caption-meta">
                 <span class="card-date">{{ t('gallery.created', { date: displayDate(item.created_at) }) }}</span>
                 <span v-if="item.file_size != null" class="card-size">{{ t('gallery.editCopySize', { size: displayFileSize(item.file_size) }) }}</span>
