@@ -5,6 +5,8 @@ import { i18n, setLocale } from './i18n'
 import { router } from './router'
 import 'element-plus/es/components/message/style/css'
 import 'element-plus/es/components/notification/style/css'
+// ElMessageBox 通过服务方法调用，不会由模板组件的按需解析自动加载样式。
+import 'element-plus/es/components/message-box/style/css'
 import './style.css'
 import { initializeTheme } from './theme'
 import { installBackendHealthMonitor } from './backendHealth'
