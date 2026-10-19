@@ -1,11 +1,11 @@
 <script setup lang="ts">
-import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { ElNotification } from 'element-plus'
 import { Calendar, ChatDotRound, Clock, Picture, Setting, User } from '@element-plus/icons-vue'
 import { useAuthStore } from '../stores/auth'
-import { api } from '../api/client'
+import { useAppShellStore } from '../stores/appShell'
 import BrandMark from './BrandMark.vue'
 import LanguageSwitcher from './LanguageSwitcher.vue'
 import ThemeSwitcher from './ThemeSwitcher.vue'
@@ -14,80 +14,41 @@ const { t } = useI18n()
 const auth = useAuthStore()
 const router = useRouter()
 const route = useRoute()
-const unreadCount = ref(0)
-const avatarSrc = ref('')
-let refreshTimer: number | undefined
-let avatarObjectURL = ''
-let avatarRequestVersion = 0
-let notificationBaselineReady = false
-let latestNotificationID = ''
-let notificationBaselineUserID = ''
+const appShell = useAppShellStore()
+const unreadCount = computed(() => appShell.unreadCount)
+const avatarSrc = computed(() => {
+  const user = auth.user
+  return user && appShell.avatarBusinessID === user.business_id && appShell.avatarStoreKey === user.avatar_key ? appShell.avatarSrc : ''
+})
+let stopNotificationListener: (() => void) | null = null
 
-/** 通过已鉴权文件接口读取头像；失效、无权限或无头像时交由昵称首字母回退。 */
-watch(() => auth.user ? [auth.user.business_id, auth.user.avatar_key] as const : null, async identity => {
-  const version = ++avatarRequestVersion
-  if (avatarObjectURL) URL.revokeObjectURL(avatarObjectURL)
-  avatarObjectURL = ''
-  avatarSrc.value = ''
-  const storekey = identity?.[1]
-  if (!storekey) return
-  try {
-    const blob = await api.download(storekey)
-    if (version !== avatarRequestVersion) return
-    avatarObjectURL = URL.createObjectURL(blob)
-    avatarSrc.value = avatarObjectURL
-  } catch {
-    if (version === avatarRequestVersion) avatarSrc.value = ''
+/** 页面切换时复用 store 内的数据；只有账号首次出现或变化时才建立头像缓存和全局轮询。 */
+watch(() => auth.user ? [auth.user.business_id, auth.user.avatar_key] as const : null, identity => {
+  stopNotificationListener?.()
+  stopNotificationListener = null
+  if (!identity) {
+    appShell.reset()
+    return
   }
+  const [businessID, storekey] = identity
+  void appShell.ensureAvatar(businessID, storekey)
+  stopNotificationListener = appShell.subscribeToNewNotifications(() => {
+    ElNotification({
+      title: t('common.newMessage'),
+      message: t('common.openMessageCenter'),
+      type: 'info',
+      duration: 5000,
+      onClick: () => { void router.push('/messages') },
+    })
+  })
+  appShell.startNotificationPolling(businessID)
 }, { immediate: true })
 
-/** 轮询未读角标，并在已建立基线后仅对新到达的最新消息提示一次。 */
-async function refreshNotifications() {
-  if (!auth.user) return
-  try {
-    if (notificationBaselineUserID !== auth.user.business_id) {
-      notificationBaselineReady = false
-      latestNotificationID = ''
-    }
-    const [countResult, page] = await Promise.all([
-      api.unreadNotificationCount(),
-      api.notifications(1, 1, false),
-    ])
-    unreadCount.value = countResult.unread_count
-    const latest = page.items[0]?.business_id ?? ''
-    if (notificationBaselineReady && latest && latest !== latestNotificationID) {
-      ElNotification({
-        title: t('common.newMessage'),
-        message: t('common.openMessageCenter'),
-        type: 'info',
-        duration: 5000,
-        onClick: () => { void router.push('/messages') },
-      })
-    }
-    latestNotificationID = latest
-    notificationBaselineUserID = auth.user.business_id
-    notificationBaselineReady = true
-  } catch {
-    // 轮询失败不影响当前页面；下一周期会继续请求，编辑内容仍由对应页面负责保存。
-  }
-}
+onBeforeUnmount(() => { stopNotificationListener?.() })
 
-onMounted(() => {
-  void refreshNotifications()
-  refreshTimer = window.setInterval(() => { void refreshNotifications() }, 30_000)
-})
-
-onBeforeUnmount(() => {
-  if (refreshTimer !== undefined) window.clearInterval(refreshTimer)
-  avatarRequestVersion += 1
-  if (avatarObjectURL) URL.revokeObjectURL(avatarObjectURL)
-})
-
-/** 浏览器无法解码下载内容时撤销临时地址并显示昵称首字母。 */
+/** 浏览器无法解码头像时同步切换所有共享位置的昵称首字母回退。 */
 function fallbackAvatar() {
-  if (avatarObjectURL) URL.revokeObjectURL(avatarObjectURL)
-  avatarObjectURL = ''
-  avatarSrc.value = ''
+  if (auth.user) appShell.markAvatarUnavailable(auth.user.business_id, auth.user.avatar_key)
 }
 
 /** 撤销服务端会话后返回登录页；失败时仍清除本机令牌并显示提示。 */

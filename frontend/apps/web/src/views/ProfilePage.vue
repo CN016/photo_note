@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { ElMessage } from 'element-plus'
 import type { UploadFile } from 'element-plus'
@@ -8,11 +8,16 @@ import { api } from '../api/client'
 import { ApiError } from '../api/types'
 import { prepareImageUpload, type PreparedImageUpload } from '../imageUpload'
 import { useAuthStore } from '../stores/auth'
+import { useAppShellStore } from '../stores/appShell'
 
 const { t } = useI18n()
 const auth = useAuthStore()
+const appShell = useAppShellStore()
 const nickname = ref(auth.user?.nickname ?? '')
-const avatarUrl = ref('')
+const avatarUrl = computed(() => {
+  const user = auth.user
+  return user && appShell.avatarBusinessID === user.business_id && appShell.avatarStoreKey === user.avatar_key ? appShell.avatarSrc : ''
+})
 const pendingAvatar = ref<PreparedImageUpload | null>(null)
 const profileBusy = ref(false)
 const passwordBusy = ref(false)
@@ -22,14 +27,6 @@ const passwordError = ref('')
 const currentPassword = ref('')
 const newPassword = ref('')
 const confirmPassword = ref('')
-
-async function loadAvatar() {
-  if (!auth.user?.avatar_key) return
-  try {
-    const blob = await api.download(auth.user.avatar_key)
-    avatarUrl.value = URL.createObjectURL(blob)
-  } catch { avatarUrl.value = '' }
-}
 
 async function chooseAvatar(file: UploadFile) {
   if (!file.raw) return
@@ -54,8 +51,8 @@ async function saveProfile() {
     const user = await api.updateProfile({ nickname: trimmed, ...(avatarKey ? { avatar_key: avatarKey } : {}) })
     auth.user = user
     if (pendingAvatar.value) {
-      if (avatarUrl.value) URL.revokeObjectURL(avatarUrl.value)
-      avatarUrl.value = pendingAvatar.value.previewUrl
+      if (user.avatar_key) appShell.cacheAvatar(user.business_id, user.avatar_key, pendingAvatar.value.blob)
+      URL.revokeObjectURL(pendingAvatar.value.previewUrl)
       pendingAvatar.value = null
     }
     ElMessage.success(t('profile.profileSaved'))
@@ -79,9 +76,7 @@ async function savePassword() {
   finally { passwordBusy.value = false }
 }
 
-onMounted(() => { void loadAvatar() })
 onBeforeUnmount(() => {
-  if (avatarUrl.value) URL.revokeObjectURL(avatarUrl.value)
   if (pendingAvatar.value) URL.revokeObjectURL(pendingAvatar.value.previewUrl)
 })
 </script>

@@ -120,15 +120,15 @@ async function request<T>(path: string, init: RequestInit = {}, auth = true, ret
   return envelope.data
 }
 
-/** 二进制文件流保持 Blob 类型，并沿用统一的过期令牌恢复流程。 */
-async function requestBlob(path: string, retry = true): Promise<Blob> {
+/** 二进制文件流保持 Blob 类型、沿用统一的令牌恢复流程，并允许头像读取指定 HTTP 缓存策略。 */
+async function requestBlob(path: string, retry = true, cache: RequestCache = 'default'): Promise<Blob> {
   const headers = new Headers()
   if (accessToken) headers.set('Authorization', `Bearer ${accessToken}`)
   let response: Response
-  try { response = await fetch(`${API_BASE}${path}`, { headers }) }
+  try { response = await fetch(`${API_BASE}${path}`, { headers, cache }) }
   catch { throw new ApiError('network', 'network', 0) }
   if (response.status === 401 && retry) {
-    if (await rotateRefreshToken()) return requestBlob(path, false)
+    if (await rotateRefreshToken()) return requestBlob(path, false, cache)
     throw new ApiError('unauthorized', 'unauthorized', 401)
   }
   if (!response.ok) throw await parseFailure(response)
@@ -187,9 +187,9 @@ export const api = {
     body.append('file', file, filename)
     return request<{ storekey: string }>('/files', { method: 'POST', body })
   },
-  /** 带鉴权下载原始图片字节，不将 storekey 拼接为公开可访问 URL。 */
-  async download(storekey: string): Promise<Blob> {
-    return requestBlob(`/files/${encodeURIComponent(storekey)}`)
+  /** 带鉴权下载文件字节，不将 storekey 拼成公开 URL；可选 cache 用于显式绕过旧头像缓存。 */
+  async download(storekey: string, options: { cache?: RequestCache } = {}): Promise<Blob> {
+    return requestBlob(`/files/${encodeURIComponent(storekey)}`, true, options.cache)
   },
   /** 获取管理用户列表；角色在后端逐请求校验。 */
   consoleUsers(page: number, pageSize = 20, q = '') {

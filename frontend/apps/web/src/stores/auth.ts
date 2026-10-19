@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
 import { api, acceptTokenPair, clearTokens, getRefreshToken, setAccessToken, setAuthLossHandler } from '../api/client'
 import { ApiError, type UserProfile } from '../api/types'
+import { useAppShellStore } from './appShell'
 
 let initializeFlight: Promise<void> | null = null
 
@@ -13,7 +14,10 @@ export const useAuthStore = defineStore('auth', {
       if (this.ready) return
       if (initializeFlight) return initializeFlight
       this.busy = true
-      setAuthLossHandler(() => { this.user = null })
+      setAuthLossHandler(() => {
+        this.user = null
+        useAppShellStore().reset()
+      })
       initializeFlight = (async () => {
         try {
           if (!getRefreshToken()) return
@@ -49,6 +53,7 @@ export const useAuthStore = defineStore('auth', {
       try { if (getRefreshToken()) await api.logout() } finally {
         clearTokens()
         this.user = null
+        useAppShellStore().reset()
       }
     },
   },

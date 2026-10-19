@@ -8,9 +8,13 @@ import AppHeader from '../components/AppHeader.vue'
 import WebhookProviderLogo from '../components/WebhookProviderLogo.vue'
 import { api } from '../api/client'
 import type { NoticeConfig, NoticeDelivery, NoticeMessage } from '../api/types'
+import { useAuthStore } from '../stores/auth'
+import { useAppShellStore } from '../stores/appShell'
 
 const { t: translate, locale } = useI18n()
 const router = useRouter()
+const auth = useAuthStore()
+const appShell = useAppShellStore()
 
 /** 页面固定使用 messages 命名空间，公共通用提示仍从 common 中读取。 */
 function t(key: string, parameters?: Record<string, string | number>): string {
@@ -54,6 +58,8 @@ const configCountText = computed(() => t('webhooks.limit', { count: configs.valu
 async function loadMessages(quiet = false) {
   if (!quiet) loadingMessages.value = true
   messageError.value = false
+  const businessID = auth.user?.business_id ?? ''
+  const unreadCountRevision = appShell.unreadCountRevision
   try {
     const result = await api.notifications(currentPage.value, pageSize, filter.value === 'unread')
     // 旧版本 API 或异常响应可能把无投递记录序列化为 null；归一化避免单条通知导致整页崩溃。
@@ -63,7 +69,12 @@ async function loadMessages(quiet = false) {
       payload: item?.payload && typeof item.payload === 'object' && !Array.isArray(item.payload) ? item.payload : {},
     }))
     messageTotal.value = result.total
-    unreadCount.value = result.unread_count
+    if (businessID) {
+      const countUpdated = appShell.setUnreadCount(businessID, result.unread_count, unreadCountRevision)
+      unreadCount.value = countUpdated ? result.unread_count : appShell.unreadCount
+    } else {
+      unreadCount.value = result.unread_count
+    }
   } catch {
     messageError.value = true
   } finally {
@@ -194,11 +205,17 @@ async function watchDelivery(deliveryID: string, configID?: string) {
 /** 点击站内消息时先确认已读，再仅跳转到后端标记的灵感图资源。 */
 async function openMessage(item: NoticeMessage) {
   if (!item.read_at) {
+    const businessID = auth.user?.business_id ?? ''
     try {
       await api.markNotificationRead(item.business_id)
       const now = new Date().toISOString()
       messages.value = messages.value.map(row => row.business_id === item.business_id ? { ...row, read_at: now } : row)
-      unreadCount.value = Math.max(0, unreadCount.value - 1)
+      if (businessID) {
+        appShell.decrementUnreadCount(businessID)
+        unreadCount.value = appShell.unreadCount
+      } else {
+        unreadCount.value = Math.max(0, unreadCount.value - 1)
+      }
     } catch {
       ElMessage.error(t('common.errors.requestFailed'))
     }
@@ -209,11 +226,13 @@ async function openMessage(item: NoticeMessage) {
 }
 
 async function markAllRead() {
+  const businessID = auth.user?.business_id ?? ''
   try {
     await api.markAllNotificationsRead()
     const now = new Date().toISOString()
     messages.value = messages.value.map(item => item.read_at ? item : { ...item, read_at: now })
     unreadCount.value = 0
+    if (businessID) appShell.clearUnreadCount(businessID)
     if (filter.value === 'unread') await loadMessages()
   } catch {
     ElMessage.error(t('common.errors.requestFailed'))
