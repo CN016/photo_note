@@ -1,14 +1,18 @@
 package httpapi
 
 import (
+	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"github.com/photo-nini/backend/internal/domain/fault"
+	"github.com/photo-nini/backend/internal/filestore"
 	"github.com/photo-nini/backend/internal/service"
 )
 
@@ -263,13 +267,15 @@ func consoleInspirationsHandler(console *service.ConsoleService) gin.HandlerFunc
 
 // consoleFeedbackResponse 是反馈中心用于阅读正文、预览附件和变更处理状态的最小 DTO。
 type consoleFeedbackResponse struct {
-	BusinessID uuid.UUID `json:"business_id"`
-	Nickname   string    `json:"nickname"`
-	Content    string    `json:"content"`
-	ImageKeys  []string  `json:"image_keys"`
-	Status     string    `json:"status"`
-	CreatedAt  time.Time `json:"created_at"`
-	UpdatedAt  time.Time `json:"updated_at"`
+	BusinessID     uuid.UUID `json:"business_id"`
+	Nickname       string    `json:"nickname"`
+	Content        string    `json:"content"`
+	ImageKeys      []string  `json:"image_keys"`
+	ReplyContent   string    `json:"reply_content"`
+	ReplyImageKeys []string  `json:"reply_image_keys"`
+	Status         string    `json:"status"`
+	CreatedAt      time.Time `json:"created_at"`
+	UpdatedAt      time.Time `json:"updated_at"`
 }
 
 // consoleFeedbacksHandler 可按 new/processed 筛选反馈并以最近提交时间排序。
@@ -296,10 +302,112 @@ func consoleFeedbacksHandler(console *service.ConsoleService) gin.HandlerFunc {
 			for _, imageKey := range item.ImageKeys {
 				imageKeys = append(imageKeys, imageKey)
 			}
+			replyImageKeys := append(make([]string, 0, len(item.ReplyImageKeys)), item.ReplyImageKeys...)
 			items = append(items, consoleFeedbackResponse{BusinessID: item.BusinessID, Nickname: item.Nickname, Content: item.Content,
-				ImageKeys: imageKeys, Status: item.Status, CreatedAt: item.CreatedAt, UpdatedAt: item.UpdatedAt})
+				ImageKeys: imageKeys, ReplyContent: item.ReplyContent, ReplyImageKeys: replyImageKeys,
+				Status: item.Status, CreatedAt: item.CreatedAt, UpdatedAt: item.UpdatedAt})
 		}
 		writeData(c, http.StatusOK, pageResponse[consoleFeedbackResponse]{Items: items, Page: result.Page, PageSize: result.PageSize, Total: result.Total})
+	}
+}
+
+type consoleFeedbackReplyResponse struct {
+	BusinessID     uuid.UUID `json:"business_id"`
+	ReplyContent   string    `json:"reply_content"`
+	ReplyImageKeys []string  `json:"reply_image_keys"`
+}
+
+// consoleFeedbackReplyHandler 仅允许管理员以 multipart 更新回复，并只清理本次上传但未成功提交的新文件。
+func consoleFeedbackReplyHandler(console *service.ConsoleService, files fileStorage, maxUploadBytes int64, currentStoreType func(context.Context) (string, error)) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		if console == nil || files == nil || currentStoreType == nil {
+			writeError(c, fault.Unavailable(errors.New("反馈回复服务未配置")))
+			return
+		}
+		feedbackID, err := parseBusinessID(c)
+		if err != nil {
+			writeError(c, err)
+			return
+		}
+		if err := parseMultipartRequest(c, multipartBodyLimit(maxUploadBytes, 5)); err != nil {
+			writeError(c, err)
+			return
+		}
+		defer removeMultipartTempFiles(c)
+		form := c.Request.MultipartForm
+		if err := validateMultipartKeys(form, []string{"reply_content", "kept_image_keys"}, []string{"images"}); err != nil {
+			writeError(c, err)
+			return
+		}
+		content, err := oneMultipartValue(form, "reply_content", false)
+		if err != nil {
+			writeError(c, err)
+			return
+		}
+		keptJSON, err := oneMultipartValue(form, "kept_image_keys", false)
+		if err != nil {
+			writeError(c, err)
+			return
+		}
+		var retainedKeys []string
+		if !strings.HasPrefix(strings.TrimSpace(keptJSON), "[") || json.Unmarshal([]byte(keptJSON), &retainedKeys) != nil || retainedKeys == nil {
+			writeError(c, fault.InvalidField("kept_image_keys", "必须提供 JSON 图片 key 数组"))
+			return
+		}
+		imageFiles := form.File["images"]
+		if len(retainedKeys)+len(imageFiles) > 5 {
+			writeError(c, fault.InvalidField("images", "回复图片最多五张"))
+			return
+		}
+		seen := make(map[string]struct{}, len(retainedKeys))
+		for _, key := range retainedKeys {
+			parsed, parseErr := filestore.ParseKey(key)
+			if parseErr != nil || !parsed.Public {
+				writeError(c, fault.InvalidField("kept_image_keys", "只能保留当前反馈已有的公开图片"))
+				return
+			}
+			if _, duplicate := seen[key]; duplicate {
+				writeError(c, fault.InvalidField("kept_image_keys", "回复图片列表不能包含重复项目"))
+				return
+			}
+			seen[key] = struct{}{}
+		}
+		storeType := ""
+		if len(imageFiles) > 0 {
+			storeType, err = currentStoreType(c.Request.Context())
+			if err != nil {
+				writeError(c, fault.Unavailable(err))
+				return
+			}
+		}
+		newKeys := make([]string, 0, len(imageFiles))
+		cleanup := func() {
+			for _, key := range newKeys {
+				_ = files.Delete(context.Background(), key)
+			}
+		}
+		for _, header := range imageFiles {
+			data, readErr := readValidatedImage(header, maxUploadBytes)
+			if readErr != nil {
+				cleanup()
+				writeError(c, readErr)
+				return
+			}
+			key, storeErr := files.StorePublic(c.Request.Context(), storeType, header.Filename, bytes.NewReader(data), maxUploadBytes)
+			if storeErr != nil {
+				cleanup()
+				writeError(c, fileStoreError(storeErr))
+				return
+			}
+			newKeys = append(newKeys, key)
+		}
+		savedKeys, err := console.UpdateFeedbackReply(c.Request.Context(), feedbackID, content, retainedKeys, newKeys)
+		if err != nil {
+			cleanup()
+			writeError(c, err)
+			return
+		}
+		writeData(c, http.StatusOK, consoleFeedbackReplyResponse{BusinessID: feedbackID, ReplyContent: strings.TrimSpace(content), ReplyImageKeys: savedKeys})
 	}
 }
 

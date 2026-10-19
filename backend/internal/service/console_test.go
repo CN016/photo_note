@@ -59,9 +59,43 @@ func (repository *consoleRepositoryFake) ListConsoleInspirations(_ context.Conte
 func (*consoleRepositoryFake) ListConsoleFeedback(context.Context, string, int, int) ([]model.ConsoleFeedback, int64, error) {
 	return []model.ConsoleFeedback{}, 0, nil
 }
+func (*consoleRepositoryFake) GetConsoleFeedback(context.Context, uuid.UUID) (model.Feedback, error) {
+	return model.Feedback{}, nil
+}
 func (repository *consoleRepositoryFake) UpdateConsoleFeedbackStatus(_ context.Context, id uuid.UUID, _ string) error {
 	repository.feedbackIDs = append(repository.feedbackIDs, id)
 	return nil
+}
+func (*consoleRepositoryFake) UpdateConsoleFeedbackReply(context.Context, uuid.UUID, string, []string, []string, string, model.JSONB, []string) error {
+	return nil
+}
+
+type consoleFeedbackReplyRepositoryTest struct {
+	*consoleRepositoryFake
+	feedback  model.Feedback
+	eventKeys []string
+	payloads  []model.JSONB
+	parts     [][]string
+}
+
+func (repository *consoleFeedbackReplyRepositoryTest) GetConsoleFeedback(context.Context, uuid.UUID) (model.Feedback, error) {
+	return repository.feedback, nil
+}
+
+func (repository *consoleFeedbackReplyRepositoryTest) UpdateConsoleFeedbackReply(_ context.Context, _ uuid.UUID, _ string, _, _ []string, eventKey string, payload model.JSONB, parts []string) error {
+	repository.eventKeys = append(repository.eventKeys, eventKey)
+	repository.payloads = append(repository.payloads, append(model.JSONB(nil), payload...))
+	repository.parts = append(repository.parts, append([]string(nil), parts...))
+	return nil
+}
+
+type feedbackReplySettingsTest struct{}
+
+func (feedbackReplySettingsTest) CurrentNoticeWebhookLimit(context.Context) (int, error) {
+	return 20, nil
+}
+func (feedbackReplySettingsTest) FeedbackReplyPublicBaseURL(context.Context) (string, error) {
+	return "https://photos.example/proxy", nil
 }
 
 // TestConsoleConfigSecretsNeverReachJSON 确保秘密原值只反映为 is_configured 状态。
@@ -141,5 +175,60 @@ func TestConsoleFeedbackRejectsUnknownStatuses(t *testing.T) {
 	service := NewConsoleService(&consoleRepositoryFake{})
 	if err := service.UpdateFeedbackStatus(context.Background(), uuid.New(), "deleted"); err == nil {
 		t.Fatal("unsupported feedback status was accepted")
+	}
+}
+
+// TestConsoleFeedbackReplyCreatesDistinctNoticesAndSkipsGuests 验证每次注册用户非空保存都会生成新通知，游客则只保存回复。
+func TestConsoleFeedbackReplyCreatesDistinctNoticesAndSkipsGuests(t *testing.T) {
+	feedbackID := uuid.New()
+	imageKey := "public_local_20261016_123e4567-e89b-12d3-a456-426614174000.png"
+	repository := &consoleFeedbackReplyRepositoryTest{
+		consoleRepositoryFake: &consoleRepositoryFake{},
+		feedback: model.Feedback{
+			BaseModel: model.BaseModel{BusinessID: feedbackID}, UserID: func() *uuid.UUID { id := uuid.New(); return &id }(),
+			ReplyImageKeys: []string{imageKey},
+		},
+	}
+	notices := NewNoticeService(nil, feedbackReplySettingsTest{})
+	console := NewConsoleService(repository)
+	console.ConfigureFeedbackReplies(2000, notices)
+	for _, content := range []string{"第一条回复", "更新后的回复"} {
+		keys, err := console.UpdateFeedbackReply(context.Background(), feedbackID, content, []string{imageKey}, nil)
+		if err != nil || len(keys) != 1 || keys[0] != imageKey {
+			t.Fatalf("registered feedback reply failed: keys=%v error=%v", keys, err)
+		}
+	}
+	if len(repository.eventKeys) != 2 || repository.eventKeys[0] == repository.eventKeys[1] {
+		t.Fatalf("each non-empty save must have its own event key: %v", repository.eventKeys)
+	}
+	var payload struct {
+		Text      string   `json:"text"`
+		ImageURLs []string `json:"image_urls"`
+	}
+	if err := json.Unmarshal(repository.payloads[1], &payload); err != nil {
+		t.Fatal(err)
+	}
+	wantURL := "https://photos.example/proxy/api/v1/public-feedback-images/" + imageKey
+	if payload.Text != "更新后的回复" || len(payload.ImageURLs) != 1 || payload.ImageURLs[0] != wantURL || len(repository.parts[1]) == 0 {
+		t.Fatalf("reply notification did not contain the saved text and public image URL: %+v", payload)
+	}
+
+	guestRepository := &consoleFeedbackReplyRepositoryTest{
+		consoleRepositoryFake: &consoleRepositoryFake{},
+		feedback:              model.Feedback{BaseModel: model.BaseModel{BusinessID: feedbackID}},
+	}
+	guestConsole := NewConsoleService(guestRepository)
+	if _, err := guestConsole.UpdateFeedbackReply(context.Background(), feedbackID, "游客反馈回复", nil, nil); err != nil {
+		t.Fatalf("guest reply should save without notification settings: %v", err)
+	}
+	if len(guestRepository.eventKeys) != 1 || guestRepository.eventKeys[0] != "" {
+		t.Fatalf("guest reply unexpectedly produced a notification event: %v", guestRepository.eventKeys)
+	}
+
+	if _, err := console.UpdateFeedbackReply(context.Background(), feedbackID, "", nil, nil); err != nil {
+		t.Fatalf("empty reply should be allowed to clear saved content: %v", err)
+	}
+	if len(repository.eventKeys) != 3 || repository.eventKeys[2] != "" {
+		t.Fatalf("empty reply unexpectedly created a notification event: %v", repository.eventKeys)
 	}
 }

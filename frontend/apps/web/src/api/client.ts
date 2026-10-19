@@ -236,6 +236,14 @@ export const api = {
   consoleUpdateFeedbackStatus(id: string, status: 'new' | 'processed') {
     return request<{ business_id: string; status: 'new' | 'processed' }>(`/atelier-7f3c9a2e/feedbacks/${encodeURIComponent(id)}/status`, { method: 'PATCH', body: JSON.stringify({ status }) })
   },
+  /** 以管理员 multipart 接口提交回复正文、保留的现有图片和新图片文件。 */
+  consoleReplyFeedback(id: string, replyContent: string, keptImageKeys: string[], images: File[]) {
+    const body = new FormData()
+    body.append('reply_content', replyContent)
+    body.append('kept_image_keys', JSON.stringify(keptImageKeys))
+    images.forEach((image) => body.append('images', image, image.name))
+    return request<{ business_id: string; reply_content: string; reply_image_keys: string[] }>(`/atelier-7f3c9a2e/feedbacks/${encodeURIComponent(id)}/reply`, { method: 'PATCH', body })
+  },
   /** 按日历日期范围读取正式账目，并恢复当前用户未完成的账本草稿。 */
   ledgerRecords(from: string, to: string) { return request<{ items: LedgerRecord[] }>(`/ledger/records?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`) },
   /** 打开新增记录时立即在服务端建立可恢复草稿。 */

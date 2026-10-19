@@ -173,6 +173,7 @@ func Router(dependencies Dependencies) *gin.Engine {
 	console.GET("/inspirations", consoleInspirationsHandler(dependencies.Console))
 	console.GET("/feedbacks", consoleFeedbacksHandler(dependencies.Console))
 	console.PATCH("/feedbacks/:business_id/status", consoleFeedbackStatusHandler(dependencies.Console))
+	console.PATCH("/feedbacks/:business_id/reply", consoleFeedbackReplyHandler(dependencies.Console, dependencies.Files, dependencies.MaxUploadBytes, dependencies.CurrentFileStoreType))
 	return router
 }
 

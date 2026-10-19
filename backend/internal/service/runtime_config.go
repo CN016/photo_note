@@ -243,6 +243,20 @@ func (service *RuntimeConfigService) FeedbackNotificationSettings(ctx context.Co
 	return true, phone, strings.TrimRight(publicBaseURL, "/"), nil
 }
 
+// FeedbackReplyPublicBaseURL 单独读取公开图片通知所需的 HTTPS 外部地址，不依赖管理员短信通知开关。
+func (service *RuntimeConfigService) FeedbackReplyPublicBaseURL(ctx context.Context) (string, error) {
+	values, err := service.reader.ReadConfigValues(ctx, []string{"http.public_base_url"})
+	if err != nil {
+		return "", fmt.Errorf("读取反馈回复图片地址配置失败: %w", err)
+	}
+	publicBaseURL := strings.TrimSpace(values["http.public_base_url"])
+	parsed, parseErr := url.Parse(publicBaseURL)
+	if parseErr != nil || parsed == nil || !strings.EqualFold(parsed.Scheme, "https") || parsed.Hostname() == "" || parsed.User != nil || parsed.RawQuery != "" || parsed.ForceQuery || parsed.Fragment != "" {
+		return "", feedbackNotificationSettingsError()
+	}
+	return strings.TrimRight(publicBaseURL, "/"), nil
+}
+
 // FeishuFeedbackImageUploadSettings 读取反馈图片原生投递使用的私有飞书应用凭证；两项均为空时保留 webhook 外链模式。
 func (service *RuntimeConfigService) FeishuFeedbackImageUploadSettings(ctx context.Context) (string, string, bool, error) {
 	values, err := service.reader.ReadConfigValues(ctx, []string{"feedback.feishu_app_id", "feedback.feishu_app_secret"})

@@ -168,12 +168,14 @@ export interface ConsoleInspirationRecord {
   updated_at: string
 }
 
-/** 反馈中心允许查看正文、附件并更新处理状态。 */
+/** 反馈中心允许查看正文、附件、管理员回复并更新处理状态。 */
 export interface ConsoleFeedbackRecord {
   business_id: string
   nickname: string
   content: string
   image_keys: string[]
+  reply_content: string
+  reply_image_keys: string[]
   status: 'new' | 'processed'
   created_at: string
   updated_at: string

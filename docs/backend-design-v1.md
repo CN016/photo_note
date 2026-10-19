@@ -87,11 +87,13 @@ GORM 迁移设置 `DisableForeignKeyConstraintWhenMigrating: true`，模型避�
 | `user_id` | `uuid` | 可空；登录用户保存 `users.business_id`，游客反馈为空；建立 B-tree 索引 |
 | `content` | `text` | 非空，默认空字符串；最多 2000 个 Unicode 字符，至少与一张图片提供其一 |
 | `image_keys` | `text[]` | 非空，默认空数组；保存服务端验证的图片 storekey，最多 5 个 |
+| `reply_content` | `text` | 非空，默认空字符串；管理员回复文字，最多 `feedback.max_text_chars` 个 Unicode 字符 |
+| `reply_image_keys` | `text[]` | 非空，默认空数组；管理员回复的公开图片 storekey，最多 5 个 |
 | `feedback_status` | `varchar(16)` | 非空，默认 `new`；仅允许 `new` 或 `processed` |
 
-反馈接口允许游客提交；登录请求的用户归属始终从有效 token 得出。正文与图片至少提供一项，图片受文件单体积配置约束。新反馈状态为 `new`；管理工作台可将状态改为 `processed`。提交事务同时写入 `feedbacks` 与 `feedback_notification_jobs`，由持久化 worker 按专用配置查找已有接收用户并发布 `feedback.submitted` 通知；通知关闭或接收用户缺失时反馈仍成功保留。不提供反馈回复或用户历史页。
+反馈接口允许游客提交；登录请求的用户归属始终从有效 token 得出。正文与图片至少提供一项，图片受文件单体积配置约束。新反馈状态为 `new`；管理工作台可独立更新处理状态并保存回复。管理员回复接口只允许管理员访问，回复文字沿用 `feedback.max_text_chars`，回复图片最多五张且受 `files.max_upload_bytes` 限制；上传图片按实际内容校验后保存为公开 key。保留列表只能包含当前反馈原有回复图片，非公开 key、伪造图片内容和超限输入均会拒绝。回复保存、站内通知及已启用 webhook 的 outbox 在同一 PostgreSQL 事务中提交；注册用户每次保存非空回复都会生成新的 `feedback.replied` 通知，空回复可清除已保存回复但不通知。游客回复只保存数据，不创建通知。通知提交失败会回滚回复，HTTP 层同时清理本次新上传文件。
 
-反馈图片使用独立 `public_` key 和物理存储目录。无需鉴权的图片读取接口只接受该标记且实际类型为 JPEG、PNG、GIF 或 WebP 的文件；普通文件 key 不可通过该接口读取。通知的 Markdown 和纯文本由后台从完整反馈正文生成，图片绝对链接使用私有 `http.public_base_url` 配置。该 HTTPS 地址可包含反向代理路径前缀，不使用请求 Host。
+反馈提交和管理员回复图片使用独立 `public_` key 和物理存储目录。无需鉴权的图片读取接口只接受该标记且实际类型为 JPEG、PNG、GIF 或 WebP 的文件；普通文件 key 不可通过该接口读取。通知的 Markdown 和纯文本由后台生成，图片绝对链接使用私有 `http.public_base_url` 配置。回复图片通知要求此配置为外部可访问的 HTTPS 地址；该地址可包含反向代理路径前缀，不使用请求 Host。移除旧回复图片不会删除文件，以免破坏已发送通知中的链接；V1 文件存储不提供通用文件管理。
 
 ### 3.6 索引清单
 
@@ -203,18 +205,19 @@ GORM 关联迁移默认可能创建外键；配置 `DisableForeignKeyConstraintW
 | `POST /atelier-7f3c9a2e/configs` | `key`, `value`, `description`, `is_public`, `is_secret` | 新配置；秘密项不回显原值 |
 | `PATCH /atelier-7f3c9a2e/configs/{config_key}` | 可选 `value`, `clear_value`, `description`, `is_public` | 更新后的安全配置摘要 |
 | `GET /atelier-7f3c9a2e/inspirations` | 分页参数，可选 `q`、`sort` | 全站只读灵感图摘要，不包含用户编辑 JSON |
-| `GET /atelier-7f3c9a2e/feedbacks` | 分页参数，可选 `status=new\|processed` | 反馈正文、附件 key 与处理状态 |
+| `GET /atelier-7f3c9a2e/feedbacks` | 分页参数，可选 `status=new\|processed` | 反馈正文、原附件、回复正文/图片 key 与处理状态 |
 | `PATCH /atelier-7f3c9a2e/feedbacks/{business_id}/status` | `{ "status": "new"\|"processed" }` | 更新后的处理状态 |
+| `PATCH /atelier-7f3c9a2e/feedbacks/{business_id}/reply` | multipart：`reply_content`、JSON 数组 `kept_image_keys`、重复 `images` 文件字段 | 更新后的回复正文和回复图片 key；回复图片需从站内通知链接访问 |
 
-首位管理员由运维在上线时按 `backend/migrations/ops/20261016_first_console_operator.sql` 模板指定已注册账号；模板不包含真实手机号。配置只支持查看、新增和编辑，不提供删除；全站灵感图只读；反馈仅可查看并标记处理状态。
+首位管理员由运维在上线时按 `backend/migrations/ops/20261016_first_console_operator.sql` 模板指定已注册账号；模板不包含真实手机号。配置只支持查看、新增和编辑，不提供删除；全站灵感图只读；反馈可查看、标记处理状态并编辑管理员回复。
 
 上传成功返回 `{ "data": { "storekey": "local_yyyymmdd_uuid.ext" }, "request_id": "..." }`。修改 `files.active_store_type` 后，后续上传无需重启即可采用新值；`files.max_upload_bytes` 和 `files.local_root` 在启动时加载，修改后需重启服务生效。
 
 JSON 请求和响应使用 UTF-8；日期时间以 RFC 3339 格式返回。创建请求不得传 `id`、`business_id`、`user_id` 或时间字段，这些由服务端生成或从 token 得出。更新请求只修改列出的字段，未提供字段保持原值；`tag_ids: []` 表示清空所有标签。响应对象不得包含自增 `id`、`password` 或 `password_hash`。文件下载返回原始二进制流，不使用 JSON 封套。
 
-健康检查成功时返回 `{"data":{"status":"ok","version":"2.9.0"},"request_id":"..."}`。版本号来自 `backend/internal/version/version.go`，后端代码、接口、配置、数据库迁移或构建配置的每个改动批次都需按 `AGENTS.md` 递增。
+健康检查成功时返回 `{"data":{"status":"ok","version":"2.10.0"},"request_id":"..."}`。版本号来自 `backend/internal/version/version.go`，后端代码、接口、配置、数据库迁移或构建配置的每个改动批次都需按 `AGENTS.md` 递增。
 
-当前代码版本为后端 2.9.0；此处较早的 V1 设计描述已由后续规则替代。注册仅使用 `POST /api/v2/auth/register` multipart，手机号为 11 位数字、密码为 8 至 128 个字符、昵称最多 64 个字符且头像必传；旧 `POST /api/v1/auth/register` 返回 `426 upgrade_required`。登录只接受 11 位数字，兼容旧客户端输入的 `+86` 加 11 位号码并映射到数据库中的 11 位值；手机号不存在和密码错误继续使用相同的 `401` 语义。
+当前代码版本为后端 2.10.0；此处较早的 V1 设计描述已由后续规则替代。注册仅使用 `POST /api/v2/auth/register` multipart，手机号为 11 位数字、密码为 8 至 128 个字符、昵称最多 64 个字符且头像必传；旧 `POST /api/v1/auth/register` 返回 `426 upgrade_required`。登录只接受 11 位数字，兼容旧客户端输入的 `+86` 加 11 位号码并映射到数据库中的 11 位值；手机号不存在和密码错误继续使用相同的 `401` 语义。
 
 反馈正文最多 2000 个 Unicode 字符，最多 5 张图片，至少提交正文或一张图片；单图受 `files.max_upload_bytes` 限制。每个客户端 IP 每小时最多提交 5 次。IP 仅从配置的可信代理链解析，Redis 键保存 IP 摘要。反馈图片 storekey 与正文写入 `feedbacks`，反馈内容不写入日志。新迁移 `000013_feedback_notifications.sql` 建立持久化通知任务并为 webhook 投递增加分段序号；长正文按安全字节上限拆分，UTF-8 字符和图片引用保持完整，每段独立显示投递状态并可单独重试。通知开关默认关闭，不接入短信；启用时使用独立 `feedback.admin_phone` 查找现有账户。飞书的 Markdown 文本组件不把标准 `![...](URL)` 语法作为原生图片；当私有配置 `feedback.feishu_app_id` 和 `feedback.feishu_app_secret` 均已设置时，后台用启用机器人能力且具有图片资源上传权限的自建应用上传反馈图片，再以自定义机器人 `post` 富文本的 `img` 节点投递。没有凭证时发送可点击公共图片链接。凭证由 `000014_seed_feishu_feedback_image_upload.sql` 增加，缺失不影响反馈保存和原有链接通知。
 

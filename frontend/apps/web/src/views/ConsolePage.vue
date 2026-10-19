@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { ChatDotRound, Picture, Plus, Search, Setting, User } from '@element-plus/icons-vue'
+import { ChatDotRound, Delete, Picture, Plus, Search, Setting, User } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 import { api } from '../api/client'
 import type { ConsoleConfigRecord, ConsoleFeedbackRecord, ConsoleInspirationRecord, ConsoleUserRecord } from '../api/types'
@@ -20,6 +20,10 @@ const users = ref<ConsoleUserRecord[]>([])
 const configs = ref<ConsoleConfigRecord[]>([])
 const inspirations = ref<ConsoleInspirationRecord[]>([])
 const feedbackItems = ref<ConsoleFeedbackRecord[]>([])
+type ReplyImageDraft = { file: File; previewURL: string }
+type FeedbackReplyDraft = { content: string; keptImageKeys: string[]; newImages: ReplyImageDraft[] }
+const feedbackReplyDrafts = reactive<Record<string, FeedbackReplyDraft>>({})
+const replySavingID = ref('')
 const userSearch = ref('')
 const inspirationSearch = ref('')
 const inspirationSort = ref<'created_desc' | 'created_asc' | 'updated_desc'>('created_desc')
@@ -92,6 +96,7 @@ async function loadFeedback() {
   try {
     const result = await api.consoleFeedbacks(feedbackPage.value, pageSize, feedbackStatus.value)
     feedbackItems.value = result.items
+    for (const item of result.items) getFeedbackReplyDraft(item)
     feedbackTotal.value = result.total
   } catch { error.value = t('console.loadError') }
   finally { loading.value = false }
@@ -206,6 +211,74 @@ async function setFeedbackStatus(item: ConsoleFeedbackRecord) {
   finally { saving.value = false }
 }
 
+/** 为当前反馈保留独立草稿，翻页或保存其他卡片时不覆盖未提交的编辑内容。 */
+function getFeedbackReplyDraft(item: ConsoleFeedbackRecord): FeedbackReplyDraft {
+  if (!feedbackReplyDrafts[item.business_id]) {
+    feedbackReplyDrafts[item.business_id] = {
+      content: item.reply_content ?? '',
+      keptImageKeys: [...(item.reply_image_keys ?? [])],
+      newImages: [],
+    }
+  }
+  return feedbackReplyDrafts[item.business_id]
+}
+
+/** 选择不超过五张新图并为本地预览创建临时 URL。 */
+function addReplyImages(item: ConsoleFeedbackRecord, event: Event) {
+  const input = event.target as HTMLInputElement
+  const draft = getFeedbackReplyDraft(item)
+  const selected = Array.from(input.files ?? [])
+  const available = Math.max(0, 5 - draft.keptImageKeys.length - draft.newImages.length)
+  for (const file of selected.slice(0, available)) {
+    draft.newImages.push({ file, previewURL: URL.createObjectURL(file) })
+  }
+  if (selected.length > available) ElMessage.warning(t('console.replyImageLimit'))
+  input.value = ''
+}
+
+/** 由可见按钮触发对应反馈卡片的图片选择控件。 */
+function chooseReplyImages(feedbackID: string) {
+  document.getElementById(`reply-images-${feedbackID}`)?.click()
+}
+
+/** 从回复中移除保留图片或新选图片；已保存文件不会因此被删除。 */
+function removeReplyImage(item: ConsoleFeedbackRecord, kind: 'kept' | 'new', index: number) {
+  const draft = getFeedbackReplyDraft(item)
+  if (kind === 'kept') {
+    draft.keptImageKeys.splice(index, 1)
+    return
+  }
+  const [removed] = draft.newImages.splice(index, 1)
+  if (removed) URL.revokeObjectURL(removed.previewURL)
+}
+
+/** 通过受保护的 multipart API 保存回复；失败时服务端会回滚数据库并由本页清理本次上传文件。 */
+async function saveFeedbackReply(item: ConsoleFeedbackRecord) {
+  const draft = getFeedbackReplyDraft(item)
+  replySavingID.value = item.business_id
+  error.value = ''
+  try {
+    const result = await api.consoleReplyFeedback(
+      item.business_id,
+      draft.content,
+      draft.keptImageKeys,
+      draft.newImages.map(image => image.file),
+    )
+    for (const image of draft.newImages) URL.revokeObjectURL(image.previewURL)
+    draft.content = result.reply_content
+    draft.keptImageKeys = [...result.reply_image_keys]
+    draft.newImages = []
+    feedbackItems.value = feedbackItems.value.map(record => record.business_id === item.business_id
+      ? { ...record, reply_content: result.reply_content, reply_image_keys: [...result.reply_image_keys] }
+      : record)
+    ElMessage.success(t('console.replySaved'))
+  } catch {
+    error.value = t('console.replySaveError')
+  } finally {
+    replySavingID.value = ''
+  }
+}
+
 /** 预览图片通过鉴权接口读取，并在关闭预览或切换图片时释放 blob 地址。 */
 async function openPreview(storekey: string, label: string) {
   const version = ++previewRequest
@@ -244,6 +317,9 @@ function changePage(delta: number) {
 onBeforeUnmount(() => {
   if (searchTimer !== undefined) window.clearTimeout(searchTimer)
   if (previewURL.value) URL.revokeObjectURL(previewURL.value)
+  for (const draft of Object.values(feedbackReplyDrafts)) {
+    for (const image of draft.newImages) URL.revokeObjectURL(image.previewURL)
+  }
 })
 </script>
 
@@ -324,6 +400,28 @@ onBeforeUnmount(() => {
             <header><div><span class="console-role-pill" :class="{ 'is-privileged': item.status === 'processed' }">{{ item.status === 'new' ? t('console.newStatus') : t('console.processedStatus') }}</span><span>{{ t('console.submittedBy', { name: item.nickname }) }}</span></div><time>{{ displayDate(item.created_at) }}</time></header>
             <p class="console-feedback-content">{{ item.content }}</p>
             <div v-if="item.image_keys.length" class="console-feedback-attachments"><small>{{ t('console.attachments') }}</small><div><AuthenticatedImageThumbnail v-for="(key, index) in item.image_keys" :key="`${key}-${index}`" :storekey="key" shape="square" :label="`${t('console.preview')} ${index + 1}`" @preview="openPreview(key, `${t('console.preview')} ${index + 1}`)" /></div></div>
+            <section class="console-feedback-reply" :aria-label="t('console.reply')">
+              <strong>{{ t('console.reply') }}</strong>
+              <el-input v-model="getFeedbackReplyDraft(item).content" type="textarea" :rows="4" :placeholder="t('console.replyPlaceholder')" />
+              <div v-if="getFeedbackReplyDraft(item).keptImageKeys.length || getFeedbackReplyDraft(item).newImages.length" class="console-reply-images">
+                <div v-for="(key, index) in getFeedbackReplyDraft(item).keptImageKeys" :key="`saved-${key}`" class="console-reply-image">
+                  <AuthenticatedImageThumbnail :storekey="key" shape="square" :label="`${t('console.preview')} ${index + 1}`" @preview="openPreview(key, `${t('console.preview')} ${index + 1}`)" />
+                  <el-button text :aria-label="t('console.removeReplyImage', { index: index + 1 })" @click="removeReplyImage(item, 'kept', index)"><el-icon><Delete /></el-icon></el-button>
+                </div>
+                <div v-for="(image, index) in getFeedbackReplyDraft(item).newImages" :key="image.previewURL" class="console-reply-image">
+                  <img :src="image.previewURL" :alt="t('console.replyImage', { index: index + 1 })" />
+                  <el-button text :aria-label="t('console.removeReplyImage', { index: index + 1 })" @click="removeReplyImage(item, 'new', index)"><el-icon><Delete /></el-icon></el-button>
+                </div>
+              </div>
+              <div class="console-reply-actions">
+                <div>
+                  <input :id="`reply-images-${item.business_id}`" class="console-reply-file-input" type="file" accept="image/jpeg,image/png,image/gif,image/webp" multiple :aria-label="t('console.addReplyImages')" @change="addReplyImages(item, $event)" />
+                  <el-button plain :disabled="getFeedbackReplyDraft(item).keptImageKeys.length + getFeedbackReplyDraft(item).newImages.length >= 5 || replySavingID === item.business_id" @click="chooseReplyImages(item.business_id)"><el-icon><Picture /></el-icon>{{ t('console.addReplyImages') }}</el-button>
+                  <small>{{ t('console.replyImagesHint') }}</small>
+                </div>
+                <el-button type="primary" :loading="replySavingID === item.business_id" :disabled="Boolean(replySavingID) && replySavingID !== item.business_id" @click="saveFeedbackReply(item)">{{ replySavingID === item.business_id ? t('console.saving') : t('console.saveReply') }}</el-button>
+              </div>
+            </section>
             <footer><el-button :disabled="saving" :type="item.status === 'new' ? 'primary' : 'default'" plain @click="setFeedbackStatus(item)">{{ item.status === 'new' ? t('console.markProcessed') : t('console.markNew') }}</el-button></footer>
           </article>
         </div>

@@ -113,6 +113,7 @@ function messageTitle(item: NoticeMessage): string {
   if (item.event_type === 'inspiration.compression.failed') return t('compressionFailed')
   if (item.event_type === 'system.error_log.created') return t('errorLogCreated')
   if (item.event_type === 'feedback.submitted') return t('feedbackSubmitted')
+  if (item.event_type === 'feedback.replied') return t('feedbackReplied')
   if (item.event_type === 'plan.reminder.due') return t('planReminderDue')
   return t('title')
 }
@@ -132,6 +133,7 @@ function messageBody(item: NoticeMessage): string {
       line: item.payload.source_line ?? 0,
     })
   }
+  if (item.event_type === 'feedback.replied') return item.payload.text || t('feedbackReplyImagesOnly')
   if (item.event_type === 'feedback.submitted') return item.payload.text || t('feedbackImagesOnly')
   if (item.event_type === 'plan.reminder.due') {
     return t('planReminderBody', {
@@ -155,7 +157,7 @@ function feedbackReporterText(item: NoticeMessage): string {
 
 /** 只渲染后端生成的 HTTPS 反馈图片链接，正文始终使用纯文本插值。 */
 function feedbackImages(item: NoticeMessage): string[] {
-  if (item.event_type !== 'feedback.submitted' || !Array.isArray(item.payload.image_urls)) return []
+  if ((item.event_type !== 'feedback.submitted' && item.event_type !== 'feedback.replied') || !Array.isArray(item.payload.image_urls)) return []
   return item.payload.image_urls.filter(url => typeof url === 'string' && url.startsWith('https://'))
 }
 
@@ -416,7 +418,7 @@ onBeforeUnmount(() => {
               <span class="read-state">{{ item.read_at ? t('readLabel') : t('unreadLabel') }}</span>
             </div>
             <p v-if="feedbackReporterText(item)" class="notification-reporter">{{ feedbackReporterText(item) }}</p>
-            <p class="notification-body" :class="{ 'feedback-message': item.event_type === 'feedback.submitted' }">{{ messageBody(item) }}</p>
+            <p class="notification-body" :class="{ 'feedback-message': item.event_type === 'feedback.submitted' || item.event_type === 'feedback.replied' }">{{ messageBody(item) }}</p>
             <div v-if="feedbackImages(item).length" class="feedback-image-list">
               <img v-for="(imageURL, index) in feedbackImages(item)" :key="imageURL" :src="imageURL" :alt="t('feedbackImage', { index: index + 1 })" loading="lazy" referrerpolicy="no-referrer" />
             </div>

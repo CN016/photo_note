@@ -49,6 +49,11 @@ type noticeLimitReader interface {
 	CurrentNoticeWebhookLimit(context.Context) (int, error)
 }
 
+// feedbackReplyPublicBaseURLReader 只读取反馈回复通知构造公共图片链接所需的 HTTPS 地址。
+type feedbackReplyPublicBaseURLReader interface {
+	FeedbackReplyPublicBaseURL(context.Context) (string, error)
+}
+
 // NoticeService 管理站内消息、用户 webhook 配置和独立异步投递工作循环。
 type NoticeService struct {
 	repository          NoticeRepository
@@ -134,6 +139,58 @@ func (service *NoticeService) PublishFeedbackSubmitted(ctx context.Context, user
 	}
 	eventKey := fmt.Sprintf("feedback.submitted:%s", feedbackID)
 	return repository.CreateFeedbackNotification(ctx, userID, feedbackID, eventKey, model.JSONB(payload), parts)
+}
+
+// PrepareFeedbackReply 生成一条回复通知的唯一事件键、安全载荷和 webhook Markdown 分段。
+func (service *NoticeService) PrepareFeedbackReply(ctx context.Context, feedbackID uuid.UUID, content string, imageKeys []string) (string, model.JSONB, []string, error) {
+	imageURLs := make([]string, 0, len(imageKeys))
+	if len(imageKeys) > 0 {
+		settings, ok := service.limits.(feedbackReplyPublicBaseURLReader)
+		if !ok {
+			return "", nil, nil, errors.New("反馈回复公共图片地址配置未接入")
+		}
+		publicBaseURL, err := settings.FeedbackReplyPublicBaseURL(ctx)
+		if err != nil {
+			return "", nil, nil, err
+		}
+		for _, key := range imageKeys {
+			imageURLs = append(imageURLs, strings.TrimRight(publicBaseURL, "/")+"/api/v1/public-feedback-images/"+url.PathEscape(key))
+		}
+	}
+	markdown, err := feedbackReplyMarkdown(content, imageURLs)
+	if err != nil {
+		return "", nil, nil, err
+	}
+	parts, err := splitFeedbackMarkdown(markdown, feedbackWebhookPartLimit)
+	if err != nil {
+		return "", nil, nil, err
+	}
+	payload, err := json.Marshal(map[string]any{
+		"title": "反馈中心已回复", "text": content, "markdown": markdown, "image_urls": imageURLs,
+	})
+	if err != nil {
+		return "", nil, nil, err
+	}
+	return fmt.Sprintf("feedback.replied:%s:%s", feedbackID, uuid.New()), model.JSONB(payload), parts, nil
+}
+
+// feedbackReplyMarkdown 将管理员输入按纯文本转义，并为每张公共回复图片保留可点击链接。
+func feedbackReplyMarkdown(content string, imageURLs []string) (string, error) {
+	sections := make([]string, 0, 1+len(imageURLs))
+	if strings.TrimSpace(content) != "" {
+		sections = append(sections, escapeFeedbackMarkdown(content))
+	}
+	for index, imageURL := range imageURLs {
+		parsed, err := url.Parse(imageURL)
+		if err != nil || !strings.EqualFold(parsed.Scheme, "https") || parsed.Hostname() == "" || parsed.User != nil || parsed.RawQuery != "" || parsed.Fragment != "" {
+			return "", errors.New("反馈回复图片地址无效")
+		}
+		sections = append(sections, fmt.Sprintf("![反馈图片%d](%s)\n[查看反馈图片%d](%s)", index+1, imageURL, index+1, imageURL))
+	}
+	if len(sections) == 0 {
+		return "", errors.New("反馈回复通知内容为空")
+	}
+	return strings.Join(sections, "\n\n"), nil
 }
 
 // PublishPlanReminder 将到期计划提醒交给数据库事务，同时写入站内通知和每个已启用 webhook 的 outbox。
@@ -545,7 +602,7 @@ func (service *NoticeService) RunDeliveryWorker(ctx context.Context) {
 // deliver 对目标机器人使用有界 HTTP 客户端，返回稳定错误码而不返回响应正文、地址或秘密。
 func (service *NoticeService) deliver(parent context.Context, delivery model.NoticeDelivery, config model.NoticeConfig) string {
 	requestTimeout := 12 * time.Second
-	if config.Provider == "feishu" && delivery.EventType == "feedback.submitted" {
+	if config.Provider == "feishu" && (delivery.EventType == "feedback.submitted" || delivery.EventType == "feedback.replied") {
 		// 飞书原生图片路径包含令牌获取、图片上传和 webhook 投递多个有界请求。
 		requestTimeout = 90 * time.Second
 	}
@@ -558,7 +615,7 @@ func (service *NoticeService) deliver(parent context.Context, delivery model.Not
 	if err != nil {
 		return "invalid_provider_request"
 	}
-	if config.Provider == "feishu" && delivery.EventType == "feedback.submitted" && service.feishuFeedbackImage != nil {
+	if config.Provider == "feishu" && (delivery.EventType == "feedback.submitted" || delivery.EventType == "feedback.replied") && service.feishuFeedbackImage != nil {
 		imageRequestURL, imageRequestBody, handled, errorCode := service.feishuFeedbackImage.prepare(requestCtx, config, delivery)
 		if errorCode != "" {
 			return errorCode
@@ -669,7 +726,7 @@ func providerRequest(config model.NoticeConfig, delivery model.NoticeDelivery) (
 		return "", nil, err
 	}
 	title, message := noticeMessage(delivery)
-	if config.Provider == "feishu" && delivery.EventType == "feedback.submitted" {
+	if config.Provider == "feishu" && (delivery.EventType == "feedback.submitted" || delivery.EventType == "feedback.replied") {
 		// 飞书自定义机器人卡片的图片控件需要飞书 image_key；只配置 webhook 时提供外链入口。
 		message = feishuFeedbackLinksOnly(message)
 	}
@@ -752,9 +809,13 @@ func noticeMessage(delivery model.NoticeDelivery) (string, string) {
 		Markdown string `json:"markdown"`
 	}
 	if err := json.Unmarshal(delivery.Payload, &payload); err == nil {
-		if delivery.EventType == "feedback.submitted" && payload.Markdown != "" {
+		if (delivery.EventType == "feedback.submitted" || delivery.EventType == "feedback.replied") && payload.Markdown != "" {
 			if payload.Title == "" {
-				payload.Title = "收到新的用户反馈"
+				if delivery.EventType == "feedback.replied" {
+					payload.Title = "反馈中心已回复"
+				} else {
+					payload.Title = "收到新的用户反馈"
+				}
 			}
 			return payload.Title, payload.Markdown
 		}

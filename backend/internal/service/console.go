@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"errors"
 	"regexp"
 	"strings"
 	"time"
@@ -9,6 +10,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/photo-nini/backend/internal/domain/fault"
+	"github.com/photo-nini/backend/internal/filestore"
 	"github.com/photo-nini/backend/internal/model"
 )
 
@@ -23,19 +25,31 @@ type ConsoleRepository interface {
 	UpdateConsoleConfig(context.Context, string, map[string]any) (model.AppConfig, error)
 	ListConsoleInspirations(context.Context, string, string, int, int) ([]model.ConsoleInspiration, int64, error)
 	ListConsoleFeedback(context.Context, string, int, int) ([]model.ConsoleFeedback, int64, error)
+	GetConsoleFeedback(context.Context, uuid.UUID) (model.Feedback, error)
 	UpdateConsoleFeedbackStatus(context.Context, uuid.UUID, string) error
+	UpdateConsoleFeedbackReply(context.Context, uuid.UUID, string, []string, []string, string, model.JSONB, []string) error
 }
 
 var consoleConfigKeyPattern = regexp.MustCompile(`^[a-z][a-z0-9_.-]{0,127}$`)
 
 // ConsoleService 封装全站管理权限、分页查询和配置秘密脱敏规则。
 type ConsoleService struct {
-	repository ConsoleRepository
+	repository          ConsoleRepository
+	replyMaxTextChars   int
+	feedbackReplyNotice *NoticeService
 }
 
 // NewConsoleService 注入 PostgreSQL repository；所有管理请求仍会单独读取当前角色。
 func NewConsoleService(repository ConsoleRepository) *ConsoleService {
-	return &ConsoleService{repository: repository}
+	return &ConsoleService{repository: repository, replyMaxTextChars: 2000}
+}
+
+// ConfigureFeedbackReplies 注入反馈回复沿用的文字上限与站内通知发布服务。
+func (service *ConsoleService) ConfigureFeedbackReplies(maxTextChars int, notices *NoticeService) {
+	if maxTextChars > 0 {
+		service.replyMaxTextChars = maxTextChars
+	}
+	service.feedbackReplyNotice = notices
 }
 
 // IsAdministrator 每次从数据库读取当前权限，确保角色撤销会立即影响后续请求。
@@ -225,10 +239,74 @@ func (service *ConsoleService) ListFeedback(ctx context.Context, status string, 
 	return Page[model.ConsoleFeedback]{Items: items, Page: page.Page, PageSize: page.PageSize, Total: total}, nil
 }
 
-// UpdateFeedbackStatus 仅允许把反馈标记为新反馈或已处理，不提供删除和回复能力。
+// UpdateFeedbackStatus 仅允许把反馈标记为新反馈或已处理，状态与回复内容独立保存。
 func (service *ConsoleService) UpdateFeedbackStatus(ctx context.Context, feedbackID uuid.UUID, status string) error {
 	if status != "new" && status != "processed" {
 		return fault.InvalidField("status", "反馈状态只支持 new 或 processed")
 	}
 	return service.repository.UpdateConsoleFeedbackStatus(ctx, feedbackID, status)
+}
+
+// UpdateFeedbackReply 校验可保留图片并保存管理员回复；注册用户的非空回复由通知服务生成事务载荷。
+func (service *ConsoleService) UpdateFeedbackReply(ctx context.Context, feedbackID uuid.UUID, content string, retainedKeys, newKeys []string) ([]string, error) {
+	if !utf8.ValidString(content) {
+		return nil, fault.InvalidField("reply_content", "回复文字必须使用有效的 UTF-8 编码")
+	}
+	content = strings.TrimSpace(content)
+	if utf8.RuneCountInString(content) > service.replyMaxTextChars {
+		return nil, fault.InvalidField("reply_content", "回复文字超过反馈文字允许长度")
+	}
+	if len(retainedKeys)+len(newKeys) > 5 {
+		return nil, fault.InvalidField("images", "回复图片最多五张")
+	}
+	feedback, err := service.repository.GetConsoleFeedback(ctx, feedbackID)
+	if err != nil {
+		return nil, err
+	}
+	existing := make(map[string]struct{}, len(feedback.ReplyImageKeys))
+	for _, key := range feedback.ReplyImageKeys {
+		existing[key] = struct{}{}
+	}
+	seen := make(map[string]struct{}, len(retainedKeys)+len(newKeys))
+	for _, key := range retainedKeys {
+		if _, ok := existing[key]; !ok {
+			return nil, fault.InvalidField("kept_image_keys", "只能保留当前反馈已有的回复图片")
+		}
+		parsed, parseErr := filestore.ParseKey(key)
+		if parseErr != nil || !parsed.Public {
+			return nil, fault.InvalidField("kept_image_keys", "只能保留当前反馈已有的公开图片")
+		}
+		if _, duplicate := seen[key]; duplicate {
+			return nil, fault.InvalidField("kept_image_keys", "回复图片列表不能包含重复项目")
+		}
+		seen[key] = struct{}{}
+	}
+	for _, key := range newKeys {
+		parsed, parseErr := filestore.ParseKey(key)
+		if parseErr != nil || !parsed.Public {
+			return nil, fault.InvalidField("images", "回复图片必须使用服务端生成的公开图片 key")
+		}
+		if _, duplicate := seen[key]; duplicate {
+			return nil, fault.InvalidField("images", "回复图片列表不能包含重复项目")
+		}
+		seen[key] = struct{}{}
+	}
+	imageKeys := append(append(make([]string, 0, len(seen)), retainedKeys...), newKeys...)
+	shouldNotify := content != "" || len(imageKeys) > 0
+	eventKey := ""
+	var payload model.JSONB
+	var parts []string
+	if shouldNotify && feedback.UserID != nil {
+		if service.feedbackReplyNotice == nil {
+			return nil, fault.Unavailable(errors.New("反馈回复通知服务未配置"))
+		}
+		eventKey, payload, parts, err = service.feedbackReplyNotice.PrepareFeedbackReply(ctx, feedbackID, content, imageKeys)
+		if err != nil {
+			return nil, fault.Unavailable(err)
+		}
+	}
+	if err := service.repository.UpdateConsoleFeedbackReply(ctx, feedbackID, content, retainedKeys, newKeys, eventKey, payload, parts); err != nil {
+		return nil, err
+	}
+	return imageKeys, nil
 }

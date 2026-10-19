@@ -190,34 +190,36 @@ func TestFeedbackWebhookMarkdownEscapingAndSplitting(t *testing.T) {
 	}
 }
 
-// TestFeedbackFeishuRequestUsesInteractiveMarkdownCard 检查飞书反馈 webhook 使用 Markdown 卡片载荷。
+// TestFeedbackFeishuRequestUsesInteractiveMarkdownCard 检查反馈提交与管理员回复都保留飞书卡片中的图片链接。
 func TestFeedbackFeishuRequestUsesInteractiveMarkdownCard(t *testing.T) {
 	config := model.NoticeConfig{Provider: "feishu", WebhookURL: "https://open.feishu.cn/open-apis/bot/v2/hook/token"}
-	delivery := model.NoticeDelivery{
-		EventType: "feedback.submitted",
-		Payload:   model.JSONB(`{"title":"收到新的用户反馈（1/1）","markdown":"反馈正文\\n\\n![反馈图片1](https://images.example/image.png)\\n[查看反馈图片1](https://images.example/image.png)"}`),
-	}
-	_, body, err := providerRequest(config, delivery)
-	if err != nil {
-		t.Fatal(err)
-	}
-	var payload struct {
-		MessageType string `json:"msg_type"`
-		Card        struct {
-			Schema string `json:"schema"`
-			Body   struct {
-				Elements []struct {
-					Tag     string `json:"tag"`
-					Content string `json:"content"`
-				} `json:"elements"`
-			} `json:"body"`
-		} `json:"card"`
-	}
-	if err := json.Unmarshal(body, &payload); err != nil {
-		t.Fatal(err)
-	}
-	if payload.MessageType != "interactive" || payload.Card.Schema != "2.0" || len(payload.Card.Body.Elements) != 1 || payload.Card.Body.Elements[0].Tag != "markdown" || strings.Contains(payload.Card.Body.Elements[0].Content, "![反馈图片1]") || !strings.Contains(payload.Card.Body.Elements[0].Content, "[查看反馈图片1]") {
-		t.Fatalf("Feishu card did not preserve a clickable feedback image link: %+v", payload)
+	for _, eventType := range []string{"feedback.submitted", "feedback.replied"} {
+		delivery := model.NoticeDelivery{
+			EventType: eventType,
+			Payload:   model.JSONB(`{"title":"反馈中心通知（1/1）","markdown":"反馈正文\\n\\n![反馈图片1](https://images.example/image.png)\\n[查看反馈图片1](https://images.example/image.png)"}`),
+		}
+		_, body, err := providerRequest(config, delivery)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var payload struct {
+			MessageType string `json:"msg_type"`
+			Card        struct {
+				Schema string `json:"schema"`
+				Body   struct {
+					Elements []struct {
+						Tag     string `json:"tag"`
+						Content string `json:"content"`
+					} `json:"elements"`
+				} `json:"body"`
+			} `json:"card"`
+		}
+		if err := json.Unmarshal(body, &payload); err != nil {
+			t.Fatal(err)
+		}
+		if payload.MessageType != "interactive" || payload.Card.Schema != "2.0" || len(payload.Card.Body.Elements) != 1 || payload.Card.Body.Elements[0].Tag != "markdown" || strings.Contains(payload.Card.Body.Elements[0].Content, "![反馈图片1]") || !strings.Contains(payload.Card.Body.Elements[0].Content, "[查看反馈图片1]") {
+			t.Fatalf("Feishu card for %s did not preserve a clickable feedback image link: %+v", eventType, payload)
+		}
 	}
 }
 

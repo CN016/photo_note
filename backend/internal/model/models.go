@@ -232,12 +232,16 @@ func (metadata InspirationImageMetadata) DatabaseColumns() map[string]any {
 	}
 }
 
-// Feedback 映射用户反馈记录；图片只保存 storekey，文件内容仍由独立文件存储管理。
+// Feedback 映射用户反馈和管理员回复；反馈与回复图片只保存 storekey，文件内容仍由独立文件存储管理。
 type Feedback struct {
 	BaseModel
 	UserID    *uuid.UUID     `gorm:"column:user_id;type:uuid;index"`
 	Content   string         `gorm:"column:content;type:text;not null;default:''"`
 	ImageKeys pq.StringArray `gorm:"column:image_keys;type:text[];not null;default:ARRAY[]::text[]"`
+	// ReplyContent 保存管理员回复正文，长度规则与反馈正文使用同一配置。
+	ReplyContent string `gorm:"column:reply_content;type:text;not null;default:''"`
+	// ReplyImageKeys 保存管理员回复中可通过公共反馈图片接口访问的 storekey。
+	ReplyImageKeys pq.StringArray `gorm:"column:reply_image_keys;type:text[];not null;default:ARRAY[]::text[]"`
 	// Status 仅记录后台处理状态；新提交统一以 new 状态进入反馈中心。
 	Status string `gorm:"column:feedback_status;type:varchar(16);not null;default:'new'"`
 }
@@ -266,16 +270,18 @@ type ConsoleInspiration struct {
 	UpdatedAt     time.Time      `gorm:"column:updated_at"`
 }
 
-// ConsoleFeedback 是反馈管理页使用的投影；仅包含处理所需字段及昵称，不带手机号等用户资料。
+// ConsoleFeedback 是反馈管理页使用的投影；包含回复编辑所需字段，不带手机号等用户资料。
 type ConsoleFeedback struct {
-	BusinessID uuid.UUID      `gorm:"column:business_id"`
-	UserID     *uuid.UUID     `gorm:"column:user_id"`
-	Nickname   string         `gorm:"column:nickname"`
-	Content    string         `gorm:"column:content"`
-	ImageKeys  pq.StringArray `gorm:"column:image_keys"`
-	Status     string         `gorm:"column:feedback_status"`
-	CreatedAt  time.Time      `gorm:"column:created_at"`
-	UpdatedAt  time.Time      `gorm:"column:updated_at"`
+	BusinessID     uuid.UUID      `gorm:"column:business_id"`
+	UserID         *uuid.UUID     `gorm:"column:user_id"`
+	Nickname       string         `gorm:"column:nickname"`
+	Content        string         `gorm:"column:content"`
+	ImageKeys      pq.StringArray `gorm:"column:image_keys"`
+	ReplyContent   string         `gorm:"column:reply_content"`
+	ReplyImageKeys pq.StringArray `gorm:"column:reply_image_keys"`
+	Status         string         `gorm:"column:feedback_status"`
+	CreatedAt      time.Time      `gorm:"column:created_at"`
+	UpdatedAt      time.Time      `gorm:"column:updated_at"`
 }
 
 // FeedbackNotificationJob 保存反馈提交通知的持久化后台任务；反馈正文仍只从 feedbacks 表读取。

@@ -114,6 +114,12 @@ func checkSchema(ctx context.Context, connection *gorm.DB) error {
 		if name == "feedbacks" && !connection.WithContext(ctx).Migrator().HasColumn(table, "Status") {
 			return fmt.Errorf("PostgreSQL schema 缺少 feedbacks.feedback_status，请先执行 backend/migrations/000015_console_roles_feedback_and_secret_configs.sql")
 		}
+		if name == "feedbacks" {
+			migrator := connection.WithContext(ctx).Migrator()
+			if !migrator.HasColumn(table, "ReplyContent") || !migrator.HasColumn(table, "ReplyImageKeys") {
+				return fmt.Errorf("PostgreSQL schema 缺少反馈回复字段，请先执行 backend/migrations/000019_feedback_replies.sql")
+			}
+		}
 		// 灵感图文件元数据缺失时不能安全创建或更新灵感图，因此启动阶段要求先执行增量迁移。
 		if name == "inspirations" {
 			migrator := connection.WithContext(ctx).Migrator()

@@ -83,6 +83,8 @@ func run() error {
 	notices.SetErrorLogService(errorLogs)
 	feedbackNotifications := service.NewFeedbackNotificationService(repository, runtimeConfigService, notices)
 	feedbackNotifications.SetErrorLogService(errorLogs)
+	consoleService := service.NewConsoleService(repository)
+	consoleService.ConfigureFeedbackReplies(runtimeConfig.FeedbackMaxTextChars, notices)
 	inspirations := service.NewInspirationService(repository, fileManager, runtimeConfig.MaxUploadBytes)
 	inspirations.SetErrorLogService(errorLogs)
 	plans := service.NewPlanService(repository, fileManager, runtimeConfig.MaxUploadBytes, notices, runtimeConfigService)
@@ -108,7 +110,7 @@ func run() error {
 		Notices:               notices,
 		TrustedProxyCIDRs:     runtimeConfig.TrustedProxyCIDRs,
 		ErrorLogs:             errorLogs,
-		Console:               service.NewConsoleService(repository),
+		Console:               consoleService,
 	}
 	router := httpapi.Router(dependencies)
 	server := &http.Server{

@@ -2,13 +2,18 @@ package store
 
 import (
 	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
 	"strings"
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/lib/pq"
 	"github.com/photo-nini/backend/internal/domain/fault"
 	"github.com/photo-nini/backend/internal/model"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 // IsAdministrator 每次查询当前数据库角色，不使用 token 中可长期缓存的权限副本。
@@ -149,12 +154,128 @@ func (store *PostgresStore) ListConsoleFeedback(ctx context.Context, status stri
 		return nil, 0, persistenceError(err)
 	}
 	items := make([]model.ConsoleFeedback, 0)
-	err := query.Select("f.business_id, f.user_id, COALESCE(u.nickname, '游客') AS nickname, f.content, f.image_keys, f.feedback_status, f.created_at, f.updated_at").
+	err := query.Select("f.business_id, f.user_id, COALESCE(u.nickname, '游客') AS nickname, f.content, f.image_keys, f.reply_content, f.reply_image_keys, f.feedback_status, f.created_at, f.updated_at").
 		Order("f.created_at DESC, f.business_id DESC").Offset(offset).Limit(limit).Scan(&items).Error
 	if err != nil {
 		return nil, 0, persistenceError(err)
 	}
 	return items, total, nil
+}
+
+// GetConsoleFeedback 读取单条反馈的用户关联和现有回复图片，用于验证管理员提交的保留列表。
+func (store *PostgresStore) GetConsoleFeedback(ctx context.Context, feedbackID uuid.UUID) (model.Feedback, error) {
+	var feedback model.Feedback
+	err := store.db.WithContext(ctx).Select("business_id", "user_id", "reply_content", "reply_image_keys").
+		Where("business_id = ?", feedbackID).First(&feedback).Error
+	return feedback, persistenceError(err)
+}
+
+// UpdateConsoleFeedbackReply 将回复与站内通知、所有启用渠道的 outbox 放在同一事务内提交。
+func (store *PostgresStore) UpdateConsoleFeedbackReply(ctx context.Context, feedbackID uuid.UUID, content string, retainedKeys, newKeys []string, eventKey string, payload model.JSONB, parts []string) error {
+	err := store.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		var feedback model.Feedback
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Select("business_id", "user_id", "reply_image_keys").
+			Where("business_id = ?", feedbackID).First(&feedback).Error; err != nil {
+			return err
+		}
+		existing := make(map[string]struct{}, len(feedback.ReplyImageKeys))
+		for _, key := range feedback.ReplyImageKeys {
+			existing[key] = struct{}{}
+		}
+		seen := make(map[string]struct{}, len(retainedKeys)+len(newKeys))
+		for _, key := range retainedKeys {
+			if _, ok := existing[key]; !ok {
+				return fault.InvalidField("kept_image_keys", "只能保留当前反馈已有的回复图片")
+			}
+			if _, duplicate := seen[key]; duplicate {
+				return fault.InvalidField("kept_image_keys", "回复图片列表不能包含重复项目")
+			}
+			seen[key] = struct{}{}
+		}
+		for _, key := range newKeys {
+			if _, duplicate := seen[key]; duplicate {
+				return fault.InvalidField("images", "回复图片列表不能包含重复项目")
+			}
+			seen[key] = struct{}{}
+		}
+		imageKeys := make([]string, 0, len(seen))
+		imageKeys = append(imageKeys, retainedKeys...)
+		imageKeys = append(imageKeys, newKeys...)
+		if len(imageKeys) > 5 {
+			return fault.InvalidField("images", "回复图片最多五张")
+		}
+		now := time.Now().UTC()
+		result := tx.Model(&model.Feedback{}).Where("business_id = ?", feedbackID).Updates(map[string]any{
+			"reply_content": content, "reply_image_keys": pq.StringArray(imageKeys), "updated_at": now,
+		})
+		if result.Error != nil {
+			return result.Error
+		}
+		if result.RowsAffected == 0 {
+			return gorm.ErrRecordNotFound
+		}
+		if feedback.UserID == nil || (strings.TrimSpace(content) == "" && len(imageKeys) == 0) {
+			return nil
+		}
+		if eventKey == "" || len(parts) == 0 || !json.Valid(payload) {
+			return errors.New("反馈回复通知载荷无效")
+		}
+		userID := *feedback.UserID
+		notification := model.Notification{
+			BaseModel:          model.BaseModel{BusinessID: uuid.New(), CreatedAt: now, UpdatedAt: now},
+			UserID:             userID,
+			EventType:          "feedback.replied",
+			EventKey:           eventKey,
+			ResourceType:       "feedback",
+			ResourceBusinessID: &feedbackID,
+			Payload:            payload,
+		}
+		inserted := tx.Clauses(clause.OnConflict{
+			Columns:   []clause.Column{{Name: "user_id"}, {Name: "event_key"}},
+			DoNothing: true,
+		}).Create(&notification)
+		if inserted.Error != nil {
+			return inserted.Error
+		}
+		if inserted.RowsAffected == 0 {
+			return nil
+		}
+		var configs []model.NoticeConfig
+		if err := tx.Where("user_id = ? AND enabled = TRUE AND deleted_at IS NULL", userID).Order("created_at ASC").Find(&configs).Error; err != nil {
+			return err
+		}
+		for _, config := range configs {
+			for index, part := range parts {
+				partIndex := index + 1
+				partTitle := fmt.Sprintf("反馈中心已回复（%d/%d）", partIndex, len(parts))
+				partPayload, err := json.Marshal(map[string]any{
+					"title": partTitle, "markdown": part, "part_index": partIndex, "part_count": len(parts),
+				})
+				if err != nil {
+					return err
+				}
+				delivery := model.NoticeDelivery{
+					BaseModel: model.BaseModel{BusinessID: uuid.New(), CreatedAt: now, UpdatedAt: now},
+					UserID:    userID, DeliveryKind: "notification", NotificationBusinessID: &notification.BusinessID,
+					NoticeConfigBusinessID: config.BusinessID, Provider: config.Provider, ConfigName: config.Name,
+					EventType: "feedback.replied", Payload: model.JSONB(partPayload), PartIndex: partIndex, PartCount: len(parts),
+					Status: "pending", NextAttemptAt: now,
+				}
+				if err := tx.Create(&delivery).Error; err != nil {
+					return err
+				}
+			}
+		}
+		return nil
+	})
+	if err == nil {
+		return nil
+	}
+	var applicationError *fault.Error
+	if errors.As(err, &applicationError) && applicationError.Status < 500 {
+		return err
+	}
+	return persistenceError(err)
 }
 
 // UpdateConsoleFeedbackStatus 只更新预先校验的反馈状态，不允许管理页修改或删除正文与附件。

@@ -46,7 +46,13 @@ func (*consoleRepositoryForHTTP) ListConsoleInspirations(context.Context, string
 func (*consoleRepositoryForHTTP) ListConsoleFeedback(context.Context, string, int, int) ([]model.ConsoleFeedback, int64, error) {
 	return []model.ConsoleFeedback{}, 0, nil
 }
+func (*consoleRepositoryForHTTP) GetConsoleFeedback(context.Context, uuid.UUID) (model.Feedback, error) {
+	return model.Feedback{}, nil
+}
 func (*consoleRepositoryForHTTP) UpdateConsoleFeedbackStatus(context.Context, uuid.UUID, string) error {
+	return nil
+}
+func (*consoleRepositoryForHTTP) UpdateConsoleFeedbackReply(context.Context, uuid.UUID, string, []string, []string, string, model.JSONB, []string) error {
 	return nil
 }
 
@@ -73,6 +79,20 @@ func TestConsoleAPIAuthorizationReadsCurrentRole(t *testing.T) {
 	repository.admin = false
 	if response := request(); response.Code != http.StatusForbidden {
 		t.Fatalf("revoked user got status %d, expected forbidden", response.Code)
+	}
+}
+
+// TestConsoleFeedbackReplyRequiresAdministrator 验证非管理员不能通过回复专用路由读写反馈回复。
+func TestConsoleFeedbackReplyRequiresAdministrator(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	repository := &consoleRepositoryForHTTP{}
+	router := Router(Dependencies{Tokens: &testTokenStore{userID: uuid.New()}, Console: service.NewConsoleService(repository)})
+	request := httptest.NewRequest(http.MethodPatch, "/api/v1/atelier-7f3c9a2e/feedbacks/"+uuid.NewString()+"/reply", nil)
+	request.Header.Set("Authorization", "Bearer valid")
+	response := httptest.NewRecorder()
+	router.ServeHTTP(response, request)
+	if response.Code != http.StatusForbidden {
+		t.Fatalf("non-administrator reply request got status %d, expected forbidden: %s", response.Code, response.Body.String())
 	}
 }
 
