@@ -1,5 +1,5 @@
 {
-  "eyebrow": "Photo Nini service status",
+  "eyebrow": "取景台 · Service status",
   "title": "We're tidying up the studio.",
   "message": "The app can't reach its service right now. It may be under maintenance, or your network connection may be interrupted. Please try again in a moment.",
   "status": "Service unavailable",

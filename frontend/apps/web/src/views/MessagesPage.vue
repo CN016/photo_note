@@ -379,7 +379,7 @@ onBeforeUnmount(() => {
   <main class="messages-main">
     <header class="messages-heading">
       <div>
-        <p class="eyebrow">PHOTO NINI</p>
+        <p class="eyebrow">{{ t('common.brand') }}</p>
         <h1>{{ t('title') }}</h1>
         <p>{{ t('description') }}</p>
       </div>

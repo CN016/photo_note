@@ -22,7 +22,7 @@ describe('readInspirationImageMetadata', () => {
       exif: { DateTimeOriginal: '2026:04:15 09:06:00', FNumber: 2.8, ExposureTime: 0.008, ISO: 500, Flash: 1, FlashEnergy: 2.5 },
       gps: { latitude: 31.2, longitude: 121.5 },
       iptc: { ObjectName: 'IMG title', Keywords: ['street', 'night'], Byline: 'Nini' },
-      xmp: { Rating: 4, CreatorTool: 'Photo Nini', CustomTag: 'custom-value' },
+      xmp: { Rating: 4, CreatorTool: 'Existing Photo Editor', CustomTag: 'custom-value' },
     })
 
     const metadata = await readInspirationImageMetadata(photo())

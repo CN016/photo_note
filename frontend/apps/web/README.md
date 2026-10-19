@@ -1,4 +1,4 @@
-# Photo Nini Web
+# 取景台 Web
 
 Vue 3 + TypeScript + Vite 的共享 Web 前端。后端主机必须通过构建环境变量 `VITE_API_BASE_URL` 提供，Vite 会在构建时将其写入静态资源；该值只包含协议、主机和可选端口，不包含 `/api/v1` 等接口路径。
 

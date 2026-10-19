@@ -1,4 +1,4 @@
-Photo Nini Web includes the following third-party image decoder at runtime:
+取景台 Web includes the following third-party image decoder at runtime:
 
 libheif-js 1.23.5 (LGPL-3.0)
 https://github.com/catdad-experiments/libheif-js

@@ -527,7 +527,7 @@ func (service *NoticeService) DeleteNoticeConfig(ctx context.Context, userID, co
 // TestNoticeConfig 只持久化测试 outbox 并立即返回，网络请求交由后台 worker 执行。
 func (service *NoticeService) TestNoticeConfig(ctx context.Context, userID, configID uuid.UUID) (NoticeDeliveryView, error) {
 	payload, _ := json.Marshal(map[string]string{
-		"title": "Photo Nini webhook 测试", "message": "webhook 配置已成功接收测试投递请求。",
+		"title": "取景台通知渠道测试", "message": "这是一条测试消息，用于确认此通知渠道可以正常接收取景台通知。",
 	})
 	delivery, err := service.repository.CreateNoticeTestDelivery(ctx, userID, configID, model.JSONB(payload))
 	if err != nil {
@@ -801,7 +801,7 @@ func feishuFeedbackLinksOnly(markdown string) string {
 // noticeMessage 仅从服务端生成的安全消息载荷选择固定中文描述，不把用户内容注入外发模板。
 func noticeMessage(delivery model.NoticeDelivery) (string, string) {
 	if delivery.EventType == "notice.webhook_test" {
-		return "Photo Nini webhook 测试", "webhook 配置已成功接收测试投递请求。"
+		return "取景台通知渠道测试", "这是一条测试消息，用于确认此通知渠道可以正常接收取景台通知。"
 	}
 	var payload struct {
 		Message  string `json:"message"`
@@ -823,7 +823,7 @@ func noticeMessage(delivery model.NoticeDelivery) (string, string) {
 			return "灵感图处理通知", payload.Message
 		}
 	}
-	return "Photo Nini 通知", "你有一条新的业务通知，请打开 Photo Nini 消息中心查看。"
+	return "取景台通知", "你有一条新的业务通知，请打开取景台消息中心查看。"
 }
 
 // providerRejected 只识别平台统一错误字段，不保留或回传响应正文。

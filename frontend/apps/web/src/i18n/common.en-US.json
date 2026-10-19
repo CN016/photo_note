@@ -1,6 +1,6 @@
 {
-  "brand": "Photo Nini",
-  "product": "Inspiration workspace",
+  "brand": "取景台",
+  "product": "Ideas & everyday tools",
   "language": "Language",
   "chinese": "中文",
   "english": "English",
@@ -33,9 +33,9 @@
   "console": "Studio settings",
   "newMessage": "New message",
   "openMessageCenter": "Open the message center",
-  "footer": "Make room for the things you love",
+  "footer": "Collect inspiration. Organize your day.",
   "logoutFailed": "You are signed out on this device, but the service couldn't confirm session revocation. Sign in again after the connection returns to close the old session.",
-  "copyright": "© 2026 Photo Nini · Make room for the things you love",
+  "copyright": "© 2026 取景台 · Collect inspiration. Organize your day.",
   "errors": {
     "requestFailed": "Something went wrong. Please try again.",
     "network": "The service is unreachable. Check your connection and try again.",
