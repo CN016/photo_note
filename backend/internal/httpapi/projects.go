@@ -18,7 +18,7 @@ import (
 	"github.com/photo-nini/backend/internal/service"
 )
 
-// listProjectsHandler 使用当前令牌用户范围查询项目，正文与标题由 repository 执行短词索引检索。
+// listProjectsHandler 使用当前令牌用户范围查询项目，并映射为前端约定的小写分页 JSON 字段。
 func listProjectsHandler(projects *service.ProjectService) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		claims, err := authContext(c)
@@ -40,7 +40,14 @@ func listProjectsHandler(projects *service.ProjectService) gin.HandlerFunc {
 			writeError(c, err)
 			return
 		}
-		writeData(c, http.StatusOK, result)
+		writeData(c, http.StatusOK, projectListPageResponse(result))
+	}
+}
+
+// projectListPageResponse 将 service 分页结果映射到稳定的 API 分页字段，避免暴露 Go 字段名。
+func projectListPageResponse(result service.Page[service.ProjectSummary]) pageResponse[service.ProjectSummary] {
+	return pageResponse[service.ProjectSummary]{
+		Items: result.Items, Page: result.Page, PageSize: result.PageSize, Total: result.Total,
 	}
 }
 

@@ -28,7 +28,18 @@
 
 图片封面要求 `cover_emoji` 为空；emoji 封面要求 `cover_image_key` 为空。创建请求忽略 `revision`，服务端从 1 开始。更新必须传入最近一次读取或保存返回的修订号；旧修订会收到 HTTP 409，客户端应重新加载后再编辑。
 
-列表响应使用通用分页结构 `data.items/page/page_size/total`，每个项目项只包含业务 ID、标题、封面信息、修订号和更新时间，不加载正文 JSON。搜索文本对标题与正文文字执行 Unicode NFKC 规范化、小写转换和空白折叠，再以一元/二元 Unicode 字符 n-gram GIN 索引筛选候选，并使用 `strpos` 核对连续子串。单个汉字查询同样可命中；不检索附件二进制内容，也不执行 OCR。
+列表响应使用小写 JSON 字段 `data.items`、`data.page`、`data.page_size` 和 `data.total`，每个项目项只包含业务 ID、标题、封面信息、修订号和更新时间，不加载正文 JSON。搜索文本对标题与正文文字执行 Unicode NFKC 规范化、小写转换和空白折叠，再以一元/二元 Unicode 字符 n-gram GIN 索引筛选候选，并使用 `strpos` 核对连续子串。单个汉字查询同样可命中；不检索附件二进制内容，也不执行 OCR。
+
+分页响应的 `data` 示例：
+
+```json
+{
+  "items": [],
+  "page": 1,
+  "page_size": 20,
+  "total": 0
+}
+```
 
 文档资源节点示例：
 

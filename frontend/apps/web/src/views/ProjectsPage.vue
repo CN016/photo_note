@@ -7,7 +7,7 @@ import { Delete, Files, More, Plus, Search, UploadFilled } from '@element-plus/i
 import AppHeader from '../components/AppHeader.vue'
 import ProjectCoverImage from '../components/ProjectCoverImage.vue'
 import { api } from '../api/client'
-import type { ProjectSaveInput, ProjectSummary } from '../api/types'
+import type { PageResult, ProjectSaveInput, ProjectSummary } from '../api/types'
 import { projectUploadLimit } from '../projects/projectUploadLimit'
 
 const { t } = useI18n({ useScope: 'global' })
@@ -88,15 +88,18 @@ async function createProject() {
   finally { saving.value = false }
 }
 
-/** 服务端分页检索项目；输入停顿后再发起请求，标题与正文使用同一个 q。 */
+/** 服务端分页检索项目；兼容旧版 Go 导出的首字母大写字段，异常响应进入可重试错误态。 */
 async function loadProjects() {
   loading.value = true
   failed.value = false
   try {
-    const result = await api.projects(page.value, pageSize, query.value)
-    records.value = result.items
-    total.value = result.total
-  } catch { failed.value = true }
+    const result = await api.projects(page.value, pageSize, query.value) as PageResult<ProjectSummary> & { Items?: ProjectSummary[]; Total?: number }
+    const items = Array.isArray(result?.items) ? result.items : result?.Items
+    const resultTotal = typeof result?.total === 'number' ? result.total : result?.Total
+    if (!Array.isArray(items) || typeof resultTotal !== 'number' || !Number.isFinite(resultTotal)) throw new Error('invalid_projects_response')
+    records.value = items
+    total.value = resultTotal
+  } catch { records.value = []; total.value = 0; failed.value = true }
   finally { loading.value = false }
 }
 
