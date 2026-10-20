@@ -1,5 +1,5 @@
 {
-  "title": "Add inspirations in bulk",
+  "title": "Add images to your inspiration library",
   "subtitle": "Select multiple images, preview them, and save them to your collection in one batch.",
   "previewLabel": "Preview selected images",
   "dropTitle": "Drop images here",
@@ -14,12 +14,12 @@
   "uploadingOriginal": "Saving original image…",
   "preparingWorkingCopy": "Preparing image copy…",
   "uploadingPreview": "Uploading image copy…",
-  "creatingRecord": "Creating inspiration…",
+  "creatingRecord": "Saving image to your inspiration library…",
   "uploaded": "Saved",
   "uploadFailed": "Upload failed. Check your connection and try again.",
   "removeImage": "Remove image {name}",
   "progress": "{done} / {total} complete",
-  "readyToUpload": "Each image will be saved as a separate inspiration.",
+  "readyToUpload": "Each image will be saved as a separate item in your inspiration library.",
   "uploadAll": "Upload all",
   "retryFailed": "Retry remaining images",
   "waitBeforeLeaving": "Images are still being prepared or uploaded. Wait for the batch to finish before leaving."

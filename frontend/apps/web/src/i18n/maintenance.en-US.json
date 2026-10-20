@@ -7,6 +7,6 @@
   "retry": "Check again",
   "checking": "Checking service…",
   "lastChecked": "Last checked: {time}",
-  "help": "Your inspiration images aren't changed by this connection interruption.",
+  "help": "The images in your inspiration library remain unchanged during this connection interruption.",
   "backToLogin": "Back to sign in"
 }

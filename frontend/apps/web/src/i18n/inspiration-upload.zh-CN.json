@@ -1,6 +1,6 @@
 {
-  "title": "批量添加灵感图",
-  "subtitle": "选择多张图片，一次预览并保存到灵感图收藏。",
+  "title": "批量添加图片到灵感库",
+  "subtitle": "选择多张图片，一次预览并保存到灵感库。",
   "previewLabel": "待添加图片预览",
   "dropTitle": "把图片放在这里",
   "dropHint": "支持 JPG、PNG、WebP、GIF 与 HEIC/HEIF，可一次选择多张",
@@ -14,12 +14,12 @@
   "uploadingOriginal": "正在保存原始图片…",
   "preparingWorkingCopy": "正在准备图片副本…",
   "uploadingPreview": "正在上传图片副本…",
-  "creatingRecord": "正在创建灵感图…",
+  "creatingRecord": "正在保存图片到灵感库…",
   "uploaded": "已保存",
   "uploadFailed": "上传失败，请检查网络后重试。",
   "removeImage": "移除图片 {name}",
   "progress": "已完成 {done} / {total} 张",
-  "readyToUpload": "每张图片会分别保存为一条灵感图记录。",
+  "readyToUpload": "每张图片会分别作为一条记录保存到灵感库。",
   "uploadAll": "上传全部",
   "retryFailed": "重试未完成图片",
   "waitBeforeLeaving": "图片仍在准备或上传，请等待完成后再离开。"

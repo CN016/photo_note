@@ -97,7 +97,7 @@ func TestProviderRequestUsesPlatformSpecificPayloadsAndSignatures(t *testing.T) 
 	for _, test := range tests {
 		t.Run(test.provider, func(t *testing.T) {
 			config := model.NoticeConfig{Provider: test.provider, WebhookURL: test.address, SigningSecret: test.secret}
-			delivery := model.NoticeDelivery{EventType: "inspiration.compression.succeeded", Payload: model.JSONB(`{"message":"灵感图图片处理已完成。"}`)}
+			delivery := model.NoticeDelivery{EventType: "inspiration.compression.succeeded", Payload: model.JSONB(`{"message":"灵感库图片处理已完成。"}`)}
 			address, body, err := providerRequest(config, delivery)
 			if err != nil {
 				t.Fatal(err)

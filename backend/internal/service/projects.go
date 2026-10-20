@@ -136,7 +136,7 @@ func (service *ProjectService) Create(ctx context.Context, userID uuid.UUID, inp
 // Update 使用期望修订号阻止迟到的自动保存覆盖更新内容。
 func (service *ProjectService) Update(ctx context.Context, userID, projectID uuid.UUID, input ProjectSave) (ProjectView, error) {
 	if input.Revision < 1 {
-		return ProjectView{}, fault.InvalidField("revision", "项目修订号无效")
+		return ProjectView{}, fault.InvalidField("revision", "拍摄策划修订号无效")
 	}
 	project, inspirations, attachments, err := service.prepare(ctx, userID, input)
 	if err != nil {
@@ -200,7 +200,7 @@ func (service *ProjectService) prepare(ctx context.Context, userID uuid.UUID, in
 		return model.Project{}, nil, nil, fault.InvalidField("cover_emoji", "封面 emoji 最多 32 个字符")
 	}
 	if input.DocumentSchemaVersion != projectDocumentSchemaVersion {
-		return model.Project{}, nil, nil, fault.InvalidField("document_schema_version", "不支持的项目文档版本")
+		return model.Project{}, nil, nil, fault.InvalidField("document_schema_version", "不支持的拍摄策划文档版本")
 	}
 	if len(input.Document) == 0 || len(input.Document) > 8<<20 {
 		return model.Project{}, nil, nil, fault.InvalidField("document", "正文无效或超过 8 MiB")
@@ -270,7 +270,7 @@ func (service *ProjectService) inspectNodes(ctx context.Context, userID uuid.UUI
 					idText := strings.TrimPrefix(uri, "inspiration://")
 					id, err := uuid.Parse(idText)
 					if err != nil || !strings.HasPrefix(uri, "inspiration://") {
-						return fault.InvalidField("document", "灵感图引用格式无效")
+						return fault.InvalidField("document", "灵感库图片引用格式无效")
 					}
 					inspirations[id] = struct{}{}
 				case "projectAttachment":
@@ -286,7 +286,7 @@ func (service *ProjectService) inspectNodes(ctx context.Context, userID uuid.UUI
 					}
 					assets[key] = item
 				case "image":
-					return fault.InvalidField("document", "正文图片必须通过灵感图库插入")
+					return fault.InvalidField("document", "正文图片必须从灵感库中插入")
 				}
 				if typ == "paragraph" || typ == "heading" || typ == "listItem" || typ == "taskItem" || typ == "blockquote" || typ == "codeBlock" || typ == "tableCell" || typ == "tableHeader" {
 					text.WriteByte(' ')

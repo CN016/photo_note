@@ -386,7 +386,7 @@ func (service *InspirationService) compressStoreKeyContent(ctx context.Context, 
 		case errors.Is(err, imagecompress.ErrImageDimensions):
 			return nil, fault.InvalidField("image_key", "图片像素总量超过服务端处理上限")
 		case errors.Is(err, imagecompress.ErrAnimatedImage):
-			return nil, fault.InvalidField("image_key", "超过 1 MB 的动画图片暂不支持保存为灵感图")
+			return nil, fault.InvalidField("image_key", "超过 1 MB 的动画图片暂不支持保存到灵感库")
 		case errors.Is(err, imagecompress.ErrCompression):
 			return nil, fault.InvalidField("image_key", "图片无法压缩到 1 MB 以内")
 		default:

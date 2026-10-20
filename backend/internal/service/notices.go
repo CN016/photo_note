@@ -820,7 +820,7 @@ func noticeMessage(delivery model.NoticeDelivery) (string, string) {
 			return payload.Title, payload.Markdown
 		}
 		if payload.Message != "" && (delivery.EventType == "inspiration.compression.succeeded" || delivery.EventType == "inspiration.compression.failed") {
-			return "灵感图处理通知", payload.Message
+			return "灵感库处理通知", payload.Message
 		}
 	}
 	return "取景台通知", "你有一条新的业务通知，请打开取景台消息中心查看。"

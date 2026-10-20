@@ -1,11 +1,11 @@
 {
   "eyebrow": "你的空间",
   "title": "工作台",
-  "subtitle": "灵感、项目、账本、档期与计划，都可以从这里开始。",
+  "subtitle": "灵感库、拍摄策划、账本、档期与计划，都可以从这里开始。",
   "allMenus": "全部菜单",
   "descriptions": {
-    "inspirations": "浏览、整理和编辑灵感图",
-    "projects": "撰写项目文档并收集附件和灵感图",
+    "inspirations": "浏览、整理和编辑灵感库图片",
+    "projects": "撰写拍摄策划并收集附件和灵感库图片",
     "ledger": "记录并查看日常收支",
     "schedule": "管理档期与预约",
     "plans": "安排计划并设置提醒",
