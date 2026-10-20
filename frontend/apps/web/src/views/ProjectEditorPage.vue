@@ -15,7 +15,11 @@ import { TableHeader } from '@tiptap/extension-table-header'
 import { TableCell } from '@tiptap/extension-table-cell'
 import Placeholder from '@tiptap/extension-placeholder'
 import { ElMessage } from 'element-plus'
-import { ArrowLeft, Checked, Grid, Link, Minus, Paperclip, Picture, RefreshLeft, RefreshRight } from '@element-plus/icons-vue'
+import {
+  ArrowLeft, Brush, BrushFilled, ChatLineSquare, Document, Finished, Grid, Link,
+  List, Memo, Menu, Minus, Monitor, Operation, Paperclip, Picture, RefreshLeft, RefreshRight,
+  Right, Sort,
+} from '@element-plus/icons-vue'
 import { useI18n } from 'vue-i18n'
 import AppHeader from '../components/AppHeader.vue'
 import ProjectCoverImage from '../components/ProjectCoverImage.vue'
@@ -50,6 +54,7 @@ let saveFlight: Promise<boolean> | null = null
 let hydrating = true
 
 const editor = useEditor({
+  // 段落对齐作用于段落和标题；任务清单依赖独立的列表与任务项扩展。
   extensions: [
     StarterKit.configure({ link: { openOnClick: false } }),
     TextStyle, Color, BackgroundColor, Highlight.configure({ multicolor: true }),
@@ -138,6 +143,7 @@ const imageExtensions = new Set(['jpg', 'jpeg', 'png', 'webp', 'heic', 'heif'])
 async function uploadFiles(event: Event) {
   const input = event.target as HTMLInputElement
   const files = Array.from(input.files ?? [])
+  let hasNewAttachments = false
   input.value = ''
   for (const file of files) {
     const extension = extOf(file.name)
@@ -154,8 +160,11 @@ async function uploadFiles(event: Event) {
       editor.value?.chain().focus().insertContent({
         type: 'projectAttachment', attrs: { storekey: uploaded.storekey, fileName: file.name, contentType, fileSize: file.size, width: 100, layout: 'original' },
       }).run()
+      hasNewAttachments = true
     } catch { ElMessage.error(t('projects.saveError')) }
   }
+  // 新附件需要先进入项目关联清单，之后项目授权预览接口才能读取；此处提前提交一次正文快照。
+  if (hasNewAttachments) await saveNow()
 }
 
 const mimeByExtension: Record<string, string> = {
@@ -170,8 +179,14 @@ function setBackgroundColor(event: Event) { backgroundColor.value = (event.targe
 function addLink() {
   const value = window.prompt(t('projects.linkPrompt'))?.trim()
   if (!value) return
-  if (!/^https?:\/\//i.test(value) && !/^mailto:/i.test(value)) { ElMessage.error(t('projects.fileTypeError')); return }
-  editor.value?.chain().focus().extendMarkRange('link').setLink({ href: value }).run()
+  if (!/^https?:\/\//i.test(value) && !/^mailto:/i.test(value)) { ElMessage.error(t('projects.linkUrlInvalid')); return }
+  const currentEditor = editor.value
+  if (!currentEditor) return
+  if (currentEditor.state.selection.empty) {
+    currentEditor.chain().focus().insertContent({ type: 'text', text: value, marks: [{ type: 'link', attrs: { href: value } }] }).run()
+    return
+  }
+  currentEditor.chain().focus().extendMarkRange('link').setLink({ href: value }).run()
 }
 function toggleBlock(name: 'paragraph' | 'heading' | 'bulletList' | 'orderedList' | 'taskList' | 'blockquote' | 'codeBlock') {
   const current = editor.value?.chain().focus()
@@ -226,27 +241,29 @@ onBeforeRouteLeave(async () => {
           <el-option v-for="size in ['12px','14px','16px','18px','20px','24px','30px','36px','48px']" :key="size" :label="size" :value="size" />
         </el-select>
         <el-button-group>
-          <el-button size="small" :title="t('projects.toolbar.bold')" :aria-label="t('projects.toolbar.bold')" @click="editor?.chain().focus().toggleBold().run()"><strong>B</strong></el-button>
-          <el-button size="small" :title="t('projects.toolbar.italic')" :aria-label="t('projects.toolbar.italic')" @click="editor?.chain().focus().toggleItalic().run()"><i>I</i></el-button>
-          <el-button size="small" :title="t('projects.toolbar.underline')" :aria-label="t('projects.toolbar.underline')" @click="editor?.chain().focus().toggleUnderline().run()"><u>U</u></el-button>
-          <el-button size="small" :title="t('projects.toolbar.strike')" :aria-label="t('projects.toolbar.strike')" @click="editor?.chain().focus().toggleStrike().run()"><s>S</s></el-button>
+          <el-button size="small" :class="{ 'is-active': editor?.isActive('bold') }" :title="t('projects.toolbar.bold')" :aria-label="t('projects.toolbar.bold')" @click="editor?.chain().focus().toggleBold().run()"><strong>B</strong></el-button>
+          <el-button size="small" :class="{ 'is-active': editor?.isActive('italic') }" :title="t('projects.toolbar.italic')" :aria-label="t('projects.toolbar.italic')" @click="editor?.chain().focus().toggleItalic().run()"><i>I</i></el-button>
+          <el-button size="small" :class="{ 'is-active': editor?.isActive('underline') }" :title="t('projects.toolbar.underline')" :aria-label="t('projects.toolbar.underline')" @click="editor?.chain().focus().toggleUnderline().run()"><u>U</u></el-button>
+          <el-button size="small" :class="{ 'is-active': editor?.isActive('strike') }" :title="t('projects.toolbar.strike')" :aria-label="t('projects.toolbar.strike')" @click="editor?.chain().focus().toggleStrike().run()"><s>S</s></el-button>
         </el-button-group>
-        <label class="toolbar-color" :title="t('projects.toolbar.textColor')"><span>A</span><input type="color" :value="textColor" :aria-label="t('projects.toolbar.textColor')" @input="setTextColor" /></label>
-        <label class="toolbar-color toolbar-background-color" :title="t('projects.toolbar.backgroundColor')"><span>A</span><input type="color" :value="backgroundColor" :aria-label="t('projects.toolbar.backgroundColor')" @input="setBackgroundColor" /></label>
-        <el-button size="small" :title="t('projects.toolbar.highlight')" :aria-label="t('projects.toolbar.highlight')" @click="editor?.chain().focus().toggleHighlight({ color: '#fde68a' }).run()"><mark>H</mark></el-button>
-        <el-button size="small" :title="t('projects.toolbar.link')" :aria-label="t('projects.toolbar.link')" @click="addLink"><el-icon><Link /></el-icon></el-button>
-        <el-button size="small" :title="t('projects.toolbar.paragraph')" @click="toggleBlock('paragraph')">{{ t('projects.toolbar.paragraph') }}</el-button>
-        <el-button size="small" :title="t('projects.toolbar.heading')" @click="toggleBlock('heading')">{{ t('projects.toolbar.heading') }}</el-button>
-        <el-button size="small" :title="t('projects.toolbar.bulletList')" @click="toggleBlock('bulletList')">{{ t('projects.toolbar.bulletList') }}</el-button>
-        <el-button size="small" :title="t('projects.toolbar.orderedList')" @click="toggleBlock('orderedList')">{{ t('projects.toolbar.orderedList') }}</el-button>
-        <el-button size="small" :title="t('projects.toolbar.taskList')" @click="toggleBlock('taskList')"><el-icon><Checked /></el-icon></el-button>
-        <el-button size="small" :title="t('projects.toolbar.blockquote')" @click="toggleBlock('blockquote')">{{ t('projects.toolbar.blockquote') }}</el-button>
-        <el-button size="small" :title="t('projects.toolbar.codeBlock')" @click="toggleBlock('codeBlock')">{{ t('projects.toolbar.codeBlock') }}</el-button>
+        <label class="toolbar-color" :title="t('projects.toolbar.textColor')"><el-icon aria-hidden="true"><Brush /></el-icon><input type="color" :value="textColor" :aria-label="t('projects.toolbar.textColor')" @input="setTextColor" /></label>
+        <label class="toolbar-color toolbar-background-color" :title="t('projects.toolbar.backgroundColor')"><el-icon aria-hidden="true"><BrushFilled /></el-icon><input type="color" :value="backgroundColor" :aria-label="t('projects.toolbar.backgroundColor')" @input="setBackgroundColor" /></label>
+        <el-button size="small" :class="{ 'is-active': editor?.isActive('highlight') }" :title="t('projects.toolbar.highlight')" :aria-label="t('projects.toolbar.highlight')" @click="editor?.chain().focus().toggleHighlight({ color: '#fde68a' }).run()"><el-icon><BrushFilled /></el-icon></el-button>
+        <el-button size="small" :class="{ 'is-active': editor?.isActive('link') }" :title="t('projects.toolbar.link')" :aria-label="t('projects.toolbar.link')" @click="addLink"><el-icon><Link /></el-icon></el-button>
+        <el-button size="small" :class="{ 'is-active': editor?.isActive('paragraph') }" :title="t('projects.toolbar.paragraph')" :aria-label="t('projects.toolbar.paragraph')" @click="toggleBlock('paragraph')"><el-icon><Document /></el-icon></el-button>
+        <el-button size="small" :class="{ 'is-active': editor?.isActive('heading') }" :title="t('projects.toolbar.heading')" :aria-label="t('projects.toolbar.heading')" @click="toggleBlock('heading')"><el-icon><Memo /></el-icon></el-button>
+        <el-button size="small" :class="{ 'is-active': editor?.isActive('bulletList') }" :title="t('projects.toolbar.bulletList')" :aria-label="t('projects.toolbar.bulletList')" @click="toggleBlock('bulletList')"><el-icon><List /></el-icon></el-button>
+        <el-button size="small" :class="{ 'is-active': editor?.isActive('orderedList') }" :title="t('projects.toolbar.orderedList')" :aria-label="t('projects.toolbar.orderedList')" @click="toggleBlock('orderedList')"><el-icon><Sort /></el-icon></el-button>
+        <el-button size="small" :class="{ 'is-active': editor?.isActive('taskList') }" :title="t('projects.toolbar.taskList')" :aria-label="t('projects.toolbar.taskList')" @click="toggleBlock('taskList')"><el-icon><Finished /></el-icon></el-button>
+        <el-button size="small" :class="{ 'is-active': editor?.isActive('blockquote') }" :title="t('projects.toolbar.blockquote')" :aria-label="t('projects.toolbar.blockquote')" @click="toggleBlock('blockquote')"><el-icon><ChatLineSquare /></el-icon></el-button>
+        <el-button size="small" :class="{ 'is-active': editor?.isActive('codeBlock') }" :title="t('projects.toolbar.codeBlock')" :aria-label="t('projects.toolbar.codeBlock')" @click="toggleBlock('codeBlock')"><el-icon><Monitor /></el-icon></el-button>
         <el-button size="small" :title="t('projects.toolbar.divider')" :aria-label="t('projects.toolbar.divider')" @click="editor?.chain().focus().setHorizontalRule().run()"><el-icon><Minus /></el-icon></el-button>
         <el-button size="small" :title="t('projects.toolbar.table')" :aria-label="t('projects.toolbar.table')" @click="editor?.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run()"><el-icon><Grid /></el-icon></el-button>
-        <el-button size="small" :title="t('projects.toolbar.alignLeft')" @click="editor?.chain().focus().setTextAlign('left').run()">{{ t('projects.toolbar.alignLeft') }}</el-button>
-        <el-button size="small" :title="t('projects.toolbar.alignCenter')" @click="editor?.chain().focus().setTextAlign('center').run()">{{ t('projects.toolbar.alignCenter') }}</el-button>
-        <el-button size="small" :title="t('projects.toolbar.alignRight')" @click="editor?.chain().focus().setTextAlign('right').run()">{{ t('projects.toolbar.alignRight') }}</el-button>
+        <el-button-group>
+          <el-button size="small" :class="{ 'is-active': editor?.isActive({ textAlign: 'left' }) }" :title="t('projects.toolbar.alignLeft')" :aria-label="t('projects.toolbar.alignLeft')" @click="editor?.chain().focus().setTextAlign('left').run()"><el-icon><Menu /></el-icon></el-button>
+          <el-button size="small" :class="{ 'is-active': editor?.isActive({ textAlign: 'center' }) }" :title="t('projects.toolbar.alignCenter')" :aria-label="t('projects.toolbar.alignCenter')" @click="editor?.chain().focus().setTextAlign('center').run()"><el-icon><Operation /></el-icon></el-button>
+          <el-button size="small" :class="{ 'is-active': editor?.isActive({ textAlign: 'right' }) }" :title="t('projects.toolbar.alignRight')" :aria-label="t('projects.toolbar.alignRight')" @click="editor?.chain().focus().setTextAlign('right').run()"><el-icon><Right /></el-icon></el-button>
+        </el-button-group>
         <el-button size="small" :title="t('projects.toolbar.insertInspiration')" @click="pickerOpen = true"><el-icon><Picture /></el-icon></el-button>
         <el-button size="small" :title="t('projects.toolbar.uploadAttachment')" @click="attachmentInput?.click()"><el-icon><Paperclip /></el-icon></el-button>
         <input ref="attachmentInput" class="hidden-file-input" type="file" multiple accept="image/*,.gif,.mp4,.webm,.ogv,.pdf,.doc,.docx,.xls,.xlsx" @change="uploadFiles" />
@@ -274,8 +291,9 @@ onBeforeRouteLeave(async () => {
 .project-save-status.is-saved { color: var(--sage-ink); }
 .project-toolbar { position: sticky; top: 0; z-index: 8; display: flex; min-width: 0; align-items: center; gap: 5px; overflow-x: auto; padding: 8px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); box-shadow: var(--soft-shadow); scrollbar-width: thin; }
 .project-toolbar :deep(.el-button) { min-width: 33px; padding: 6px 8px; }
+.project-toolbar :deep(.el-button.is-active) { border-color: var(--accent); background: var(--accent-soft); color: var(--accent-hover); }
 .toolbar-font-size { width: 80px; flex: 0 0 80px; }
-.toolbar-color { display: grid; width: 34px; height: 30px; flex: 0 0 34px; place-items: center; border: 1px solid var(--line); border-radius: 5px; color: var(--ink); font-weight: 700; cursor: pointer; }
+.toolbar-color { position: relative; display: grid; width: 34px; height: 30px; flex: 0 0 34px; place-items: center; border: 1px solid var(--line); border-radius: 5px; color: var(--ink); cursor: pointer; }
 .toolbar-color input { position: absolute; width: 1px; height: 1px; opacity: 0; }
 .hidden-file-input { display: none; }
 .project-editor-paper { min-height: 65vh; margin-top: 18px; padding: 36px clamp(20px, 5vw, 72px) 70px; border: 1px solid var(--line); border-radius: 9px; background: var(--surface); box-shadow: var(--soft-shadow); }

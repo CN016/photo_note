@@ -348,9 +348,18 @@ export const api = {
     body.append('file', file, file.name)
     return request('/projects/cover-upload', { method: 'POST', body })
   },
-  /** 通过项目和已登记 storekey 读取非灵感图附件内容。 */
-  projectAttachmentContent(projectID: string, storekey: string) {
-    return requestBlob(`/projects/${encodeURIComponent(projectID)}/attachments/content?storekey=${encodeURIComponent(storekey)}`)
+  /** 通过项目和已登记 storekey 读取附件；新文件保存引用前的短暂 404 会按界限重试。 */
+  async projectAttachmentContent(projectID: string, storekey: string) {
+    const path = `/projects/${encodeURIComponent(projectID)}/attachments/content?storekey=${encodeURIComponent(storekey)}`
+    const retryDelays = [150, 300, 600, 900]
+    for (let attempt = 0; ; attempt += 1) {
+      try { return await requestBlob(path) }
+      catch (error) {
+        if (!(error instanceof ApiError) || error.status !== 404 || attempt >= retryDelays.length) throw error
+        // 上传先完成、项目附件关联后保存；只对这个窗口期的 404 做短暂重试。
+        await new Promise(resolve => window.setTimeout(resolve, retryDelays[attempt]))
+      }
+    }
   },
   /** 游客提交姓名、电话、备注和具体开放发生项。 */
   requestScheduleBooking(token: string, input: { schedule_id: string; start_at: string; name: string; phone: string; note: string }) { return request<ScheduleBookingReceipt>(`/book/${encodeURIComponent(token)}/requests`, { method: 'POST', body: JSON.stringify(input) }, false) },
