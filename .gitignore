@@ -4,6 +4,7 @@
 /backend/postgres17_data/
 /backend/uploads/
 /frontend/apps/web/node_modules/
+/frontend/apps/web/public/vendor/zrimo/
 /frontend/apps/web/dist/
 /frontend/apps/web/coverage/
 /frontend/apps/web/.env

@@ -89,6 +89,7 @@ func run() error {
 	inspirations.SetErrorLogService(errorLogs)
 	plans := service.NewPlanService(repository, fileManager, runtimeConfig.MaxUploadBytes, notices, runtimeConfigService)
 	plans.SetErrorLogService(errorLogs)
+	projects := service.NewProjectService(repository, fileManager, runtimeConfig.MaxUploadBytes)
 	dependencies := httpapi.Dependencies{
 		Auth:                  service.NewAuthService(repository, tokens, passwords),
 		Users:                 service.NewUserService(repository),
@@ -107,6 +108,7 @@ func run() error {
 		Ledger:                service.NewLedgerService(repository),
 		Schedule:              service.NewScheduleService(repository, tokens, runtimeConfig.SchedulePerIPPerHour),
 		Plans:                 plans,
+		Projects:              projects,
 		Notices:               notices,
 		TrustedProxyCIDRs:     runtimeConfig.TrustedProxyCIDRs,
 		ErrorLogs:             errorLogs,

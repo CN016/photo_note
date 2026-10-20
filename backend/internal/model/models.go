@@ -469,3 +469,48 @@ type PlanReminder struct {
 
 // TableName 固定计划提醒模型使用与版本化 SQL 迁移一致的表名。
 func (PlanReminder) TableName() string { return "plan_reminders" }
+
+// Project 保存当前用户的版本化富文本项目、封面和短中文搜索索引。
+type Project struct {
+	BaseModel
+	UserID                uuid.UUID      `gorm:"column:user_id;type:uuid;not null;index:ix_projects_user_updated,priority:1"`
+	Title                 string         `gorm:"column:title;type:varchar(120);not null"`
+	CoverEmoji            string         `gorm:"column:cover_emoji;type:varchar(32);not null;default:''"`
+	CoverImageKey         string         `gorm:"column:cover_image_key;type:text;not null;default:''"`
+	CoverFileName         string         `gorm:"column:cover_file_name;type:text;not null;default:''"`
+	DocumentSchemaVersion int16          `gorm:"column:document_schema_version;type:smallint;not null;default:1"`
+	Document              JSONB          `gorm:"column:document;type:jsonb;not null"`
+	SearchText            string         `gorm:"column:search_text;type:text;not null;default:''" json:"-"`
+	SearchGrams           pq.StringArray `gorm:"column:search_grams;type:text[];not null;default:ARRAY[]::text[]" json:"-"`
+	Revision              int64          `gorm:"column:revision;type:bigint;not null;default:1"`
+	DeletedAt             *time.Time     `gorm:"column:deleted_at;type:timestamptz" json:"-"`
+}
+
+// TableName 固定项目文档模型使用与版本化 SQL 迁移相同的表名。
+func (Project) TableName() string { return "projects" }
+
+// ProjectInspirationUsage 记录项目引用灵感图的关系，所有关联系统 ID 均使用业务 UUID。
+type ProjectInspirationUsage struct {
+	BaseModel
+	UserID                uuid.UUID `gorm:"column:user_id;type:uuid;not null;index"`
+	ProjectBusinessID     uuid.UUID `gorm:"column:project_business_id;type:uuid;not null;index"`
+	InspirationBusinessID uuid.UUID `gorm:"column:inspiration_business_id;type:uuid;not null;index"`
+}
+
+// TableName 固定项目灵感图关系模型使用与版本化 SQL 迁移相同的表名。
+func (ProjectInspirationUsage) TableName() string { return "project_inspiration_usages" }
+
+// ProjectAttachment 仅登记已经被项目正文或封面引用的非灵感图文件，不拥有底层文件。
+type ProjectAttachment struct {
+	BaseModel
+	UserID            uuid.UUID `gorm:"column:user_id;type:uuid;not null;index"`
+	ProjectBusinessID uuid.UUID `gorm:"column:project_business_id;type:uuid;not null;index"`
+	StoreKey          string    `gorm:"column:storekey;type:text;not null"`
+	FileName          string    `gorm:"column:file_name;type:text;not null"`
+	FileSize          int64     `gorm:"column:file_size;type:bigint;not null"`
+	ContentType       string    `gorm:"column:content_type;type:varchar(160);not null"`
+	AssetRole         string    `gorm:"column:asset_role;type:varchar(16);not null"`
+}
+
+// TableName 固定项目附件登记模型使用与版本化 SQL 迁移相同的表名。
+func (ProjectAttachment) TableName() string { return "project_attachments" }

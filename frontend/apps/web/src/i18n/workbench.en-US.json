@@ -1,10 +1,11 @@
 {
   "eyebrow": "Your space",
   "title": "Workbench",
-  "subtitle": "Your inspiration, ledger, schedule, and plans start here.",
+  "subtitle": "Your inspiration, projects, ledger, schedule, and plans start here.",
   "allMenus": "All menus",
   "descriptions": {
     "inspirations": "Browse, organize, and edit inspiration",
+    "projects": "Write project documents with inspiration and attachments",
     "ledger": "Track and review your income and expenses",
     "schedule": "Manage availability and bookings",
     "plans": "Organize plans and set reminders",

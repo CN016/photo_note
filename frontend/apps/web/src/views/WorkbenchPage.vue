@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, type Component } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { ArrowRight, Calendar, ChatDotRound, Clock, List, Picture, Setting, User } from '@element-plus/icons-vue'
+import { ArrowRight, Calendar, ChatDotRound, Clock, Files, List, Picture, Setting, User } from '@element-plus/icons-vue'
 import AppHeader from '../components/AppHeader.vue'
 import { useAuthStore } from '../stores/auth'
 
@@ -12,6 +12,7 @@ const auth = useAuthStore()
 const menuItems = computed(() => {
   const items: Array<{ key: string; to: string; icon: Component }> = [
     { key: 'inspirations', to: '/inspirations', icon: Picture },
+    { key: 'projects', to: '/projects', icon: Files },
     { key: 'ledger', to: '/ledger', icon: Clock },
     { key: 'schedule', to: '/schedule', icon: Calendar },
     { key: 'plans', to: '/plans', icon: List },

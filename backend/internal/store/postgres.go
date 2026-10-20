@@ -731,17 +731,25 @@ func (store *PostgresStore) UpdateInspirationImageMetadataIfVersion(ctx context.
 	return result.RowsAffected > 0, nil
 }
 
-// DeleteInspiration 仅物理删除当前用户自己的灵感图。
+// DeleteInspiration 仅物理删除当前用户自己的未被任何项目引用的灵感图。
 func (store *PostgresStore) DeleteInspiration(ctx context.Context, userID, inspirationID uuid.UUID) error {
-	result := store.db.WithContext(ctx).Where("user_id = ? AND business_id = ?", userID, inspirationID).
-		Delete(&model.Inspiration{})
-	if result.Error != nil {
-		return persistenceError(result.Error)
-	}
-	if result.RowsAffected == 0 {
-		return fault.NotFound()
-	}
-	return nil
+	return store.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		var inspiration model.Inspiration
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("user_id = ? AND business_id = ?", userID, inspirationID).First(&inspiration).Error; err != nil {
+			return persistenceError(err)
+		}
+		var usages int64
+		if err := tx.Model(&model.ProjectInspirationUsage{}).Where("user_id = ? AND inspiration_business_id = ?", userID, inspirationID).Count(&usages).Error; err != nil {
+			return persistenceError(err)
+		}
+		if usages > 0 {
+			return fault.Conflict("该灵感图仍被项目引用，请先从所有项目正文中移除")
+		}
+		if err := tx.Delete(&inspiration).Error; err != nil {
+			return persistenceError(err)
+		}
+		return nil
+	})
 }
 
 // persistenceError 统一映射数据库错误，绝不把 SQL、字段值或底层驱动诊断回传客户端。

@@ -1,4 +1,4 @@
-import { ApiError, type ApiEnvelope, type ApiErrorEnvelope, type AuthResponse, type ConsoleConfigRecord, type ConsoleFeedbackRecord, type ConsoleInspirationRecord, type ConsoleUserRecord, type InspirationImageMetadata, type InspirationRecord, type InspirationStatistics, type LedgerFields, type LedgerImportItem, type LedgerImportResult, type LedgerRecord, type NoticeConfig, type NoticeConfigList, type NoticeDelivery, type NotificationPage, type PageResult, type PlanFields, type PlanRecord, type ScheduleBooking, type ScheduleBookingReceipt, type ScheduleFields, type ScheduleOccurrence, type SchedulePublicSlot, type ScheduleShare, type TagRecord, type TokenPair, type UserProfile } from './types'
+import { ApiError, type ApiEnvelope, type ApiErrorEnvelope, type AuthResponse, type ConsoleConfigRecord, type ConsoleFeedbackRecord, type ConsoleInspirationRecord, type ConsoleUserRecord, type InspirationImageMetadata, type InspirationRecord, type InspirationStatistics, type LedgerFields, type LedgerImportItem, type LedgerImportResult, type LedgerRecord, type NoticeConfig, type NoticeConfigList, type NoticeDelivery, type NotificationPage, type PageResult, type PlanFields, type PlanRecord, type ProjectRecord, type ProjectSaveInput, type ProjectSummary, type ScheduleBooking, type ScheduleBookingReceipt, type ScheduleFields, type ScheduleOccurrence, type SchedulePublicSlot, type ScheduleShare, type TagRecord, type TokenPair, type UserProfile } from './types'
 import { API_REQUEST_ORIGIN } from './config'
 
 /** V1 业务路由统一加版本前缀；环境变量只提供服务主机。 */
@@ -328,6 +328,30 @@ export const api = {
   completePlan(id: string) { return request<PlanRecord>(`/plans/${encodeURIComponent(id)}/complete`, { method: 'POST' }) },
   /** 删除计划并取消未发送提醒。 */
   deletePlan(id: string) { return request<void>(`/plans/${encodeURIComponent(id)}`, { method: 'DELETE' }) },
+  /** 分页搜索当前用户的项目标题与正文。 */
+  projects(page = 1, pageSize = 20, query = '') {
+    const params = new URLSearchParams({ page: String(page), page_size: String(pageSize) })
+    if (query.trim()) params.set('q', query.trim())
+    return request<PageResult<ProjectSummary>>(`/projects?${params.toString()}`)
+  },
+  /** 读取项目正文并校验所有资源引用。 */
+  project(id: string) { return request<ProjectRecord>(`/projects/${encodeURIComponent(id)}`) },
+  /** 创建带初始内容的项目文档。 */
+  createProject(input: ProjectSaveInput) { return request<ProjectRecord>('/projects', { method: 'POST', body: JSON.stringify(input) }) },
+  /** 保存项目完整快照，revision 防止较旧的自动保存覆盖较新编辑。 */
+  saveProject(id: string, input: ProjectSaveInput) { return request<ProjectRecord>(`/projects/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify(input) }) },
+  /** 软删除项目并保留其灵感图和附件引用关系。 */
+  deleteProject(id: string) { return request<void>(`/projects/${encodeURIComponent(id)}`, { method: 'DELETE' }) },
+  /** 通过专用入口压缩项目封面并登记为项目资源。 */
+  async uploadProjectCover(file: File): Promise<{ storekey: string; file_name: string; file_size: number; content_type: string }> {
+    const body = new FormData()
+    body.append('file', file, file.name)
+    return request('/projects/cover-upload', { method: 'POST', body })
+  },
+  /** 通过项目和已登记 storekey 读取非灵感图附件内容。 */
+  projectAttachmentContent(projectID: string, storekey: string) {
+    return requestBlob(`/projects/${encodeURIComponent(projectID)}/attachments/content?storekey=${encodeURIComponent(storekey)}`)
+  },
   /** 游客提交姓名、电话、备注和具体开放发生项。 */
   requestScheduleBooking(token: string, input: { schedule_id: string; start_at: string; name: string; phone: string; note: string }) { return request<ScheduleBookingReceipt>(`/book/${encodeURIComponent(token)}/requests`, { method: 'POST', body: JSON.stringify(input) }, false) },
   /** 创建灵感图；image_key 指向服务端可能压缩的工作副本。 */

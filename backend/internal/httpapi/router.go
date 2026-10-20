@@ -57,6 +57,7 @@ type Dependencies struct {
 	Ledger                *service.LedgerService
 	Schedule              *service.ScheduleService
 	Plans                 *service.PlanService
+	Projects              *service.ProjectService
 	Notices               *service.NoticeService
 	TrustedProxyCIDRs     []string
 	ErrorLogs             *service.ErrorLogService
@@ -111,6 +112,7 @@ func Router(dependencies Dependencies) *gin.Engine {
 	protected.Use(authenticationMiddleware(dependencies.Tokens))
 	protected.POST("/auth/logout", logoutHandler(dependencies.Auth))
 	protected.POST("/files", uploadFileHandler(dependencies.Files, dependencies.MaxUploadBytes, dependencies.CurrentFileStoreType))
+	protected.POST("/projects/cover-upload", uploadProjectCoverHandler(dependencies.Files, dependencies.MaxUploadBytes, dependencies.CurrentFileStoreType))
 	protected.GET("/files/:storekey", downloadFileHandler(dependencies.Files))
 	protected.GET("/users/me", getCurrentUserHandler(dependencies.Users))
 	protected.PATCH("/users/me", patchCurrentUserHandler(dependencies.Users))
@@ -152,6 +154,12 @@ func Router(dependencies Dependencies) *gin.Engine {
 	protected.PATCH("/plans/:business_id", patchPlanHandler(dependencies.Plans))
 	protected.POST("/plans/:business_id/complete", completePlanHandler(dependencies.Plans))
 	protected.DELETE("/plans/:business_id", deletePlanHandler(dependencies.Plans))
+	protected.GET("/projects", listProjectsHandler(dependencies.Projects))
+	protected.POST("/projects", createProjectHandler(dependencies.Projects))
+	protected.GET("/projects/:business_id", getProjectHandler(dependencies.Projects))
+	protected.PATCH("/projects/:business_id", patchProjectHandler(dependencies.Projects))
+	protected.DELETE("/projects/:business_id", deleteProjectHandler(dependencies.Projects))
+	protected.GET("/projects/:business_id/attachments/content", projectAttachmentHandler(dependencies.Projects))
 	protected.GET("/notifications", listNotificationsHandler(dependencies.Notices))
 	protected.GET("/notifications/unread-count", unreadNotificationCountHandler(dependencies.Notices))
 	protected.PATCH("/notifications/:business_id/read", markNotificationReadHandler(dependencies.Notices))

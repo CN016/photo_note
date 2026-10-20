@@ -1,0 +1,6 @@
+项目附件预览使用以下开源依赖：
+
+- @zrimo/viewer 0.1.2：MIT 或 Apache-2.0。包内包含 LICENSE-MIT、LICENSE-APACHE 和 THIRD_PARTY_NOTICES.md；其运行时所用 PDF.js、Office WASM 组件及字体许可以该依赖内的通知文件为准。
+- video.js 8.23.4：MIT。源码与许可：https://github.com/videojs/video.js
+
+应用随安装依赖及构建输出提供查看器所需的 worker、WASM 和字体资源。

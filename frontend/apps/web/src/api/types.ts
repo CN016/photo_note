@@ -244,6 +244,34 @@ export interface PlanRecord extends PlanFields {
   updated_at: string
 }
 
+/** 项目是独立文档资源，正文使用版本化 ProseMirror JSON，附件由正文节点引用。 */
+export interface ProjectRecord {
+  business_id: string
+  title: string
+  cover_emoji: string
+  cover_image_key: string
+  cover_file_name: string
+  document_schema_version: number
+  document: Record<string, unknown>
+  revision: number
+  created_at: string
+  updated_at: string
+}
+
+/** 项目列表只返回卡片元数据，不包含完整正文 JSON。 */
+export type ProjectSummary = Omit<ProjectRecord, 'document' | 'document_schema_version'>
+
+/** 项目自动保存提交完整快照，并携带当前修订号执行乐观并发控制。 */
+export interface ProjectSaveInput {
+  title: string
+  cover_emoji: string
+  cover_image_key: string
+  cover_file_name: string
+  document_schema_version: number
+  document: Record<string, unknown>
+  revision: number
+}
+
 /** webhook 单渠道的异步投递状态；错误码不含远端响应正文或连接地址。 */
 export interface NoticeDelivery {
   business_id: string

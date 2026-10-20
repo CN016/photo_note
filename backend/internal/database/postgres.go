@@ -82,6 +82,9 @@ func checkSchema(ctx context.Context, connection *gorm.DB) error {
 		"notice_config":              &model.NoticeConfig{},
 		"notice_deliveries":          &model.NoticeDelivery{},
 		"error_logs":                 &model.ErrorLog{},
+		"projects":                   &model.Project{},
+		"project_inspiration_usages": &model.ProjectInspirationUsage{},
+		"project_attachments":        &model.ProjectAttachment{},
 	} {
 		if !connection.WithContext(ctx).Migrator().HasTable(table) {
 			if name == "ledger_records" {
@@ -92,6 +95,9 @@ func checkSchema(ctx context.Context, connection *gorm.DB) error {
 			}
 			if name == "error_logs" {
 				return fmt.Errorf("PostgreSQL schema 缺少错误日志表 error_logs，请先执行 backend/migrations/000012_create_error_logs.sql")
+			}
+			if name == "projects" || name == "project_inspiration_usages" || name == "project_attachments" {
+				return fmt.Errorf("PostgreSQL schema 缺少项目文档表 %s，请先执行 backend/migrations/000020_project_documents.sql", name)
 			}
 			if name == "feedbacks" {
 				return fmt.Errorf("PostgreSQL schema 缺少反馈表 feedbacks，请先执行 backend/migrations/000008_user_phone_feedback.sql")

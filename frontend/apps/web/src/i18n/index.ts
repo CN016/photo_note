@@ -25,6 +25,8 @@ import scheduleZh from './schedule.zh-CN.json'
 import scheduleEn from './schedule.en-US.json'
 import plansZh from './plans.zh-CN.json'
 import plansEn from './plans.en-US.json'
+import projectsZh from './projects.zh-CN.json'
+import projectsEn from './projects.en-US.json'
 import workbenchZh from './workbench.zh-CN.json'
 import workbenchEn from './workbench.en-US.json'
 import messagesZh from './messages.zh-CN.json'
@@ -38,8 +40,8 @@ export const i18n = createI18n({
   locale: localStorage.getItem('photo-nini.locale') === 'en-US' ? 'en-US' : 'zh-CN',
   fallbackLocale: 'zh-CN',
   messages: {
-    'zh-CN': { common: commonZh, login: loginZh, register: registerZh, gallery: galleryZh, statistics: statisticsZh, editor: editorZh, inspirationUpload: inspirationUploadZh, maintenance: maintenanceZh, profile: profileZh, feedback: feedbackZh, ledger: ledgerZh, schedule: scheduleZh, plans: plansZh, workbench: workbenchZh, messages: messagesZh, console: consoleZh },
-    'en-US': { common: commonEn, login: loginEn, register: registerEn, gallery: galleryEn, statistics: statisticsEn, editor: editorEn, inspirationUpload: inspirationUploadEn, maintenance: maintenanceEn, profile: profileEn, feedback: feedbackEn, ledger: ledgerEn, schedule: scheduleEn, plans: plansEn, workbench: workbenchEn, messages: messagesEn, console: consoleEn },
+    'zh-CN': { common: commonZh, login: loginZh, register: registerZh, gallery: galleryZh, statistics: statisticsZh, editor: editorZh, inspirationUpload: inspirationUploadZh, maintenance: maintenanceZh, profile: profileZh, feedback: feedbackZh, ledger: ledgerZh, schedule: scheduleZh, plans: plansZh, projects: projectsZh, workbench: workbenchZh, messages: messagesZh, console: consoleZh },
+    'en-US': { common: commonEn, login: loginEn, register: registerEn, gallery: galleryEn, statistics: statisticsEn, editor: editorEn, inspirationUpload: inspirationUploadEn, maintenance: maintenanceEn, profile: profileEn, feedback: feedbackEn, ledger: ledgerEn, schedule: scheduleEn, plans: plansEn, projects: projectsEn, workbench: workbenchEn, messages: messagesEn, console: consoleEn },
   },
 })
 
