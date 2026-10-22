@@ -3,14 +3,14 @@ import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Delete, Files, More, Plus, Search, UploadFilled } from '@element-plus/icons-vue'
+import { ArrowLeft, ArrowRight, Delete, Files, More, Plus, Search, UploadFilled } from '@element-plus/icons-vue'
 import AppHeader from '../components/AppHeader.vue'
 import ProjectCoverImage from '../components/ProjectCoverImage.vue'
 import { api } from '../api/client'
 import type { PageResult, ProjectSaveInput, ProjectSummary } from '../api/types'
 import { projectUploadLimit } from '../projects/projectUploadLimit'
 
-const { t } = useI18n({ useScope: 'global' })
+const { t, locale } = useI18n({ useScope: 'global' })
 const router = useRouter()
 const records = ref<ProjectSummary[]>([])
 const query = ref('')
@@ -134,7 +134,7 @@ onBeforeUnmount(() => {
   <main class="projects-main gallery-main">
     <header class="projects-heading">
       <div><p class="eyebrow"><el-icon><Files /></el-icon>{{ t('projects.title') }}</p><h1>{{ t('projects.title') }}</h1><p>{{ t('projects.subtitle') }}</p></div>
-      <el-button class="projects-new" type="primary" :icon="Plus" @click="openCreate">{{ t('projects.newProject') }}</el-button>
+      <el-button class="projects-new" type="primary" :icon="Plus" :title="t('projects.newProject')" :aria-label="t('projects.newProject')" @click="openCreate">{{ t('projects.newProject') }}</el-button>
     </header>
     <div class="projects-search"><el-input v-model="query" clearable :placeholder="t('projects.searchPlaceholder')"><template #prefix><el-icon><Search /></el-icon></template></el-input></div>
     <div v-if="loading" class="projects-status" role="status">{{ t('common.loading') }}</div>
@@ -143,7 +143,7 @@ onBeforeUnmount(() => {
       <article v-for="record in records" :key="record.business_id" class="project-card">
         <RouterLink class="project-card-link" :to="`/projects/${record.business_id}`">
           <ProjectCoverImage :storekey="record.cover_image_key" :emoji="record.cover_emoji" :label="record.title" />
-          <span class="project-card-copy"><strong>{{ record.title }}</strong><small>{{ new Intl.DateTimeFormat(undefined, { dateStyle: 'medium' }).format(new Date(record.updated_at)) }}</small></span>
+          <span class="project-card-copy"><strong>{{ record.title }}</strong><small>{{ new Intl.DateTimeFormat(locale, { dateStyle: 'medium' }).format(new Date(record.updated_at)) }}</small></span>
         </RouterLink>
         <el-dropdown trigger="click" @command="removeProject(record)">
           <el-button text :loading="deletingID === record.business_id" :aria-label="t('projects.deleteProject')"><el-icon><More /></el-icon></el-button>
@@ -153,7 +153,7 @@ onBeforeUnmount(() => {
     </section>
     <section v-else class="projects-empty"><el-icon><Files /></el-icon><h2>{{ t('projects.emptyTitle') }}</h2><p>{{ t('projects.emptyDescription') }}</p><el-button type="primary" :icon="Plus" @click="openCreate">{{ t('projects.newProject') }}</el-button></section>
     <div v-if="total > pageSize" class="projects-pagination">
-      <el-button :disabled="page <= 1" @click="page -= 1">‹</el-button><span>{{ page }} / {{ Math.ceil(total / pageSize) }}</span><el-button :disabled="page >= Math.ceil(total / pageSize)" @click="page += 1">›</el-button>
+      <el-button :icon="ArrowLeft" :title="t('projects.viewer.previous')" :aria-label="t('projects.viewer.previous')" :disabled="loading || page <= 1" @click="page -= 1" /><span>{{ page }} / {{ Math.ceil(total / pageSize) }}</span><el-button :icon="ArrowRight" :title="t('projects.viewer.next')" :aria-label="t('projects.viewer.next')" :disabled="loading || page >= Math.ceil(total / pageSize)" @click="page += 1" />
     </div>
   </main>
 
@@ -174,16 +174,17 @@ onBeforeUnmount(() => {
 </template>
 
 <style scoped>
+/* 界面表面与控件使用全局主题令牌；图片、文档和用户自选封面颜色保持原数据。 */
 .projects-main { min-height: 100svh; padding-top: 48px; padding-bottom: 90px; }
 .projects-heading { display: flex; align-items: flex-end; justify-content: space-between; gap: 20px; margin-bottom: 25px; }
 .projects-heading h1 { margin: 7px 0 8px; color: var(--ink); font-size: clamp(31px, 4vw, 44px); letter-spacing: -.045em; }
 .projects-heading > div > p:last-child { margin: 0; color: var(--muted); font-size: 13px; }
 .projects-heading .eyebrow { display: flex; align-items: center; gap: 7px; margin: 0; color: var(--accent-hover); font-size: 11px; font-weight: 700; }
-.projects-new { min-height: 42px; border-radius: 7px; }
+.projects-new { min-height: 42px; border-radius: var(--radius-control); }
 .projects-search { max-width: 520px; margin: 20px 0 22px; }
 .projects-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
-.project-card { display: flex; min-width: 0; align-items: center; gap: 8px; padding: 7px 10px 7px 14px; border: 1px solid var(--line); border-radius: 9px; background: var(--surface); transition: border-color .15s, transform .15s; }
-.project-card:hover { transform: translateY(-1px); border-color: var(--accent); }
+.project-card { display: flex; min-width: 0; align-items: center; gap: 8px; padding: 7px 10px 7px 14px; border: 1px solid var(--line); border-radius: var(--radius-card); background: var(--surface); box-shadow: var(--soft-shadow); transition: border-color .18s, box-shadow .18s; }
+.project-card:hover { border-color: var(--accent); }
 .project-card-link { display: flex; min-width: 0; flex: 1; align-items: center; gap: 14px; padding: 7px 0; color: inherit; text-decoration: none; }
 .project-card-copy { display: grid; min-width: 0; gap: 5px; }
 .project-card-copy strong { overflow: hidden; color: var(--ink); font-size: 14px; text-overflow: ellipsis; white-space: nowrap; }
@@ -196,8 +197,9 @@ onBeforeUnmount(() => {
 .projects-pagination { display: flex; justify-content: center; align-items: center; gap: 15px; margin-top: 24px; color: var(--muted); }
 .project-cover-optional { display: block; margin-top: 3px; color: var(--muted); font-size: 11px; font-weight: 400; }
 .project-cover-select { display: flex; min-height: 92px; align-items: center; gap: 16px; }
-.project-cover-select > img, .project-cover-emoji { display: grid; width: 74px; height: 74px; place-items: center; border-radius: 9px; background: var(--surface-muted); object-fit: cover; font-size: 36px; }
+.project-cover-select > img, .project-cover-emoji { display: grid; width: 74px; height: 74px; place-items: center; border-radius: var(--radius-control); background: var(--surface-muted); object-fit: cover; font-size: 36px; }
 .project-cover-select > div { display: flex; flex-wrap: wrap; gap: 8px; }
 .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0,0,0,0); }
-@media (max-width: 768px) { .projects-main { padding-top: 27px; padding-bottom: 105px; } .projects-heading { align-items: center; } .projects-heading h1 { font-size: 34px; } .projects-heading > div > p:last-child { max-width: 235px; font-size: 11px; line-height: 1.5; } .projects-new { width: 43px; min-width: 43px; height: 43px; padding: 0; font-size: 0; } .projects-new .el-icon { font-size: 19px; } .projects-grid { grid-template-columns: 1fr; gap: 8px; } .project-card { gap: 5px; padding: 6px 8px 6px 10px; } .project-card-link { gap: 11px; } }
+@media (max-width: 768px) { .projects-main { padding-top: 27px; padding-bottom: 105px; } .projects-heading { align-items: center; } .projects-heading h1 { font-size: 34px; } .projects-heading > div > p:last-child { max-width: 235px; font-size: 11px; line-height: 1.5; } .projects-new { width: 44px; min-width: 44px; height: 44px; padding: 0; font-size: 0; } .projects-new .el-icon { font-size: 19px; } .projects-grid { grid-template-columns: 1fr; gap: 8px; } .project-card { gap: 5px; padding: 6px 8px 6px 10px; } .project-card-link { gap: 11px; } }
+@media (max-width: 768px) { .project-card :deep(.el-button), .projects-pagination :deep(.el-button) { min-width: 44px; min-height: 44px; } }
 </style>

@@ -1,13 +1,12 @@
 <script setup lang="ts">
-import { ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { Moon, Sunny } from '@element-plus/icons-vue'
-import { currentTheme, toggleTheme } from '../theme'
+import { useColorTheme, toggleTheme } from '../theme'
 
 const { t } = useI18n()
-const theme = ref(currentTheme())
+const theme = useColorTheme()
 /** 更新共享根主题，并同步刷新当前页面的切换按钮状态。 */
-function changeTheme() { theme.value = toggleTheme() }
+function changeTheme() { toggleTheme() }
 </script>
 
 <template>

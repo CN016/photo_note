@@ -203,13 +203,14 @@ onBeforeUnmount(() => {
 
       <input ref="fileInput" class="file-input-hidden" type="file" accept="image/*,.heic,.heif" multiple :disabled="!canChooseFiles" @change="onFileInput" />
 
-      <section class="upload-panel" :aria-label="t('inspirationUpload.previewLabel')">
-        <div v-if="items.length === 0" class="new-upload-dropzone" :class="{ 'is-disabled': !canChooseFiles }" @dragover.prevent @drop.prevent="onDrop">
-          <div class="upload-dropzone-icon"><el-icon aria-hidden="true"><UploadFilled /></el-icon></div>
-          <h2>{{ t('inspirationUpload.dropTitle') }}</h2>
-          <p>{{ t('inspirationUpload.dropHint') }}</p>
-          <el-button class="primary-button" type="primary" :disabled="!canChooseFiles" @click="chooseFiles"><el-icon aria-hidden="true"><Plus /></el-icon>{{ t('inspirationUpload.chooseImages') }}</el-button>
-        </div>
+      <section class="upload-panel" :aria-label="t('inspirationUpload.previewLabel')" :aria-busy="preparing || uploading">
+        <!-- 整个拖放区域复用原生按钮语义，点击、回车和空格均可选图，内部不再嵌套第二个按钮。 -->
+        <button v-if="items.length === 0" type="button" class="new-upload-dropzone" :disabled="!canChooseFiles" :aria-label="t('inspirationUpload.chooseImages')" @click="chooseFiles" @dragover.prevent @drop.prevent="onDrop">
+          <span class="upload-dropzone-icon"><el-icon aria-hidden="true"><UploadFilled /></el-icon></span>
+          <strong class="dropzone-title">{{ t('inspirationUpload.dropTitle') }}</strong>
+          <span class="dropzone-hint">{{ t('inspirationUpload.dropHint') }}</span>
+          <span class="primary-button"><el-icon aria-hidden="true"><Plus /></el-icon>{{ t('inspirationUpload.chooseImages') }}</span>
+        </button>
 
         <template v-else>
           <div class="upload-toolbar">
@@ -256,6 +257,7 @@ onBeforeUnmount(() => {
 </template>
 
 <style scoped>
+/* 界面表面与控件使用全局主题令牌；图片、文档和用户自选封面颜色保持原数据。 */
 .upload-main { width: min(100% - 48px, 1160px); margin: 0 auto; padding: 42px 0 72px; }
 .upload-heading { margin-bottom: 30px; }
 .back-link { display: inline-flex; align-items: center; gap: 7px; color: var(--muted); font-size: 13px; text-decoration: none; margin-bottom: 24px; }
@@ -264,31 +266,31 @@ onBeforeUnmount(() => {
 h1 { margin: 0; color: var(--ink); font-family: 'Manrope', sans-serif; font-size: clamp(30px, 4vw, 42px); font-weight: 700; line-height: 1.15; letter-spacing: -.05em; }
 .upload-subtitle { max-width: 600px; margin: 12px 0 0; color: var(--ink-soft); font-size: 15px; line-height: 1.7; }
 .file-input-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; clip-path: inset(50%); }
-.upload-panel { overflow: hidden; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); box-shadow: 0 14px 42px rgb(36 42 48 / 6%); }
-.new-upload-dropzone { display: flex; min-height: 340px; align-items: center; justify-content: center; flex-direction: column; padding: 44px 24px; border: 1px dashed var(--line-strong); border-radius: 8px; margin: 16px; background: var(--surface-soft); text-align: center; transition: border-color .18s ease, background-color .18s ease; }
-.new-upload-dropzone:hover { border-color: var(--accent); background: var(--accent-soft); }
+.upload-panel { overflow: hidden; border: 1px solid var(--line); border-radius: var(--radius-card); background: var(--surface); box-shadow: var(--soft-shadow); }
+.new-upload-dropzone { display: flex; width: calc(100% - 32px); color: var(--ink); cursor: pointer; min-height: 340px; align-items: center; justify-content: center; flex-direction: column; padding: 44px 24px; border: 1px dashed var(--line-strong); border-radius: var(--radius-control); margin: 16px; background: var(--surface-soft); text-align: center; transition: border-color .18s ease, background-color .18s ease; }
+.new-upload-dropzone:hover:not(:disabled) { border-color: var(--accent); background: var(--accent-soft); }
 .upload-dropzone-icon { display: grid; width: 64px; height: 64px; place-items: center; border-radius: 20px; background: var(--accent-soft); color: var(--accent); font-size: 27px; }
-.new-upload-dropzone h2 { margin: 20px 0 7px; color: var(--ink); font-size: 19px; }
-.new-upload-dropzone p { margin: 0 0 20px; color: var(--ink-soft); font-size: 13px; }
+.new-upload-dropzone .dropzone-title { margin: 20px 0 7px; color: var(--ink); font-size: 19px; }
+.new-upload-dropzone .dropzone-hint { margin: 0 0 20px; color: var(--ink-soft); font-size: 13px; }
 .upload-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 18px; padding: 22px 24px; border-bottom: 1px solid var(--line); }
 .upload-toolbar h2 { margin: 0; color: var(--ink); font-size: 16px; }
 .upload-toolbar p { margin: 6px 0 0; color: var(--ink-soft); font-size: 12px; }
 .upload-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 18px; padding: 24px; }
-.upload-card { overflow: hidden; min-width: 0; border: 1px solid var(--line); border-radius: 4px; background: var(--surface); transition: border-color .18s ease, box-shadow .18s ease; }
-.upload-card:hover { border-color: var(--accent); box-shadow: 0 8px 22px rgb(36 42 48 / 7%); }
-.upload-card.is-done { border-color: #72a58a; }
+.upload-card { overflow: hidden; min-width: 0; border: 1px solid var(--line); border-radius: var(--radius-card); background: var(--surface); transition: border-color .18s ease, box-shadow .18s ease; }
+.upload-card:hover { border-color: var(--accent); box-shadow: var(--soft-shadow); }
+.upload-card.is-done { border-color: var(--success); }
 .upload-card.has-error { border-color: var(--danger); }
 .upload-card-preview { position: relative; overflow: hidden; aspect-ratio: 4 / 5; background: var(--surface-soft); }
 .upload-card-preview img { display: block; width: 100%; height: 100%; object-fit: contain; }
 .upload-card-placeholder { display: grid; width: 100%; height: 100%; place-items: center; color: var(--muted); font-size: 34px; }
 .remove-image-button { position: absolute; top: 10px; right: 10px; width: 44px; height: 44px; box-shadow: 0 2px 10px rgb(0 0 0 / 13%); }
-.uploaded-mark { position: absolute; top: 10px; right: 10px; display: grid; width: 30px; height: 30px; place-items: center; border: 2px solid white; border-radius: 50%; background: #388b65; color: white; box-shadow: 0 2px 10px rgb(0 0 0 / 13%); }
+.uploaded-mark { position: absolute; top: 10px; right: 10px; display: grid; width: 30px; height: 30px; place-items: center; border: 2px solid var(--surface); border-radius: 50%; background: var(--success); color: var(--on-success); box-shadow: 0 2px 10px rgb(0 0 0 / 13%); }
 .upload-card-info { padding: 12px 13px 14px; }
 .upload-card-info strong { display: block; overflow: hidden; color: var(--ink); font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
 .upload-card-info > span { display: block; margin-top: 5px; color: var(--muted); font-size: 11px; }
 .upload-card-status { min-height: 17px; margin: 9px 0 0; font-size: 11px; line-height: 1.45; }
 .is-pending, .is-ready { color: var(--ink-soft); }
-.is-done-text { color: var(--sage-ink); }
+.is-done-text { color: var(--success); }
 .is-error { color: var(--danger); }
 .upload-actions { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 18px 24px; border-top: 1px solid var(--line); background: var(--surface-soft); }
 .upload-progress, .upload-progress-note { margin: 0; color: var(--ink-soft); font-size: 13px; }
@@ -303,7 +305,7 @@ h1 { margin: 0; color: var(--ink); font-family: 'Manrope', sans-serif; font-size
   .upload-main { width: min(100% - 28px, 1160px); padding: 28px 0 50px; }
   .upload-heading { margin-bottom: 22px; }
   .back-link { margin-bottom: 20px; }
-  .new-upload-dropzone { min-height: 290px; padding: 32px 18px; margin: 10px; }
+  .new-upload-dropzone { width: calc(100% - 20px); min-height: 290px; padding: 32px 18px; margin: 10px; }
   .upload-toolbar { align-items: flex-start; padding: 18px 16px; }
   .upload-toolbar .el-button { flex: 0 0 auto; }
   .upload-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 11px; padding: 14px; }

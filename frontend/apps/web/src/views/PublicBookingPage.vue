@@ -6,6 +6,7 @@ import { useI18n } from 'vue-i18n'
 import { CircleCheckFilled, Clock, WarningFilled } from '@element-plus/icons-vue'
 import BrandMark from '../components/BrandMark.vue'
 import LanguageSwitcher from '../components/LanguageSwitcher.vue'
+import ThemeSwitcher from '../components/ThemeSwitcher.vue'
 import { api } from '../api/client'
 import type { ScheduleBookingReceipt, SchedulePublicSlot } from '../api/types'
 import { addDateKey, chinaDateKey, formatChinaDate, formatChinaTime } from '../schedule/scheduleUtils'
@@ -65,6 +66,8 @@ function openRequest(slot: SchedulePublicSlot): void {
 
 /** 提交后只显示申请编号；访客的联系信息仅返回给档期拥有者。 */
 async function submit(): Promise<void> {
+  // 预约请求不可由关闭窗口撤回，提交期间阻止键盘重复提交并保留可见处理状态。
+  if (submitting.value) return
   if (!selected.value || !fields.name.trim() || !fields.phone.trim()) {
     ElMessage.warning(t('public.required'))
     return
@@ -96,7 +99,7 @@ onMounted(() => { void load() })
     <section class="public-booking-shell">
       <header class="public-booking-header">
         <RouterLink class="public-brand" to="/inspirations"><BrandMark size="small" /><strong>{{ t('common.brand') }}</strong></RouterLink>
-        <LanguageSwitcher />
+        <div class="public-booking-actions"><ThemeSwitcher /><LanguageSwitcher /></div>
       </header>
       <section class="public-booking-intro"><p>{{ t('common.schedule') }}</p><h1>{{ t('public.title') }}</h1><span>{{ t('public.subtitle') }}</span></section>
 
@@ -117,14 +120,14 @@ onMounted(() => { void load() })
       <footer class="public-booking-footer"><RouterLink to="/login">{{ t('common.login') }}</RouterLink><span>·</span><span>{{ t('common.product') }}</span></footer>
     </section>
 
-    <el-dialog v-model="requestDialogOpen" :title="t('actions.book')" width="min(490px, calc(100vw - 28px))" destroy-on-close>
+    <el-dialog v-model="requestDialogOpen" :title="t('actions.book')" width="min(490px, calc(100vw - 28px))" :close-on-click-modal="!submitting" :close-on-press-escape="!submitting" :show-close="!submitting" destroy-on-close>
       <div v-if="selected" class="selected-slot-summary"><small>{{ rangeLabel(selected.series_date) }}</small><strong>{{ formatChinaTime(selected.start_at, locale) }}–{{ formatChinaTime(selected.end_at, locale) }}</strong><b>{{ selected.title }}</b><p v-if="selected.content">{{ selected.content }}</p></div>
-      <el-form label-position="top" @submit.prevent="submit">
+      <el-form label-position="top" :disabled="submitting" @submit.prevent="submit">
         <el-form-item :label="t('public.name')" required><el-input v-model="fields.name" maxlength="80" autocomplete="name" /></el-form-item>
         <el-form-item :label="t('public.phone')" required><el-input v-model="fields.phone" maxlength="32" type="tel" autocomplete="tel" /></el-form-item>
         <el-form-item :label="t('public.note')"><el-input v-model="fields.note" type="textarea" maxlength="1000" :rows="3" :placeholder="t('public.notePlaceholder')" /></el-form-item>
       </el-form>
-      <template #footer><el-button @click="selected = null">{{ t('common.cancel') }}</el-button><el-button type="primary" :loading="submitting" @click="submit">{{ t('public.submit') }}</el-button></template>
+      <template #footer><el-button :disabled="submitting" @click="selected = null">{{ t('common.cancel') }}</el-button><el-button type="primary" :loading="submitting" @click="submit">{{ t('public.submit') }}</el-button></template>
     </el-dialog>
 
     <el-dialog v-model="receiptDialogOpen" :title="t('public.success')" width="min(440px, calc(100vw - 28px))" :show-close="false">
@@ -135,6 +138,9 @@ onMounted(() => { void load() })
 </template>
 
 <style scoped>
-.public-booking-page{min-height:100svh;padding:30px 18px 70px;background:var(--page);color:var(--ink)}.public-booking-shell{width:min(820px,100%);margin:0 auto}.public-booking-header{display:flex;align-items:center;justify-content:space-between;padding:0 0 18px;border-bottom:1px solid var(--line)}.public-brand{display:flex;align-items:center;gap:9px;color:var(--ink);text-decoration:none}.public-brand strong{font-size:13px}.public-booking-intro{padding:38px 0 21px}.public-booking-intro>p{margin:0;color:var(--accent);font-size:11px;font-weight:750}.public-booking-intro h1{margin:8px 0;font-size:clamp(27px,6vw,37px);letter-spacing:-.04em}.public-booking-intro>span{color:var(--muted);font-size:13px;line-height:1.6}.public-booking-state{display:grid;min-height:260px;align-content:center;justify-items:center;gap:12px;border:1px solid var(--line);border-radius:8px;background:var(--surface);color:var(--muted);text-align:center}.public-booking-state>.el-icon{color:var(--accent);font-size:30px} .public-booking-state.is-error>.el-icon{color:var(--danger)}.public-booking-state p{margin:0;font-size:13px}.public-booking-state.is-error{color:var(--danger)}.public-slot-list{display:grid;gap:22px}.public-slot-day h2{margin:0 0 10px;font-size:15px}.public-slot-card{display:grid;gap:9px;margin-bottom:10px;padding:17px;border:1px solid var(--line);border-radius:6px;background:var(--surface);box-shadow:var(--soft-shadow)}.public-slot-time{display:flex;align-items:center;justify-content:space-between;gap:10px}.public-slot-time strong{font-size:14px}.public-slot-time span{color:var(--accent);font-size:11px;font-weight:700}.public-slot-card h3{margin:0;font-size:14px}.public-slot-card p{margin:0;color:var(--ink-soft);font-size:12px;line-height:1.6;white-space:pre-wrap}.public-slot-card :deep(.el-button){justify-self:end;min-height:44px}.public-booking-footer{display:flex;justify-content:center;gap:9px;margin-top:28px;color:var(--muted);font-size:10px}.public-booking-footer a{color:var(--muted)}.selected-slot-summary{display:grid;gap:5px;padding:12px;margin-bottom:13px;border-radius:4px;background:var(--surface-soft)}.selected-slot-summary small{color:var(--muted);font-size:10px}.selected-slot-summary strong{font-size:14px}.selected-slot-summary b{font-size:12px}.selected-slot-summary p{margin:0;color:var(--ink-soft);font-size:11px;white-space:pre-wrap}.booking-receipt{display:grid;justify-items:center;gap:9px;text-align:center}.booking-receipt>.el-icon{display:grid;width:43px;height:43px;place-items:center;border-radius:50%;background:var(--accent-soft);color:var(--accent);font-size:24px}.booking-receipt p{margin:0;font-size:13px}.booking-receipt small{color:var(--muted);font-size:11px;line-height:1.5}.booking-receipt strong{padding:10px 18px;border:1px dashed var(--line-strong);border-radius:4px;font-size:20px;letter-spacing:.12em}
+/* 界面表面与控件使用全局主题令牌；图片、文档和用户自选封面颜色保持原数据。 */
+.public-booking-actions { display: flex; min-width: 0; align-items: center; gap: 6px; }
+@media (max-width: 560px) { .public-booking-actions :deep(.theme-switcher-text) { display: none; } .public-booking-actions :deep(.theme-switcher) { min-width: 44px; min-height: 44px; padding: 0 10px; } }
+.public-booking-page{min-height:100svh;padding:30px 18px 70px;background:var(--page);color:var(--ink)}.public-booking-shell{width:min(820px,100%);margin:0 auto}.public-booking-header{display:flex;align-items:center;justify-content:space-between;padding:0 0 18px;border-bottom:1px solid var(--line)}.public-brand{display:flex;align-items:center;gap:9px;color:var(--ink);text-decoration:none}.public-brand strong{font-size:13px}.public-booking-intro{padding:38px 0 21px}.public-booking-intro>p{margin:0;color:var(--accent);font-size:11px;font-weight:750}.public-booking-intro h1{margin:8px 0;font-size:clamp(27px,6vw,37px);letter-spacing:-.04em}.public-booking-intro>span{color:var(--muted);font-size:13px;line-height:1.6}.public-booking-state{display:grid;min-height:260px;align-content:center;justify-items:center;gap:12px;border:1px solid var(--line);border-radius:var(--radius-card);background:var(--surface);color:var(--muted);text-align:center}.public-booking-state>.el-icon{color:var(--accent);font-size:30px} .public-booking-state.is-error>.el-icon{color:var(--danger)}.public-booking-state p{margin:0;font-size:13px}.public-booking-state.is-error{color:var(--danger)}.public-slot-list{display:grid;gap:22px}.public-slot-day h2{margin:0 0 10px;font-size:15px}.public-slot-card{display:grid;gap:9px;margin-bottom:10px;padding:17px;border:1px solid var(--line);border-radius:var(--radius-card);background:var(--surface);box-shadow:var(--soft-shadow)}.public-slot-time{display:flex;align-items:center;justify-content:space-between;gap:10px}.public-slot-time strong{font-size:14px}.public-slot-time span{color:var(--accent);font-size:11px;font-weight:700}.public-slot-card h3{margin:0;font-size:14px}.public-slot-card p{margin:0;color:var(--ink-soft);font-size:12px;line-height:1.6;white-space:pre-wrap}.public-slot-card :deep(.el-button){justify-self:end;min-height:44px}.public-booking-footer{display:flex;justify-content:center;gap:9px;margin-top:28px;color:var(--muted);font-size:10px}.public-booking-footer a{color:var(--muted)}.selected-slot-summary{display:grid;gap:5px;padding:12px;margin-bottom:13px;border-radius: var(--radius-control);background:var(--surface-soft)}.selected-slot-summary small{color:var(--muted);font-size:10px}.selected-slot-summary strong{font-size:14px}.selected-slot-summary b{font-size:12px}.selected-slot-summary p{margin:0;color:var(--ink-soft);font-size:11px;white-space:pre-wrap}.booking-receipt{display:grid;justify-items:center;gap:9px;text-align:center}.booking-receipt>.el-icon{display:grid;width:43px;height:43px;place-items:center;border-radius:50%;background:var(--accent-soft);color:var(--accent);font-size:24px}.booking-receipt p{margin:0;font-size:13px}.booking-receipt small{color:var(--muted);font-size:11px;line-height:1.5}.booking-receipt strong{padding:10px 18px;border:1px dashed var(--line-strong);border-radius: var(--radius-control);font-size:20px;letter-spacing:.12em}
 @media(max-width:560px){.public-booking-page{padding:17px 13px calc(80px + env(safe-area-inset-bottom))}.public-booking-intro{padding-top:30px}.public-slot-card{padding:14px}.public-slot-card :deep(.el-button){width:100%}}
 </style>

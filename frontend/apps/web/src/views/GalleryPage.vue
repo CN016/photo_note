@@ -98,7 +98,7 @@ onBeforeUnmount(() => { if (searchTimer !== undefined) window.clearTimeout(searc
     <main class="gallery-main">
       <section class="gallery-intro">
         <div><p class="eyebrow">{{ t('common.product') }}</p><h1>{{ t('gallery.title') }}</h1><p class="gallery-subtitle">{{ t('gallery.subtitle') }}</p></div>
-        <RouterLink custom to="/inspirations/new" v-slot="{ navigate }"><el-button class="primary-button add-button" type="primary" @click="navigate"><el-icon aria-hidden="true"><Plus /></el-icon>{{ t('gallery.newImage') }}</el-button></RouterLink>
+        <RouterLink custom to="/inspirations/new" v-slot="{ navigate }"><el-button class="primary-button add-button" type="primary" :aria-label="t('gallery.newImage')" :title="t('gallery.newImage')" @click="navigate"><el-icon aria-hidden="true"><Plus /></el-icon>{{ t('gallery.newImage') }}</el-button></RouterLink>
       </section>
 
       <nav class="gallery-subnav" :aria-label="t('gallery.sections')">
@@ -107,7 +107,7 @@ onBeforeUnmount(() => { if (searchTimer !== undefined) window.clearTimeout(searc
       </nav>
 
       <section class="gallery-tools" :aria-label="t('gallery.filters')">
-        <el-input v-model="searchQuery" class="gallery-search" :placeholder="t('gallery.searchPlaceholder')" clearable>
+        <el-input v-model="searchQuery" class="gallery-search" :aria-label="t('gallery.searchPlaceholder')" :placeholder="t('gallery.searchPlaceholder')" clearable>
           <template #prefix><el-icon aria-hidden="true"><Search /></el-icon></template>
         </el-input>
         <el-select v-model="selectedTagIDs" class="gallery-tag-select" multiple filterable collapse-tags collapse-tags-tooltip :placeholder="t('gallery.filterTags')" :max-collapse-tags="2">

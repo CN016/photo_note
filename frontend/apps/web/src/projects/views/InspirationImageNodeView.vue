@@ -178,20 +178,21 @@ onBeforeUnmount(() => { requestVersion += 1; if (url.value) URL.revokeObjectURL(
 </template>
 
 <style scoped>
+/* 界面表面与控件使用全局主题令牌；图片、文档和用户自选封面颜色保持原数据。 */
 .project-resource-node { position: relative; box-sizing: border-box; display: inline-block; max-width: calc(100% - 12px); margin: 6px; vertical-align: top; outline: none; cursor: grab; transition: width 150ms ease; }
 .project-resource-node:active { cursor: grabbing; }
 .project-resource-node.is-selected .project-resource-frame { outline: 2px solid var(--accent); outline-offset: 2px; }
-.project-resource-frame { display: grid; min-height: 80px; margin: 0; overflow: hidden; justify-items: center; border: 1px solid var(--line); border-radius: 8px; background: var(--surface-muted); cursor: inherit; }
+.project-resource-frame { display: grid; min-height: 80px; margin: 0; overflow: hidden; justify-items: center; border: 1px solid var(--line); border-radius: var(--radius-control); background: var(--surface-muted); cursor: inherit; }
 .project-resource-frame img { display: block; width: 100%; height: auto; max-height: 70vh; object-fit: contain; }
 .resource-placeholder { align-self: center; padding: 18px; color: var(--muted); font-size: 12px; text-align: center; }
-.resource-controls { position: absolute; top: -40px; right: 0; z-index: 5; display: flex; min-height: 34px; align-items: center; gap: 6px; padding: 3px 6px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); box-shadow: var(--shadow); cursor: default; }
+.resource-controls { position: absolute; top: -40px; right: 0; z-index: 5; display: flex; min-height: 34px; align-items: center; gap: 6px; padding: 3px 6px; border: 1px solid var(--line); border-radius: var(--radius-control); background: var(--surface-overlay); box-shadow: var(--shadow); cursor: default; }
 .resource-controls .el-button { width: 28px; height: 28px; margin: 0; padding: 4px; }
 .resource-drag-handle { display: grid; width: 28px; height: 28px; flex: 0 0 28px; place-items: center; color: var(--muted); cursor: grab; }
 .resource-width { display: flex; align-items: center; gap: 7px; color: var(--muted); font-size: 11px; }
 .resource-width input { width: 110px; margin: 0; accent-color: var(--accent); cursor: ew-resize; touch-action: pan-y; }
 .resource-width > span { min-width: 34px; text-align: right; }
 .inspiration-details { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(220px, .8fr); gap: 20px; align-items: start; }
-.inspiration-detail-image { display: grid; min-height: 220px; max-height: 65vh; place-items: center; overflow: hidden; border-radius: 8px; background: var(--surface-muted); }
+.inspiration-detail-image { display: grid; min-height: 220px; max-height: 65vh; place-items: center; overflow: hidden; border-radius: var(--radius-control); background: var(--surface-muted); }
 .inspiration-detail-image img { display: block; max-width: 100%; max-height: 65vh; object-fit: contain; }
 .inspiration-detail-content { display: grid; align-content: start; gap: 14px; min-width: 0; }
 .inspiration-detail-content h3 { margin: 0; overflow-wrap: anywhere; color: var(--ink); font-size: 15px; }
@@ -202,8 +203,11 @@ onBeforeUnmount(() => { requestVersion += 1; if (url.value) URL.revokeObjectURL(
 .inspiration-detail-state { padding: 42px 12px; color: var(--muted); text-align: center; }
 .inspiration-detail-state.is-error { color: var(--danger); }
 @media (max-width: 768px) {
-  .resource-controls { top: -38px; gap: 3px; padding: 3px; }
-  .resource-width input { width: 88px; }
+  /* 资源条与底部编辑工具栏错层，44px 操作区域无需挤入图片自身宽度。 */
+  .resource-controls { position: fixed; inset: auto 12px calc(72px + env(safe-area-inset-bottom)); min-height: 54px; justify-content: center; gap: 6px; padding: 4px; }
+  .resource-controls .el-button, .resource-drag-handle { width: 44px; height: 44px; min-height: 44px; flex: 0 0 44px; }
+  .resource-width { min-height: 44px; }
+  .resource-width input { width: 88px; height: 44px; }
   .inspiration-details { grid-template-columns: 1fr; gap: 14px; }
   .inspiration-detail-image { min-height: 150px; }
 }

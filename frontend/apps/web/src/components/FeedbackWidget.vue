@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { ChatLineRound, Plus } from '@element-plus/icons-vue'
-import type { UploadFile } from 'element-plus'
+import { ChatLineRound, Check, Plus } from '@element-plus/icons-vue'
+import type { InputInstance, UploadFile } from 'element-plus'
 import { api } from '../api/client'
 import { ApiError } from '../api/types'
 import { prepareImageUpload, type PreparedImageUpload } from '../imageUpload'
@@ -18,6 +18,7 @@ const preparing = ref(false)
 const submitting = ref(false)
 const submitted = ref(false)
 const error = ref('')
+const contentInput = ref<InputInstance>()
 const direction = computed<'btt' | 'rtl'>(() => mobile.value ? 'btt' : 'rtl')
 const drawerSize = computed(() => mobile.value ? 'min(78vh, 620px)' : '430px')
 const imageCount = computed(() => files.value.size)
@@ -29,6 +30,9 @@ function openFeedback() {
   submitted.value = false
   visible.value = true
 }
+
+/** 抽屉完成动画后聚焦文本框；关闭后仍保留草稿，提交期间冻结输入以避免请求和可见内容不一致。 */
+function focusContent() { if (!submitted.value) contentInput.value?.focus() }
 
 async function selectImage(file: UploadFile) {
   if (!file.raw || files.value.has(file.uid)) return
@@ -85,21 +89,21 @@ onBeforeUnmount(() => {
 
 <template>
   <div class="feedback-entry" :class="{ 'feedback-entry-editor': props.editorRoute, 'feedback-entry-no-nav': !props.hasMobileNav }">
-    <el-button class="feedback-trigger" type="primary" :aria-label="t('feedback.open')" @click="openFeedback">
+    <el-button class="feedback-trigger" :aria-label="t('feedback.open')" :title="t('feedback.open')" @click="openFeedback">
       <el-icon class="feedback-trigger-icon" aria-hidden="true"><ChatLineRound /></el-icon>
       <span class="feedback-trigger-label">{{ t('feedback.open') }}</span>
     </el-button>
   </div>
-  <el-drawer v-model="visible" :direction="direction" :size="drawerSize" :title="submitted ? t('feedback.successTitle') : t('feedback.title')" :append-to-body="true" :close-on-click-modal="!submitting" :before-close="beforeClose">
+  <el-drawer v-model="visible" :direction="direction" :size="drawerSize" :title="submitted ? t('feedback.successTitle') : t('feedback.title')" :append-to-body="true" :close-on-click-modal="!submitting" :before-close="beforeClose" @opened="focusContent">
     <div v-if="submitted" class="feedback-success" role="status" aria-live="polite">
-      <span class="feedback-success-mark" aria-hidden="true">✓</span>
+      <span class="feedback-success-mark" aria-hidden="true"><el-icon><Check /></el-icon></span>
       <h3>{{ t('feedback.successTitle') }}</h3>
       <p>{{ t('feedback.successMessage') }}</p>
       <el-button type="primary" @click="visible = false">{{ t('feedback.done') }}</el-button>
     </div>
     <div v-else class="feedback-panel">
       <p class="feedback-description">{{ t('feedback.description') }}</p>
-      <el-input v-model="content" type="textarea" :rows="6" maxlength="2000" show-word-limit :placeholder="t('feedback.contentPlaceholder')" />
+      <el-input ref="contentInput" v-model="content" type="textarea" :rows="6" maxlength="2000" show-word-limit :disabled="submitting" :aria-label="t('feedback.contentPlaceholder')" :placeholder="t('feedback.contentPlaceholder')" />
       <div class="feedback-image-label"><span>{{ t('feedback.images') }}</span><small>{{ t('feedback.imageCount', { count: imageCount }) }}</small></div>
       <el-upload :key="uploadKey" action="#" :auto-upload="false" list-type="picture-card" accept="image/*,.heic,.heif" multiple :limit="5" :on-change="selectImage" :on-remove="removeImage" :disabled="preparing || submitting">
         <el-icon class="upload-plus" aria-hidden="true"><Plus /></el-icon>
@@ -107,7 +111,7 @@ onBeforeUnmount(() => {
       <p class="feedback-upload-help">{{ t('feedback.imageHelp') }}</p>
       <p v-if="error" class="form-error" role="alert">{{ error }}</p>
       <div class="feedback-actions">
-        <el-button @click="visible = false">{{ t('common.cancel') }}</el-button>
+        <el-button :disabled="submitting" @click="visible = false">{{ t('common.cancel') }}</el-button>
         <el-button type="primary" :loading="preparing || submitting" @click="submit">{{ t('feedback.submit') }}</el-button>
       </div>
     </div>

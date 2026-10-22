@@ -7,6 +7,8 @@ import 'element-plus/es/components/message/style/css'
 import 'element-plus/es/components/notification/style/css'
 // ElMessageBox 通过服务方法调用，不会由模板组件的按需解析自动加载样式。
 import 'element-plus/es/components/message-box/style/css'
+// 引入组件库完整暗色令牌，确保日期选择器、菜单和挂到 body 的弹层共享暗色状态。
+import 'element-plus/theme-chalk/dark/css-vars.css'
 import './style.css'
 import { initializeTheme } from './theme'
 import { installBackendHealthMonitor } from './backendHealth'

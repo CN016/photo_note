@@ -140,22 +140,29 @@ onBeforeUnmount(() => { requestVersion += 1; disposePlayer(); if (url.value) URL
 </template>
 
 <style scoped>
+/* 界面表面与控件使用全局主题令牌；图片、文档和用户自选封面颜色保持原数据。 */
 .project-resource-node { position: relative; box-sizing: border-box; display: inline-block; max-width: calc(100% - 12px); margin: 6px; vertical-align: top; outline: none; cursor: grab; transition: width 150ms ease; }
 .project-resource-node:active { cursor: grabbing; }
 .project-resource-node.is-selected .attachment-frame { outline: 2px solid var(--accent); outline-offset: 2px; }
-.attachment-frame { display: grid; min-height: 64px; overflow: hidden; place-items: center; border: 1px solid var(--line); border-radius: 8px; background: var(--surface-muted); cursor: inherit; }
+.attachment-frame { display: grid; min-height: 64px; overflow: hidden; place-items: center; border: 1px solid var(--line); border-radius: var(--radius-control); background: var(--surface-muted); cursor: inherit; }
 .attachment-inline-image { display: block; width: 100%; height: auto; max-height: 70vh; object-fit: contain; }
 .attachment-frame :deep(.video-js) { width: 100%; max-height: 70vh; aspect-ratio: 16 / 9; }
 .attachment-file { display: flex; width: 100%; min-height: 64px; align-items: center; gap: 12px; padding: 14px; color: var(--ink); text-align: left; }
-.attachment-file-mark { display: grid; width: 43px; height: 43px; flex: 0 0 43px; place-items: center; border-radius: 7px; background: var(--accent-soft); color: var(--accent-hover); font-size: 11px; font-weight: 800; }
+.attachment-file-mark { display: grid; width: 43px; height: 43px; flex: 0 0 43px; place-items: center; border-radius: var(--radius-control); background: var(--accent-soft); color: var(--accent-hover); font-size: 11px; font-weight: 800; }
 .attachment-file > span:last-child { display: grid; min-width: 0; gap: 4px; }
 .attachment-file strong { overflow: hidden; font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
 .attachment-file small { color: var(--muted); font-size: 10px; }
-.resource-controls { position: absolute; top: -40px; right: 0; z-index: 5; display: flex; min-height: 34px; align-items: center; gap: 6px; padding: 3px 6px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); box-shadow: var(--shadow); cursor: default; }
+.resource-controls { position: absolute; top: -40px; right: 0; z-index: 5; display: flex; min-height: 34px; align-items: center; gap: 6px; padding: 3px 6px; border: 1px solid var(--line); border-radius: var(--radius-control); background: var(--surface-overlay); box-shadow: var(--shadow); cursor: default; }
 .resource-controls .el-button { width: 28px; height: 28px; margin: 0; padding: 4px; }
 .resource-drag-handle { display: grid; width: 28px; height: 28px; flex: 0 0 28px; place-items: center; color: var(--muted); cursor: grab; }
 .resource-width { display: flex; align-items: center; gap: 7px; color: var(--muted); font-size: 11px; }
 .resource-width input { width: 110px; margin: 0; accent-color: var(--accent); cursor: ew-resize; touch-action: pan-y; }
 .resource-width > span { min-width: 34px; text-align: right; }
-@media (max-width: 768px) { .resource-controls { top: -38px; gap: 3px; padding: 3px; } .resource-width input { width: 88px; } }
+/* 手机上将资源操作固定在编辑工具栏上方，避免窄图片的浮动按钮超出屏幕。 */
+@media (max-width: 768px) {
+  .resource-controls { position: fixed; inset: auto 12px calc(72px + env(safe-area-inset-bottom)); min-height: 54px; justify-content: center; gap: 6px; padding: 4px; }
+  .resource-controls .el-button, .resource-drag-handle { width: 44px; height: 44px; min-height: 44px; flex: 0 0 44px; }
+  .resource-width { min-height: 44px; }
+  .resource-width input { width: 88px; height: 44px; }
+}
 </style>

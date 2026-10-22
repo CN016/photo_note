@@ -18,6 +18,7 @@ onBeforeUnmount(() => { requestVersion += 1; if (url.value) URL.revokeObjectURL(
 <template><span class="picker-image"><img v-if="url" :src="url" :alt="label" loading="lazy" /><span v-else>{{ label.slice(0, 1) }}</span></span></template>
 
 <style scoped>
-.picker-image { display: grid; width: 100%; aspect-ratio: 1; overflow: hidden; place-items: center; border-radius: 7px; background: var(--surface-muted); color: var(--muted); font-size: 24px; }
+/* 界面表面与控件使用全局主题令牌；图片、文档和用户自选封面颜色保持原数据。 */
+.picker-image { display: grid; width: 100%; aspect-ratio: 1; overflow: hidden; place-items: center; border-radius: var(--radius-control); background: var(--surface-muted); color: var(--muted); font-size: 24px; }
 .picker-image img { width: 100%; height: 100%; object-fit: cover; }
 </style>

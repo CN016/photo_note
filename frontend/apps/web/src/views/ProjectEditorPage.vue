@@ -264,8 +264,8 @@ onBeforeRouteLeave(async () => {
           <el-button size="small" :class="{ 'is-active': editor?.isActive({ textAlign: 'center' }) }" :title="t('projects.toolbar.alignCenter')" :aria-label="t('projects.toolbar.alignCenter')" @click="editor?.chain().focus().setTextAlign('center').run()"><el-icon><Operation /></el-icon></el-button>
           <el-button size="small" :class="{ 'is-active': editor?.isActive({ textAlign: 'right' }) }" :title="t('projects.toolbar.alignRight')" :aria-label="t('projects.toolbar.alignRight')" @click="editor?.chain().focus().setTextAlign('right').run()"><el-icon><Right /></el-icon></el-button>
         </el-button-group>
-        <el-button size="small" :title="t('projects.toolbar.insertInspiration')" @click="pickerOpen = true"><el-icon><Picture /></el-icon></el-button>
-        <el-button size="small" :title="t('projects.toolbar.uploadAttachment')" @click="attachmentInput?.click()"><el-icon><Paperclip /></el-icon></el-button>
+        <el-button size="small" :title="t('projects.toolbar.insertInspiration')" :aria-label="t('projects.toolbar.insertInspiration')" @click="pickerOpen = true"><el-icon><Picture /></el-icon></el-button>
+        <el-button size="small" :title="t('projects.toolbar.uploadAttachment')" :aria-label="t('projects.toolbar.uploadAttachment')" @click="attachmentInput?.click()"><el-icon><Paperclip /></el-icon></el-button>
         <input ref="attachmentInput" class="hidden-file-input" type="file" multiple accept="image/*,.gif,.mp4,.webm,.ogv,.pdf,.doc,.docx,.xls,.xlsx" @change="uploadFiles" />
       </div>
 
@@ -278,6 +278,7 @@ onBeforeRouteLeave(async () => {
 </template>
 
 <style scoped>
+/* 界面表面与控件使用全局主题令牌；图片、文档和用户自选封面颜色保持原数据。 */
 .project-editor-main { width: min(calc(100vw - 310px), 1120px); min-height: 100svh; margin-left: calc(226px + max(0px, (100vw - 1346px) / 2)); padding: 25px 0 90px; }
 .project-editor-main.is-loading { display: grid; place-items: center; }
 .project-editor-header { display: flex; align-items: center; justify-content: space-between; gap: 14px; margin-bottom: 16px; }
@@ -288,22 +289,26 @@ onBeforeRouteLeave(async () => {
 .project-title-input :deep(input) { height: 44px; color: var(--ink); font-size: clamp(20px, 3vw, 28px); font-weight: 700; }
 .project-save-status { flex: 0 0 auto; color: var(--muted); font-size: 11px; }
 .project-save-status.is-error { color: var(--danger); }
-.project-save-status.is-saved { color: var(--sage-ink); }
-.project-toolbar { position: sticky; top: 0; z-index: 8; display: flex; min-width: 0; align-items: center; gap: 5px; overflow-x: auto; padding: 8px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); box-shadow: var(--soft-shadow); scrollbar-width: thin; }
-.project-toolbar :deep(.el-button) { min-width: 33px; padding: 6px 8px; }
+.project-save-status.is-saved { color: var(--success); }
+.project-toolbar { position: sticky; top: 0; z-index: 8; display: flex; min-width: 0; align-items: center; gap: 5px; overflow-x: auto; padding: 8px; border: 1px solid var(--line); border-radius: var(--radius-control); background: var(--surface); box-shadow: var(--soft-shadow); scrollbar-width: thin; }
+.project-toolbar :deep(.el-button) { min-width: 40px; min-height: 40px; padding: 6px 8px; }
 .project-toolbar :deep(.el-button.is-active) { border-color: var(--accent); background: var(--accent-soft); color: var(--accent-hover); }
+/* 工具组保持自身宽度，由外层横向滚动承载，避免触控目标被 flex 压缩。 */
+.project-toolbar > * { flex-shrink: 0; }
+.project-toolbar :deep(.el-icon) { font-size: 18px; }
 .toolbar-font-size { width: 80px; flex: 0 0 80px; }
-.toolbar-color { position: relative; display: grid; width: 34px; height: 30px; flex: 0 0 34px; place-items: center; border: 1px solid var(--line); border-radius: 5px; color: var(--ink); cursor: pointer; }
+.toolbar-color { position: relative; display: grid; width: 40px; height: 40px; flex: 0 0 40px; place-items: center; border: 1px solid var(--line); border-radius: var(--radius-control); color: var(--ink); cursor: pointer; }
 .toolbar-color input { position: absolute; width: 1px; height: 1px; opacity: 0; }
+.toolbar-color:focus-within { outline: 3px solid var(--focus); outline-offset: 2px; }
 .hidden-file-input { display: none; }
-.project-editor-paper { min-height: 65vh; margin-top: 18px; padding: 36px clamp(20px, 5vw, 72px) 70px; border: 1px solid var(--line); border-radius: 9px; background: var(--surface); box-shadow: var(--soft-shadow); }
+.project-editor-paper { min-height: 65vh; margin-top: 18px; padding: 36px clamp(20px, 5vw, 72px) 70px; border: 1px solid var(--line); border-radius: var(--radius-card); background: var(--surface); box-shadow: var(--soft-shadow); }
 .project-editor-paper :deep(.ProseMirror) { min-height: 55vh; outline: none; color: var(--ink); font-size: 16px; line-height: 1.8; overflow-wrap: anywhere; }
 .project-editor-paper :deep(.ProseMirror > * + *) { margin-top: .7em; }
 .project-editor-paper :deep(.ProseMirror h1) { font-size: 2em; line-height: 1.25; }
 .project-editor-paper :deep(.ProseMirror h2) { font-size: 1.55em; line-height: 1.3; }
 .project-editor-paper :deep(.ProseMirror h3) { font-size: 1.25em; line-height: 1.4; }
 .project-editor-paper :deep(.ProseMirror blockquote) { margin: 1em 0; padding: 4px 16px; border-left: 3px solid var(--accent); color: var(--muted); }
-.project-editor-paper :deep(.ProseMirror pre) { overflow: auto; padding: 14px; border-radius: 7px; background: var(--surface-muted); font-size: 13px; }
+.project-editor-paper :deep(.ProseMirror pre) { overflow: auto; padding: 14px; border-radius: var(--radius-control); background: var(--surface-muted); font-size: 13px; }
 .project-editor-paper :deep(.ProseMirror table) { width: 100%; border-collapse: collapse; table-layout: fixed; }
 .project-editor-paper :deep(.ProseMirror td), .project-editor-paper :deep(.ProseMirror th) { min-width: 80px; padding: 7px; border: 1px solid var(--line); vertical-align: top; }
 .project-editor-paper :deep(.ProseMirror th) { background: var(--surface-muted); text-align: left; }
@@ -322,9 +327,9 @@ onBeforeRouteLeave(async () => {
   .project-title-area :deep(.project-cover-image) { width: 38px; height: 38px; flex-basis: 38px; font-size: 22px; }
   .project-title-input :deep(input) { height: 38px; font-size: 20px; }
   .project-save-status { order: 2; margin-left: auto; font-size: 9px; }
-  .project-toolbar { position: fixed; inset: auto 0 0; z-index: 20; min-height: calc(58px + env(safe-area-inset-bottom)); gap: 5px; padding: 7px 9px calc(7px + env(safe-area-inset-bottom)); border-width: 1px 0 0; border-radius: 0; background: var(--surface); box-shadow: 0 -8px 22px rgb(22 32 36 / 9%); }
-  .project-toolbar :deep(.el-button) { min-width: 34px; min-height: 36px; padding: 5px 7px; }
-  .toolbar-color { height: 34px; }
+  .project-toolbar { position: fixed; inset: auto 0 0; z-index: 20; min-height: calc(58px + env(safe-area-inset-bottom)); gap: 5px; padding: 7px 9px calc(7px + env(safe-area-inset-bottom)); border-width: 1px 0 0; border-radius: 0; background: var(--surface); box-shadow: var(--shadow); }
+  .project-toolbar :deep(.el-button) { min-width: 44px; min-height: 44px; padding: 5px 7px; }
+  .toolbar-color { width: 44px; height: 44px; flex-basis: 44px; }
   .project-editor-paper { min-height: 65vh; margin-top: 10px; padding: 22px 16px 32px; }
   .project-editor-paper :deep(.ProseMirror) { min-height: 60vh; font-size: 15px; }
 }

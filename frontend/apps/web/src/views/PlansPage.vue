@@ -194,6 +194,8 @@ function validateForm(): boolean {
 
 /** 保存完整编辑快照；时间显式按 +08:00 提交，提醒空集合交由服务端应用一小时默认值。 */
 async function save(): Promise<void> {
+  // 回车提交与按钮点击共用同一入口，处理中不重复创建计划或保存尚未完成的封面。
+  if (saving.value || uploadingCover.value) return
   if (!validateForm()) {
     ElMessage.warning(t('form.validation'))
     return
@@ -312,9 +314,9 @@ onBeforeUnmount(() => {
               <div class="plan-meta"><span><el-icon aria-hidden="true"><Calendar /></el-icon>{{ dateLabel(item) }}</span><span v-if="item.reminder_offsets.length"><el-icon aria-hidden="true"><Clock /></el-icon>{{ item.reminder_offsets.map(value => t('reminderLabel', { minutes: value })).join(' · ') }}</span></div>
             </div>
             <div class="plan-actions">
-              <el-button v-if="item.status === 'active'" circle type="success" plain :loading="busyPlanID === item.business_id" :aria-label="t('actions.complete')" @click="complete(item)"><el-icon aria-hidden="true"><Check /></el-icon></el-button>
-              <el-button v-if="item.status === 'active'" circle plain :aria-label="t('actions.edit')" @click="openForm(item)"><el-icon aria-hidden="true"><Edit /></el-icon></el-button>
-              <el-button circle type="danger" plain :loading="busyPlanID === item.business_id" :aria-label="t('actions.delete')" @click="remove(item)"><el-icon aria-hidden="true"><Delete /></el-icon></el-button>
+              <el-button v-if="item.status === 'active'" circle type="success" plain :loading="busyPlanID === item.business_id" :title="t('actions.complete')" :aria-label="t('actions.complete')" @click="complete(item)"><el-icon aria-hidden="true"><Check /></el-icon></el-button>
+              <el-button v-if="item.status === 'active'" circle plain :disabled="busyPlanID === item.business_id" :title="t('actions.edit')" :aria-label="t('actions.edit')" @click="openForm(item)"><el-icon aria-hidden="true"><Edit /></el-icon></el-button>
+              <el-button circle type="danger" plain :loading="busyPlanID === item.business_id" :title="t('actions.delete')" :aria-label="t('actions.delete')" @click="remove(item)"><el-icon aria-hidden="true"><Delete /></el-icon></el-button>
             </div>
           </article>
         </section>
@@ -328,8 +330,8 @@ onBeforeUnmount(() => {
     </template>
   </main>
 
-  <el-dialog v-model="dialogOpen" class="plans-dialog" :title="editing ? t('form.editTitle') : t('form.newTitle')" width="min(620px, calc(100vw - 28px))" destroy-on-close @closed="closeDialog">
-    <el-form label-position="top" @submit.prevent="save">
+  <el-dialog v-model="dialogOpen" class="plans-dialog" :title="editing ? t('form.editTitle') : t('form.newTitle')" width="min(620px, calc(100vw - 28px))" :close-on-click-modal="!saving && !uploadingCover" :close-on-press-escape="!saving && !uploadingCover" :show-close="!saving && !uploadingCover" destroy-on-close @closed="closeDialog">
+    <el-form label-position="top" :disabled="saving || uploadingCover" @submit.prevent="save">
       <el-form-item :label="t('form.title')" required>
         <el-input v-model="form.title" maxlength="120" show-word-limit :placeholder="t('form.titlePlaceholder')" />
       </el-form-item>
@@ -351,7 +353,7 @@ onBeforeUnmount(() => {
           <div class="cover-options">
             <div class="cover-options-heading"><strong>{{ t('form.emoji') }}</strong><el-button text :disabled="emojiLoadFailed" @click="loadCoverEmojis">{{ t('actions.chooseEmoji') }}</el-button></div>
             <div v-if="coverEmojis.length" class="emoji-grid" :aria-label="t('actions.chooseEmoji')">
-              <button v-for="emoji in coverEmojis" :key="emoji" type="button" :aria-label="emoji" :aria-pressed="form.cover_emoji === emoji" :class="{ selected: form.cover_emoji === emoji }" @click="chooseEmoji(emoji)">{{ emoji }}</button>
+              <button v-for="emoji in coverEmojis" :key="emoji" type="button" :disabled="saving || uploadingCover" :aria-label="emoji" :aria-pressed="form.cover_emoji === emoji" :class="{ selected: form.cover_emoji === emoji }" @click="chooseEmoji(emoji)">{{ emoji }}</button>
             </div>
             <p v-if="emojiLoadFailed" class="plan-form-error" role="alert">{{ t('form.emojiLoadFailed') }}</p>
             <div class="cover-upload-row">
@@ -375,35 +377,36 @@ onBeforeUnmount(() => {
       </el-form-item>
     </el-form>
     <template #footer>
-      <div class="plan-dialog-actions"><el-button @click="closeDialog">{{ t('actions.cancel') }}</el-button><el-button type="primary" :loading="saving || uploadingCover" :disabled="uploadingCover" @click="save">{{ saving ? t('actions.saving') : t('actions.save') }}</el-button></div>
+      <div class="plan-dialog-actions"><el-button :disabled="saving || uploadingCover" @click="closeDialog">{{ t('actions.cancel') }}</el-button><el-button type="primary" :loading="saving || uploadingCover" :disabled="uploadingCover" @click="save">{{ saving ? t('actions.saving') : t('actions.save') }}</el-button></div>
     </template>
   </el-dialog>
 </template>
 
 <style scoped>
+/* 界面表面与控件使用全局主题令牌；图片、文档和用户自选封面颜色保持原数据。 */
 .plans-main { width: min(960px, calc(100vw - 310px)); min-height: 100svh; margin: 0 42px 0 calc(226px + max(0px, (100vw - 1708px) / 2)); padding: 46px 0 88px; color: var(--ink); }
 .plans-heading { display: flex; align-items: center; justify-content: space-between; gap: 18px; }
 .plans-eyebrow { margin: 0 0 4px; color: var(--accent); font-size: 11px; font-weight: 750; letter-spacing: .12em; text-transform: uppercase; }
 .plans-heading h1 { margin: 0; font-size: clamp(27px, 3vw, 35px); letter-spacing: -.035em; }
 .plans-subtitle { margin: 8px 0 0; color: var(--muted); font-size: 13px; line-height: 1.55; }
-.add-plan-button { min-height: 44px; border-radius: 6px; font-weight: 700; }
-.plan-tabs { display: flex; gap: 7px; margin: 30px 0 22px; padding: 5px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface-soft); }
-.plan-tabs button { display: flex; min-width: 0; min-height: 42px; flex: 1; align-items: center; justify-content: center; gap: 8px; border: 0; border-radius: 5px; background: transparent; color: var(--muted); cursor: pointer; font: inherit; font-size: 12px; font-weight: 650; }
+.add-plan-button { min-height: 44px; border-radius: var(--radius-control); font-weight: 700; }
+.plan-tabs { display: flex; gap: 7px; margin: 30px 0 22px; padding: 5px; border: 1px solid var(--line); border-radius: var(--radius-control); background: var(--surface-soft); }
+.plan-tabs button { display: flex; min-width: 0; min-height: 42px; flex: 1; align-items: center; justify-content: center; gap: 8px; border: 0; border-radius: var(--radius-control); background: transparent; color: var(--muted); cursor: pointer; font: inherit; font-size: 12px; font-weight: 650; }
 .plan-tabs button span { display: grid; min-width: 20px; height: 20px; place-items: center; border-radius: 10px; background: var(--surface); color: var(--muted); font-size: 10px; }
-.plan-tabs button.active { background: var(--surface); color: var(--accent-hover); box-shadow: 0 1px 4px rgb(20 30 40 / 7%); }
+.plan-tabs button.active { background: var(--accent-soft); color: var(--accent-hover); box-shadow: 0 1px 4px rgb(20 30 40 / 7%); }
 .plan-tabs button.active span { background: var(--accent-soft); color: var(--accent-hover); }
 .plans-state { display: flex; min-height: 230px; align-items: center; justify-content: center; gap: 10px; flex-direction: column; color: var(--muted); font-size: 13px; text-align: center; }
 .plans-state.is-error { color: var(--danger); }
 .plans-state p { margin: 0; }
 .plan-groups { display: grid; gap: 24px; }
 .plan-group h2 { display: flex; align-items: center; gap: 9px; margin: 0 0 10px; color: var(--ink); font-size: 14px; font-weight: 750; }
-.group-marker { width: 3px; height: 16px; border-radius: 4px; background: var(--accent); }
+.group-marker { width: 3px; height: 16px; border-radius: var(--radius-control); background: var(--accent); }
 .plan-group h2 small { display: grid; min-width: 20px; height: 20px; place-items: center; border-radius: 10px; background: var(--surface-soft); color: var(--muted); font-size: 10px; }
-.plan-card { display: flex; min-width: 0; align-items: center; gap: 15px; margin-bottom: 8px; padding: 14px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); box-shadow: 0 3px 14px rgb(30 40 60 / 3%); transition: border-color .18s ease, transform .18s ease, box-shadow .18s ease; }
-.plan-card:hover { transform: translateY(-1px); border-color: color-mix(in srgb, var(--accent) 30%, var(--line)); box-shadow: 0 8px 22px rgb(30 40 60 / 7%); }
+.plan-card { display: flex; min-width: 0; align-items: center; gap: 15px; margin-bottom: 8px; padding: 14px; border: 1px solid var(--line); border-radius: var(--radius-card); background: var(--surface); box-shadow: var(--soft-shadow); transition: border-color .18s ease, box-shadow .18s ease; }
+.plan-card:hover { border-color: color-mix(in srgb, var(--accent) 30%, var(--line)); box-shadow: var(--soft-shadow); }
 .plan-card.is-completed { opacity: .72; }
 .plan-card.is-overdue { border-left: 3px solid var(--danger); }
-.plan-cover { display: grid; width: 68px; height: 68px; flex: 0 0 68px; place-items: center; overflow: hidden; border-radius: 8px; background: var(--accent-soft); }
+.plan-cover { display: grid; width: 68px; height: 68px; flex: 0 0 68px; place-items: center; overflow: hidden; border-radius: var(--radius-card); background: var(--accent-soft); }
 .plan-emoji { font-size: 30px; line-height: 1; }
 .plan-copy { min-width: 0; flex: 1; }
 .plan-title-row { display: flex; min-width: 0; align-items: center; flex-wrap: wrap; gap: 8px; }
@@ -414,12 +417,12 @@ onBeforeUnmount(() => {
 .plan-meta :deep(.el-icon) { color: var(--accent); font-size: 13px; }
 .plan-actions { display: flex; flex: 0 0 auto; align-items: center; gap: 5px; }
 .plan-actions :deep(.el-button) { width: 36px; height: 36px; margin: 0; }
-.plans-empty { display: grid; min-height: 310px; justify-items: center; align-content: center; padding: 30px 16px; border: 1px dashed var(--line-strong); border-radius: 8px; background: color-mix(in srgb, var(--surface) 75%, var(--surface-soft)); text-align: center; }
+.plans-empty { display: grid; min-height: 310px; justify-items: center; align-content: center; padding: 30px 16px; border: 1px dashed var(--line-strong); border-radius: var(--radius-card); background: color-mix(in srgb, var(--surface) 75%, var(--surface-soft)); text-align: center; }
 .empty-icon { display: grid; width: 54px; height: 54px; place-items: center; border-radius: 50%; background: var(--accent-soft); color: var(--accent); font-size: 24px; }
 .plans-empty h2 { margin: 15px 0 0; color: var(--ink); font-size: 15px; }
 .plans-empty p { margin: 7px 0 17px; color: var(--muted); font-size: 12px; }
 .cover-editor { display: flex; width: 100%; align-items: flex-start; gap: 14px; }
-.cover-preview { display: grid; width: 80px; height: 80px; flex: 0 0 80px; place-items: center; overflow: hidden; border-radius: 8px; background: var(--accent-soft); }
+.cover-preview { display: grid; width: 80px; height: 80px; flex: 0 0 80px; place-items: center; overflow: hidden; border-radius: var(--radius-card); background: var(--accent-soft); }
 .cover-add-placeholder { color: var(--accent); font-size: 24px; }
 .cover-preview img { width: 100%; height: 100%; object-fit: cover; }
 .cover-preview :deep(.plan-cover-image) { width: 80px; height: 80px; flex-basis: 80px; }
@@ -427,7 +430,7 @@ onBeforeUnmount(() => {
 .cover-options-heading { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 7px; color: var(--ink-soft); font-size: 11px; }
 .cover-options-heading :deep(.el-button) { min-height: 30px; padding: 0 4px; font-size: 10px; }
 .emoji-grid { display: flex; flex-wrap: wrap; gap: 5px; }
-.emoji-grid button { display: grid; width: 37px; height: 37px; place-items: center; border: 1px solid var(--line); border-radius: 6px; background: var(--surface); cursor: pointer; font-size: 20px; }
+.emoji-grid button { display: grid; width: 40px; height: 40px; place-items: center; border: 1px solid var(--line); border-radius: var(--radius-control); background: var(--surface); cursor: pointer; font-size: 20px; }
 .emoji-grid button.selected { border-color: var(--accent); background: var(--accent-soft); box-shadow: 0 0 0 1px var(--accent); }
 .cover-upload-row { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin-top: 9px; }
 .cover-upload-row :deep(.el-button) { min-height: 36px; }
@@ -440,16 +443,20 @@ onBeforeUnmount(() => {
 .reminder-row > span { color: var(--muted); font-size: 11px; }
 .plan-dialog-actions { display: flex; justify-content: flex-end; gap: 8px; }
 .visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; clip-path: inset(50%); }
-@media (max-width: 900px) { .plans-main { width: calc(100% - 34px); margin: 0 auto; padding: 30px 0 calc(105px + env(safe-area-inset-bottom)); } }
+@media (max-width: 768px) { .plans-main { width: calc(100% - 34px); margin: 0 auto; padding: 30px 0 calc(105px + env(safe-area-inset-bottom)); } }
+@media (max-width: 768px) {
+  .plan-actions :deep(.el-button), .emoji-grid button { width: 44px; height: 44px; min-height: 44px; }
+  .plan-tabs button, .cover-options-heading :deep(.el-button), .cover-upload-row :deep(.el-button) { min-height: 44px; }
+}
 @media (max-width: 560px) {
   .plans-main { width: calc(100% - 24px); padding-top: 23px; }
   .plans-heading { align-items: flex-start; }
   .plans-heading h1 { font-size: 27px; }
   .plans-subtitle { max-width: 250px; font-size: 11px; }
-  .add-plan-button { min-height: 42px; padding: 0 10px; font-size: 11px; }
+  .add-plan-button { min-height: 44px; padding: 0 10px; font-size: 11px; }
   .plan-tabs { margin: 22px 0 17px; gap: 3px; padding: 4px; }
-  .plan-tabs button { min-height: 40px; gap: 5px; font-size: 11px; }
-  .plan-card { align-items: flex-start; gap: 10px; padding: 11px 9px; }
+  .plan-tabs button { min-height: 44px; gap: 5px; font-size: 11px; }
+  .plan-card { display: grid; grid-template-columns: 50px minmax(0, 1fr); align-items: start; gap: 10px; padding: 12px; }
   .plan-cover { width: 50px; height: 50px; flex-basis: 50px; }
   .plan-cover :deep(.plan-cover-image) { width: 50px; height: 50px; flex-basis: 50px; }
   .plan-emoji { font-size: 24px; }
@@ -457,16 +464,18 @@ onBeforeUnmount(() => {
   .plan-title-row :deep(.el-tag) { height: 20px; padding: 0 6px; font-size: 9px; }
   .plan-description { font-size: 11px; }
   .plan-meta { display: grid; gap: 5px; font-size: 9px; }
-  .plan-actions { gap: 1px; margin-left: auto; }
-  .plan-actions :deep(.el-button) { width: 30px; height: 30px; }
+  /* 操作移到正文下方，44px 按钮不会压缩标题与描述。 */
+  .plan-actions { grid-column: 2; justify-self: end; gap: 4px; margin-left: 0; }
+  .plan-actions :deep(.el-button) { width: 44px; height: 44px; min-height: 44px; }
   .plan-actions :deep(.el-button + .el-button) { margin-left: 0; }
   .cover-editor { gap: 10px; }
   .cover-preview { width: 62px; height: 62px; flex-basis: 62px; }
   .cover-preview :deep(.plan-cover-image) { width: 62px; height: 62px; flex-basis: 62px; }
   .emoji-grid { gap: 4px; }
-  .emoji-grid button { width: 32px; height: 32px; font-size: 17px; }
+  .emoji-grid button { width: 44px; height: 44px; font-size: 20px; }
   .reminder-row :deep(.el-input-number) { width: 138px; }
-  .reminder-row > span { font-size: 10px; }
+  .reminder-row > span { font-size: 11px; }
+  .cover-options-heading :deep(.el-button), .cover-upload-row :deep(.el-button) { min-height: 44px; }
 }
 </style>
 
