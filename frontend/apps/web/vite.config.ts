@@ -16,7 +16,8 @@ export default defineConfig(({ mode }) => {
     plugins: [
       vue(),
       AutoImport({ resolvers: [ElementPlusResolver()] }),
-      Components({ resolvers: [ElementPlusResolver({ importStyle: 'css' })] }),
+      // 构建阶段复用已提交的声明，避免 Windows 并发写入 components.d.ts 失败。
+      Components({ resolvers: [ElementPlusResolver({ importStyle: 'css' })], dts: mode !== 'production' }),
     ],
     resolve: {
       alias: [

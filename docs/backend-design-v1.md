@@ -170,8 +170,9 @@ GORM 关联迁移默认可能创建外键；配置 `DisableForeignKeyConstraintW
 | `GET /configs/public` | 否 | 可重复传 `keys` 筛选；只查询 `is_public=true` | `items` 中仅包含 `key`、`value` |
 | `POST /feedback` | 可选 AT | multipart：`content`，重复的 `images` 文件字段；允许游客 | `received: true` |
 | `GET /public-feedback-images/{storekey}` | 否 | 仅接受带反馈公共标记的图片 key | 实际图片二进制流 |
-| `GET /users/me` | AT | 无 | 当前用户 `business_id`、昵称、手机号、头像 key、`is_admin` 和时间字段 |
+| `GET /users/me` | AT | 无 | 当前用户 `business_id`、昵称、手机号、头像 key、`is_admin`、`extra` 和时间字段 |
 | `PATCH /users/me` | AT | 可选 `nickname`, `avatar_key` | 更新后的当前用户资料 |
+| `PATCH /users/me/statistics-chart-mode` | AT | `dimension`, `mode` | 原子更新 `extra.statistics_chart_modes[dimension]` 后的当前用户资料；其他 `extra` 键保持不变 |
 | `POST /users/me/password` | AT | `current_password`, `new_password` | `204`；保留当前设备并撤销其他设备会话 |
 | `GET /tags` | AT | 分页参数、可选名称关键词 `q` | 当前用户标签列表 |
 | `POST /tags` | AT | `content` | 新建标签及其业务 UUID |
@@ -247,7 +248,7 @@ JSON 请求和响应使用 UTF-8；日期时间以 RFC 3339 格式返回。创�
 }
 ```
 
-刷新请求为 `{ "refresh_token": "..." }`，响应 `data.tokens`，不要求有效 Access Token。`GET /users/me` 和 `PATCH /users/me` 的资料对象使用 `business_id`、`nickname`、`phone`、`avatar_key`、`is_admin`、`created_at`、`updated_at` 字段；PATCH 仅允许更新昵称和头像 key，`is_admin` 由受信角色接口管理。
+刷新请求为 `{ "refresh_token": "..." }`，响应 `data.tokens`，不要求有效 Access Token。`GET /users/me` 和 `PATCH /users/me` 的资料对象使用 `business_id`、`nickname`、`phone`、`avatar_key`、`is_admin`、`extra`、`created_at`、`updated_at` 字段；普通 PATCH 仅允许更新昵称和头像 key，`is_admin` 由受信角色接口管理。统计图表偏好通过 `PATCH /users/me/statistics-chart-mode` 更新：请求体为 `{ "dimension": "camera_models", "mode": "donut" }`，服务端校验维度与模式后，仅更新当前用户 `extra.statistics_chart_modes` 对象中的一个维度键；`collection_months` 表示收藏趋势。响应为更新后的资料对象，不允许客户端整体覆盖 `extra`。
 
 标签创建和更新请求为 `{ "content": "标签内容" }`，内容最多 64 个字符；同一用户不能创建或改名为已存在的标签内容。标签响应为 `{ "business_id": "uuid", "content": "...", "created_at": "...", "updated_at": "..." }`。标签列表的 `data` 为 `{ "items": [...], "page": 1, "page_size": 20, "total": 0 }`，可通过可选 `q` 对名称执行不区分大小写的包含搜索。
 

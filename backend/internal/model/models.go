@@ -63,6 +63,8 @@ type User struct {
 	Phone        string  `gorm:"column:phone;type:varchar(11);not null;uniqueIndex"`
 	PasswordHash string  `gorm:"column:password_hash;type:text;not null" json:"-"`
 	AvatarKey    *string `gorm:"column:avatar_key;type:text"`
+	// Extra 仅保存用户私有展示偏好；公开响应由 userDTO 显式选择字段。
+	Extra JSONB `gorm:"column:extra;type:jsonb;not null;default:'{}'"`
 	// IsAdmin 由数据库运维指定，任何注册或个人资料请求都不能修改此权限。
 	IsAdmin bool `gorm:"column:is_admin;type:boolean;not null;default:false"`
 }

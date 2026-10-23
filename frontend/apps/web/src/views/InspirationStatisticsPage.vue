@@ -3,14 +3,65 @@ import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { Aim, Camera, DataAnalysis, Picture, Sunny, Timer, TrendCharts } from '@element-plus/icons-vue'
 import AppHeader from '../components/AppHeader.vue'
+import StatisticsChart from '../components/StatisticsChart.vue'
 import { api } from '../api/client'
 import { ApiError, type InspirationStatisticBucket, type InspirationStatistics } from '../api/types'
+import { useAuthStore } from '../stores/auth'
+import { ElMessage } from 'element-plus'
 
 const { t, locale } = useI18n()
 const statistics = ref<InspirationStatistics | null>(null)
+const auth = useAuthStore()
+const chartModes = ref<Record<string, string>>({})
+const savingModes = ref<Record<string, boolean>>({})
+const metricModes = ['donut', 'pie', 'rose', 'bar', 'column', 'treemap', 'radar', 'scatter']
+const trendModes = ['column', 'line', 'area', 'bar', 'lollipop', 'step', 'scatter']
 const loading = ref(false)
 const error = ref('')
 let requestVersion = 0
+
+/** 只接受已知模式，旧版本或损坏偏好自动回落到各卡片默认展示。 */
+function modeFor(key: string): string {
+  const choices = key === 'collection_months' ? trendModes : metricModes
+  const selected = chartModes.value[key]
+  return choices.includes(selected) ? selected : key === 'collection_months' ? 'column' : 'donut'
+}
+
+/** 单卡片切换即时生效，失败时回退并提示；同一卡片保存期间不可重复提交。 */
+async function changeMode(key: string, mode: string) {
+  if (savingModes.value[key] || mode === modeFor(key)) return
+  const previous = modeFor(key)
+  chartModes.value = { ...chartModes.value, [key]: mode }
+  savingModes.value = { ...savingModes.value, [key]: true }
+  try {
+    await api.updateStatisticsChartMode(key, mode)
+    if (auth.user) auth.user.extra = { ...(auth.user.extra || {}), statistics_chart_modes: { ...(auth.user.extra?.statistics_chart_modes || {}), [key]: mode } }
+  } catch {
+    chartModes.value = { ...chartModes.value, [key]: previous }
+    ElMessage.error(t('statistics.saveModeError'))
+  } finally {
+    savingModes.value = { ...savingModes.value, [key]: false }
+  }
+}
+
+/** 使用当前用户资料中的持久化偏好，不依赖本地浏览器存储。 */
+async function loadModes() {
+  try {
+    const user = auth.user || await api.currentUser()
+    chartModes.value = { ...(user.extra?.statistics_chart_modes || {}) }
+  } catch {
+    chartModes.value = {}
+  }
+}
+
+function chartLabels(key: string, items: InspirationStatisticBucket[]): string[] {
+  return items.map(item => bucketLabel(key, item.value))
+}
+
+function chartPercent(count: number, items: InspirationStatisticBucket[]): string {
+  const total = items.reduce((sum, item) => sum + item.count, 0)
+  return new Intl.NumberFormat(locale.value, { style: 'percent', maximumFractionDigits: 1 }).format(total ? count / total : 0)
+}
 
 /** 统一固定区间的展示顺序，确保不同拍摄参数的图表能直观比较。 */
 const bucketOrders: Record<string, string[]> = {
@@ -98,17 +149,6 @@ function formatCount(value: number): string {
   return new Intl.NumberFormat(locale.value, { maximumFractionDigits: 0 }).format(value)
 }
 
-/** 为同一属性分组中的横向条形图确定共同最大值。 */
-function maximumCount(items: InspirationStatisticBucket[]): number {
-  return Math.max(1, ...items.map(item => item.count))
-}
-
-/** 将某个分组的数量换算为相对宽度；零值保留为无填充轨道。 */
-function barWidth(item: InspirationStatisticBucket, items: InspirationStatisticBucket[]): string {
-  if (item.count === 0) return '0%'
-  return `${Math.max(3, item.count / maximumCount(items) * 100)}%`
-}
-
 /** 生成包含完整年月和数量的月份悬停提示。 */
 function monthTitle(item: InspirationStatisticBucket): string {
   const [year, month] = item.value.split('-').map(Number)
@@ -116,13 +156,7 @@ function monthTitle(item: InspirationStatisticBucket): string {
   return t('statistics.monthTooltip', { month: monthName, count: formatCount(item.count) })
 }
 
-/** 按最近 12 个月的共同最大值确定竖向柱高，并给零值保留基线。 */
-function monthBarHeight(item: InspirationStatisticBucket, items: InspirationStatisticBucket[]): string {
-  if (item.count === 0) return '2px'
-  return `${Math.max(5, item.count / maximumCount(items) * 100)}%`
-}
-
-onMounted(() => { void loadStatistics() })
+onMounted(() => { void loadStatistics(); void loadModes() })
 onBeforeUnmount(() => { requestVersion += 1 })
 </script>
 
@@ -166,29 +200,25 @@ onBeforeUnmount(() => { requestVersion += 1 })
         </div>
 
         <section class="statistics-card statistics-collection-card" :aria-label="t('statistics.collectionTitle')">
-          <header class="statistics-card-header"><span class="statistics-card-icon"><el-icon aria-hidden="true"><TrendCharts /></el-icon></span><div><h2>{{ t('statistics.collectionTitle') }}</h2><p>{{ t('statistics.collectionDescription') }}</p></div></header>
-          <div class="statistics-month-scroll">
-            <div class="statistics-month-chart" role="list" :aria-label="t('statistics.collectionTitle')">
-              <div v-for="month in statistics.collection_months" :key="month.value" class="statistics-month-column" role="listitem" :aria-label="monthTitle(month)" :title="monthTitle(month)">
-                <span class="statistics-month-count">{{ month.count ? formatCount(month.count) : '' }}</span>
-                <div class="statistics-month-track" aria-hidden="true"><span :style="{ height: monthBarHeight(month, statistics.collection_months) }"></span></div>
-                <span class="statistics-month-label">{{ bucketLabel('collection_months', month.value) }}</span>
-              </div>
-            </div>
-          </div>
+          <header class="statistics-card-header"><span class="statistics-card-icon"><el-icon aria-hidden="true"><TrendCharts /></el-icon></span><div><h2>{{ t('statistics.collectionTitle') }}</h2><p>{{ t('statistics.collectionDescription') }}</p></div>
+            <el-select class="statistics-mode-select" :aria-label="t('statistics.chartModeFor', { name: t('statistics.collectionTitle') })" :model-value="modeFor('collection_months')" :disabled="savingModes.collection_months" @change="(value: string) => changeMode('collection_months', value)"><el-option v-for="mode in trendModes" :key="mode" :label="t(`statistics.chartModes.${mode}`)" :value="mode" /></el-select>
+          </header>
+          <StatisticsChart :items="statistics.collection_months" :labels="chartLabels('collection_months', statistics.collection_months)" :mode="modeFor('collection_months')" trend />
+          <ol class="statistics-chart-legend statistics-trend-legend"><li v-for="month in statistics.collection_months" :key="month.value"><span>{{ monthTitle(month) }}</span></li></ol>
         </section>
 
         <div class="statistics-grid">
           <article v-for="group in metricSections" :key="group.key" class="statistics-card statistics-metric-card">
             <header class="statistics-card-header">
               <span class="statistics-card-icon"><el-icon aria-hidden="true"><component :is="group.icon" /></el-icon></span>
-              <div class="statistics-card-heading"><h2>{{ group.title }}</h2><small v-if="group.top">{{ t('statistics.topFive') }}</small></div>
+              <div class="statistics-card-heading"><h2>{{ group.title }}</h2><small v-if="group.top">{{ t('statistics.topFiveShare') }}</small></div>
+              <el-select class="statistics-mode-select" :aria-label="t('statistics.chartModeFor', { name: group.title })" :model-value="modeFor(group.key)" :disabled="savingModes[group.key] || !group.items.length" @change="(value: string) => changeMode(group.key, value)"><el-option v-for="mode in metricModes" :key="mode" :label="t(`statistics.chartModes.${mode}`)" :value="mode" /></el-select>
             </header>
             <p v-if="group.key === 'focal_lengths'" class="statistics-card-note">{{ t('statistics.focalDescription') }}</p>
-            <ol v-if="group.items.length" class="statistics-ranking">
+            <StatisticsChart v-if="group.items.length" :items="orderedBuckets(group.key, group.items)" :labels="chartLabels(group.key, orderedBuckets(group.key, group.items))" :mode="modeFor(group.key)" />
+            <ol v-if="group.items.length" class="statistics-chart-legend">
               <li v-for="(item, index) in orderedBuckets(group.key, group.items)" :key="item.value">
-                <div class="statistics-ranking-label"><span v-if="group.top" class="statistics-rank">{{ index + 1 }}</span><span class="statistics-value">{{ bucketLabel(group.key, item.value) }}</span><span class="statistics-count">{{ t('statistics.photoCount', { count: formatCount(item.count) }) }}</span></div>
-                <div class="statistics-bar-track" aria-hidden="true"><span :style="{ width: barWidth(item, group.items) }"></span></div>
+                <span class="statistics-chart-swatch" :style="{ '--chart-index': index }"></span><span class="statistics-value">{{ bucketLabel(group.key, item.value) }}</span><span class="statistics-count">{{ t('statistics.photoCount', { count: formatCount(item.count) }) }} · {{ chartPercent(item.count, orderedBuckets(group.key, group.items)) }}</span>
               </li>
             </ol>
             <p v-else class="statistics-no-data">{{ t('statistics.noData') }}</p>

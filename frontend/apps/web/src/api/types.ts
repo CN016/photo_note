@@ -15,6 +15,7 @@ export interface UserProfile {
   nickname: string
   phone: string
   avatar_key: string | null
+  extra: { statistics_chart_modes?: Record<string, string>; [key: string]: unknown }
   is_admin: boolean
   orgid: number
   organization_role: 'personal' | 'admin' | 'member'

@@ -1004,6 +1004,19 @@ button.image-anchor:hover .image-anchor-label { background: rgb(20 22 23 / 64%);
 .statistics-card-heading small { color: var(--muted); font-size: 9px; font-weight: 700; letter-spacing: .06em; }
 .statistics-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: stretch; gap: 14px; }
 .statistics-metric-card { display: flex; min-height: 200px; flex-direction: column; }
+.statistics-card-header .statistics-mode-select { width: 150px; margin-left: auto; flex: 0 0 auto; }
+.statistics-echart { width: 100%; height: 240px; margin-top: 8px; }
+.statistics-collection-card .statistics-echart { height: 260px; }
+.statistics-chart-legend { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 9px 16px; margin: 8px 0 0; padding: 0; list-style: none; }
+.statistics-chart-legend li { display: flex; min-width: 0; align-items: center; gap: 7px; }
+.statistics-chart-legend .statistics-value { flex: 1; }
+.statistics-chart-swatch { width: 9px; height: 9px; flex: 0 0 auto; border-radius: 2px; background: var(--accent); }
+.statistics-chart-legend li:nth-child(6n + 2) .statistics-chart-swatch { background: #65a9e8; }
+.statistics-chart-legend li:nth-child(6n + 3) .statistics-chart-swatch { background: #7c79d5; }
+.statistics-chart-legend li:nth-child(6n + 4) .statistics-chart-swatch { background: #48b5a0; }
+.statistics-chart-legend li:nth-child(6n + 5) .statistics-chart-swatch { background: #e7a85a; }
+.statistics-trend-legend { grid-template-columns: repeat(4,minmax(0,1fr)); }
+.statistics-trend-legend li { color: var(--muted); font-size: 10px; }
 .statistics-ranking { display: grid; gap: 12px; margin: 19px 0 0; padding: 0; list-style: none; }
 .statistics-ranking li { display: grid; gap: 6px; min-width: 0; }
 .statistics-ranking-label { display: flex; min-width: 0; align-items: center; gap: 8px; }
@@ -1049,6 +1062,10 @@ button.image-anchor:hover .image-anchor-label { background: rgb(20 22 23 / 64%);
   .statistics-content { gap: 12px; margin-top: 17px; }
   .statistics-card { padding: 16px; }
   .statistics-metric-card { min-height: 180px; }
+  .statistics-card-header { flex-wrap: wrap; }
+  .statistics-card-header .statistics-mode-select { width: 135px; }
+  .statistics-chart-legend, .statistics-trend-legend { grid-template-columns: 1fr 1fr; }
+  .statistics-echart { height: 225px; }
   .statistics-month-chart { min-width: 530px; }
 }
 

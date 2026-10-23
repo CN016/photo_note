@@ -130,6 +130,9 @@ func checkSchema(ctx context.Context, connection *gorm.DB) error {
 		if name == "users" && !connection.WithContext(ctx).Migrator().HasColumn(table, "IsAdmin") {
 			return fmt.Errorf("PostgreSQL schema 缺少 users.is_admin，请先执行 backend/migrations/000015_console_roles_feedback_and_secret_configs.sql")
 		}
+		if name == "users" && !connection.WithContext(ctx).Migrator().HasColumn(table, "Extra") {
+			return fmt.Errorf("PostgreSQL schema 缺少 users.extra，请先执行 backend/migrations/000022_user_statistics_chart_modes.sql")
+		}
 		if name == "feedbacks" && !connection.WithContext(ctx).Migrator().HasColumn(table, "Status") {
 			return fmt.Errorf("PostgreSQL schema 缺少 feedbacks.feedback_status，请先执行 backend/migrations/000015_console_roles_feedback_and_secret_configs.sql")
 		}

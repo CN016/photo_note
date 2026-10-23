@@ -55,6 +55,7 @@ declare module 'vue' {
     ProjectCoverImage: typeof import('./src/components/ProjectCoverImage.vue')['default']
     RouterLink: typeof import('vue-router')['RouterLink']
     RouterView: typeof import('vue-router')['RouterView']
+    StatisticsChart: typeof import('./src/components/StatisticsChart.vue')['default']
     ThemeSwitcher: typeof import('./src/components/ThemeSwitcher.vue')['default']
     WebhookProviderLogo: typeof import('./src/components/WebhookProviderLogo.vue')['default']
   }

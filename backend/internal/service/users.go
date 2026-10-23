@@ -16,6 +16,29 @@ type UserService struct {
 	users UserRepository
 }
 
+// 允许的统计维度和模式由服务端固定校验，避免客户端写入任意 extra 路径。
+var statisticsChartModes = map[string]map[string]bool{
+	"collection_months": {"column": true, "line": true, "area": true, "bar": true, "lollipop": true, "step": true, "scatter": true},
+	"camera_models":     {}, "lens_models": {}, "focal_lengths": {}, "apertures": {},
+	"iso_speeds": {}, "exposure_times": {}, "flash_usage": {}, "aspect_ratios": {},
+	"megapixels": {}, "color_spaces": {},
+}
+
+// UpdateStatisticsChartMode 只更新当前用户指定统计卡片的展示方式。
+func (service *UserService) UpdateStatisticsChartMode(ctx context.Context, userID uuid.UUID, dimension, mode string) (model.User, error) {
+	allowed, exists := statisticsChartModes[dimension]
+	if !exists {
+		return model.User{}, fault.InvalidField("dimension", "统计维度无效")
+	}
+	if dimension != "collection_months" {
+		allowed = map[string]bool{"donut": true, "pie": true, "rose": true, "bar": true, "column": true, "treemap": true, "radar": true, "scatter": true}
+	}
+	if !allowed[mode] {
+		return model.User{}, fault.InvalidField("mode", "图表模式无效")
+	}
+	return service.users.UpdateStatisticsChartMode(tenant.System(ctx), userID, dimension, mode)
+}
+
 // NewUserService 使用与认证服务相同的 repository 接口构造用户资料服务。
 func NewUserService(users UserRepository) *UserService {
 	return &UserService{users: users}

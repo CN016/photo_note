@@ -147,6 +147,21 @@ func (store *PostgresStore) UpdateUserProfile(ctx context.Context, userID uuid.U
 	return store.FindUserByBusinessID(ctx, userID)
 }
 
+// UpdateStatisticsChartMode 用单条 SQL 更新 JSONB 的一个键，避免并发切换覆盖其他卡片偏好。
+func (store *PostgresStore) UpdateStatisticsChartMode(ctx context.Context, userID uuid.UUID, dimension, mode string) (model.User, error) {
+	result := store.db.WithContext(ctx).Model(&model.User{}).Where("business_id = ?", userID).Updates(map[string]any{
+		"extra":      gorm.Expr("jsonb_set(jsonb_set(COALESCE(extra, '{}'::jsonb), '{statistics_chart_modes}', CASE WHEN jsonb_typeof(extra->'statistics_chart_modes') = 'object' THEN extra->'statistics_chart_modes' ELSE '{}'::jsonb END, true), ARRAY['statistics_chart_modes', ?]::text[], to_jsonb(?::text), true)", dimension, mode),
+		"updated_at": time.Now().UTC(),
+	})
+	if result.Error != nil {
+		return model.User{}, persistenceError(result.Error)
+	}
+	if result.RowsAffected == 0 {
+		return model.User{}, fault.NotFound()
+	}
+	return store.FindUserByBusinessID(ctx, userID)
+}
+
 // ListTags 按当前用户隔离地分页查询标签，并单独统计匹配总数用于稳定分页响应。
 func (store *PostgresStore) ListTags(ctx context.Context, userID uuid.UUID, search string, offset, limit int) ([]model.Tag, int64, error) {
 	query := store.db.WithContext(ctx).Model(&model.Tag{}).Where("user_id = ?", userID)

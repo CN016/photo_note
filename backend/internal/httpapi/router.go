@@ -127,6 +127,7 @@ func Router(dependencies Dependencies) *gin.Engine {
 	protected.GET("/users/me/avatar", currentAvatarHandler(dependencies.Users, dependencies.Files))
 	protected.POST("/users/me/avatar", personalAvatarUploadHandler(dependencies.Files, dependencies.MaxUploadBytes, dependencies.CurrentFileStoreType))
 	protected.PATCH("/users/me", patchCurrentUserHandler(dependencies.Users))
+	protected.PATCH("/users/me/statistics-chart-mode", patchStatisticsChartModeHandler(dependencies.Users))
 	protected.POST("/users/me/password", changePasswordHandler(dependencies.Auth))
 	protected.GET("/tags", listTagsHandler(dependencies.Tags))
 	protected.POST("/tags", createTagHandler(dependencies.Tags))
@@ -864,19 +865,23 @@ type authResponse struct {
 
 // userResponse 只包含对外业务 UUID、用户资料和时间字段，不暴露内部自增主键。
 type userResponse struct {
-	BusinessID       uuid.UUID `json:"business_id"`
-	Nickname         string    `json:"nickname"`
-	Phone            string    `json:"phone"`
-	AvatarKey        *string   `json:"avatar_key"`
-	IsAdmin          bool      `json:"is_admin"`
-	OrgID            int64     `json:"orgid"`
-	OrganizationRole string    `json:"organization_role"`
-	CreatedAt        time.Time `json:"created_at"`
-	UpdatedAt        time.Time `json:"updated_at"`
+	BusinessID       uuid.UUID   `json:"business_id"`
+	Nickname         string      `json:"nickname"`
+	Phone            string      `json:"phone"`
+	AvatarKey        *string     `json:"avatar_key"`
+	Extra            model.JSONB `json:"extra"`
+	IsAdmin          bool        `json:"is_admin"`
+	OrgID            int64       `json:"orgid"`
+	OrganizationRole string      `json:"organization_role"`
+	CreatedAt        time.Time   `json:"created_at"`
+	UpdatedAt        time.Time   `json:"updated_at"`
 }
 
 // userDTO 显式映射公开资料字段，确保数据库主键、密码哈希和内部 user_id 不会被序列化。
 func userDTO(user model.User, contexts ...context.Context) userResponse {
+	if len(user.Extra) == 0 {
+		user.Extra = model.JSONB(`{}`)
+	}
 	orgID := tenant.GlobalOrgID
 	role := "personal"
 	if len(contexts) > 0 {
@@ -888,7 +893,38 @@ func userDTO(user model.User, contexts ...context.Context) userResponse {
 		}
 	}
 	return userResponse{OrgID: orgID, OrganizationRole: role, BusinessID: user.BusinessID, Nickname: user.Nickname, Phone: user.Phone,
-		AvatarKey: user.AvatarKey, IsAdmin: user.IsAdmin, CreatedAt: user.CreatedAt, UpdatedAt: user.UpdatedAt}
+		AvatarKey: user.AvatarKey, Extra: user.Extra, IsAdmin: user.IsAdmin, CreatedAt: user.CreatedAt, UpdatedAt: user.UpdatedAt}
+}
+
+// patchStatisticsChartModeHandler 仅接受当前登录用户的一张统计卡片及其展示模式。
+func patchStatisticsChartModeHandler(users *service.UserService) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		claims, err := authContext(c)
+		if err != nil {
+			writeError(c, err)
+			return
+		}
+		fields, err := decodeObject(c)
+		if err != nil {
+			writeError(c, err)
+			return
+		}
+		if err := allowFields(fields, "dimension", "mode"); err != nil {
+			writeError(c, err)
+			return
+		}
+		var dimension, mode string
+		if json.Unmarshal(fields["dimension"], &dimension) != nil || json.Unmarshal(fields["mode"], &mode) != nil {
+			writeError(c, fault.InvalidRequest("dimension 和 mode 必须是字符串"))
+			return
+		}
+		user, err := users.UpdateStatisticsChartMode(c.Request.Context(), claims.UserBusinessID, dimension, mode)
+		if err != nil {
+			writeError(c, err)
+			return
+		}
+		writeData(c, http.StatusOK, userDTO(user, c.Request.Context()))
+	}
 }
 
 // getCurrentUserHandler 按 token 中的用户业务 UUID 返回当前用户资料。

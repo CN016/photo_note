@@ -214,6 +214,8 @@ export const api = {
   logout() { return request<void>('/auth/logout', { method: 'POST' }) },
   /** 读取当前登录用户资料。 */
   currentUser() { return request<UserProfile>('/users/me') },
+  /** 原子保存当前用户单张统计卡片的图表模式。 */
+  updateStatisticsChartMode(dimension: string, mode: string) { return request<UserProfile>('/users/me/statistics-chart-mode', { method: 'PATCH', body: JSON.stringify({ dimension, mode }) }) },
   currentAvatar() { return requestBlob('/users/me/avatar', true, 'reload') },
   uploadAvatar(file: Blob, filename: string) { const body = new FormData(); body.append('file', file, filename); return request<{ storekey: string }>('/users/me/avatar', { method: 'POST', body }) },
   /** 每次打开计划表单时绕过缓存，读取管理员当前公开的 emoji 配置。 */

@@ -22,6 +22,7 @@ type UserRepository interface {
 	FindUserByBusinessID(context.Context, uuid.UUID) (model.User, error)
 	CreateUser(context.Context, *model.User) error
 	UpdateUserProfile(context.Context, uuid.UUID, map[string]any) (model.User, error)
+	UpdateStatisticsChartMode(context.Context, uuid.UUID, string, string) (model.User, error)
 	FindUserPasswordHash(context.Context, uuid.UUID) (model.User, error)
 	UpdateUserPasswordHash(context.Context, uuid.UUID, string) error
 }

@@ -4,3 +4,6 @@
 - video.js 8.23.4：MIT。源码与许可：https://github.com/videojs/video.js
 
 应用随安装依赖及构建输出提供查看器所需的 worker、WASM 和字体资源。
+
+拍摄统计图表使用 Apache ECharts 6.1.0（Apache-2.0）：https://echarts.apache.org/ 。
+Copyright 2017-2026 The Apache Software Foundation。

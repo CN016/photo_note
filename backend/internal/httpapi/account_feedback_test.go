@@ -83,6 +83,33 @@ func (repository *testUserRepository) UpdateUserProfile(_ context.Context, id uu
 	return user, nil
 }
 
+// UpdateStatisticsChartMode 在 HTTP 测试仓库中模拟单键偏好更新。
+func (repository *testUserRepository) UpdateStatisticsChartMode(_ context.Context, id uuid.UUID, dimension, mode string) (model.User, error) {
+	for phone, user := range repository.users {
+		if user.BusinessID != id {
+			continue
+		}
+		var extra map[string]any
+		if len(user.Extra) != 0 {
+			_ = json.Unmarshal(user.Extra, &extra)
+		}
+		if extra == nil {
+			extra = map[string]any{}
+		}
+		modes, _ := extra["statistics_chart_modes"].(map[string]any)
+		if modes == nil {
+			modes = map[string]any{}
+		}
+		modes[dimension] = mode
+		extra["statistics_chart_modes"] = modes
+		encoded, _ := json.Marshal(extra)
+		user.Extra = encoded
+		repository.users[phone] = user
+		return user, nil
+	}
+	return model.User{}, fault.NotFound()
+}
+
 func (repository *testUserRepository) UpdateUserPasswordHash(_ context.Context, id uuid.UUID, hash string) error {
 	for phone, user := range repository.users {
 		if user.BusinessID == id {
