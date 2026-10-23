@@ -3,16 +3,24 @@ package store
 import (
 	"context"
 	"errors"
+	"fmt"
 	"time"
 
 	"github.com/google/uuid"
 	"github.com/photo-nini/backend/internal/model"
+	"github.com/photo-nini/backend/internal/tenant"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )
 
 // RecordErrorLog 在 PostgreSQL 事务中按去重摘要串行处理；一分钟内的重复错误只增加计数，不新增日志行。
 func (store *PostgresStore) RecordErrorLog(ctx context.Context, entry model.ErrorLog) (model.ErrorLog, bool, error) {
+	entry.OrgID = tenant.GlobalOrgID
+	if scope, ok := tenant.FromContext(ctx); ok {
+		entry.OrgID = scope.OrgID
+	}
+	// 启动及匿名诊断使用明确系统操作，所有去重查询仍显式限定具体组织。
+	ctx = tenant.System(ctx)
 	created := false
 	if entry.BusinessID == uuid.Nil {
 		entry.BusinessID = uuid.New()
@@ -29,17 +37,17 @@ func (store *PostgresStore) RecordErrorLog(ctx context.Context, entry model.Erro
 	err := store.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		// PostgreSQL advisory lock 让多 API 实例也会串行判断同一去重键，避免并发首错插入重复行。
 		var lockAcquired int
-		if err := tx.Raw(`SELECT 1 FROM (SELECT pg_advisory_xact_lock(hashtextextended(?, 0))) AS error_log_lock`, entry.DedupKey).
+		if err := tx.Raw(`SELECT 1 FROM (SELECT pg_advisory_xact_lock(hashtextextended(?, 0))) AS error_log_lock`, fmt.Sprintf("error:%d:%s", entry.OrgID, entry.DedupKey)).
 			Scan(&lockAcquired).Error; err != nil {
 			return persistenceError(err)
 		}
 
 		var previous model.ErrorLog
 		result := tx.Clauses(clause.Locking{Strength: "UPDATE"}).
-			Where("dedup_key = ? AND last_seen_at >= ?", entry.DedupKey, now.Add(-time.Minute)).
+			Where("orgid = ? AND dedup_key = ? AND last_seen_at >= ?", entry.OrgID, entry.DedupKey, now.Add(-time.Minute)).
 			Order("last_seen_at DESC").First(&previous)
 		if result.Error == nil {
-			if err := tx.Model(&model.ErrorLog{}).Where("business_id = ?", previous.BusinessID).Updates(map[string]any{
+			if err := tx.Model(&model.ErrorLog{}).Where("orgid = ? AND business_id = ?", entry.OrgID, previous.BusinessID).Updates(map[string]any{
 				"occurrence_count": gorm.Expr("occurrence_count + 1"),
 				"last_seen_at":     now,
 				"updated_at":       now,
@@ -78,6 +86,7 @@ func (store *PostgresStore) FindUserBusinessIDByPhone(ctx context.Context, phone
 
 // CreateErrorLogNotification 只创建管理员站内消息，不把内部错误摘要转发到用户 webhook 渠道。
 func (store *PostgresStore) CreateErrorLogNotification(ctx context.Context, userID, errorLogID uuid.UUID, eventKey string, payload model.JSONB) error {
+	ctx = tenant.Personal(ctx, userID)
 	now := time.Now().UTC()
 	notification := model.Notification{
 		BaseModel:          model.BaseModel{BusinessID: uuid.New(), CreatedAt: now, UpdatedAt: now},
@@ -89,7 +98,7 @@ func (store *PostgresStore) CreateErrorLogNotification(ctx context.Context, user
 		Payload:            payload,
 	}
 	result := store.db.WithContext(ctx).Clauses(clause.OnConflict{
-		Columns:   []clause.Column{{Name: "user_id"}, {Name: "event_key"}},
+		Columns:   []clause.Column{{Name: "orgid"}, {Name: "user_id"}, {Name: "event_key"}},
 		DoNothing: true,
 	}).Create(&notification)
 	return persistenceError(result.Error)

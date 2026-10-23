@@ -11,6 +11,7 @@ import (
 	"github.com/lib/pq"
 	"github.com/photo-nini/backend/internal/domain/fault"
 	"github.com/photo-nini/backend/internal/model"
+	"github.com/photo-nini/backend/internal/tenant"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )
@@ -22,6 +23,9 @@ type PostgresStore struct {
 
 // NewPostgresStore 创建只封装查询能力的 repository，不会触发 AutoMigrate 或其他 DDL。
 func NewPostgresStore(db *gorm.DB) *PostgresStore {
+	if err := RegisterTenantCallbacks(db); err != nil {
+		panic(err)
+	}
 	return &PostgresStore{db: db}
 }
 
@@ -192,6 +196,10 @@ func (store *PostgresStore) UpdateTag(ctx context.Context, userID, tagID uuid.UU
 
 // DeleteTagAndCleanInspirations 在一个 PostgreSQL 事务中清除数组引用并删除标签，不依赖外键级联。
 func (store *PostgresStore) DeleteTagAndCleanInspirations(ctx context.Context, userID, tagID uuid.UUID) error {
+	scope, err := tenant.Require(ctx)
+	if err != nil {
+		return err
+	}
 	return store.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		var tag model.Tag
 		if err := tx.Where("user_id = ? AND business_id = ?", userID, tagID).First(&tag).Error; err != nil {
@@ -200,8 +208,8 @@ func (store *PostgresStore) DeleteTagAndCleanInspirations(ctx context.Context, u
 		if err := tx.Exec(`
 			UPDATE inspirations
 			SET tag_ids = array_remove(tag_ids, ?::uuid), updated_at = CURRENT_TIMESTAMP
-			WHERE user_id = ? AND ?::uuid = ANY(tag_ids)
-		`, tagID.String(), userID, tagID.String()).Error; err != nil {
+			WHERE orgid = ? AND user_id = ? AND ?::uuid = ANY(tag_ids)
+		`, tagID.String(), scope.OrgID, userID, tagID.String()).Error; err != nil {
 			return persistenceError(err)
 		}
 		if err := tx.Delete(&tag).Error; err != nil {
@@ -278,6 +286,10 @@ func (store *PostgresStore) ListInspirations(ctx context.Context, userID uuid.UU
 
 // GetInspirationStatistics 在 PostgreSQL 内按用户聚合拍摄属性，只返回分组名称和数量。
 func (store *PostgresStore) GetInspirationStatistics(ctx context.Context, userID uuid.UUID) (model.InspirationStatistics, error) {
+	scope, err := tenant.Require(ctx)
+	if err != nil {
+		return model.InspirationStatistics{}, err
+	}
 	var totals struct {
 		TotalImages                int64 `gorm:"column:total_images"`
 		ImagesWithShootingMetadata int64 `gorm:"column:images_with_shooting_metadata"`
@@ -294,8 +306,8 @@ func (store *PostgresStore) GetInspirationStatistics(ctx context.Context, userID
 		           exposure_time_seconds IS NOT NULL OR iso_speed IS NOT NULL
 		       )::bigint AS images_with_shooting_metadata
 		FROM inspirations
-		WHERE user_id = ?
-	`, userID).Scan(&totals).Error; err != nil {
+		WHERE orgid = ? AND user_id = ?
+	`, scope.OrgID, userID).Scan(&totals).Error; err != nil {
 		return model.InspirationStatistics{}, persistenceError(err)
 	}
 
@@ -311,7 +323,7 @@ func (store *PostgresStore) GetInspirationStatistics(ctx context.Context, userID
 		           iso_speed, exposure_time_seconds, flash_fired,
 		           image_width, image_height, color_space, created_at
 		    FROM inspirations
-		    WHERE user_id = ?
+		    WHERE orgid = ? AND user_id = ?
 		),
 		camera_labels AS (
 		    SELECT NULLIF(BTRIM(CONCAT_WS(' ', NULLIF(BTRIM(camera_make), ''), NULLIF(BTRIM(camera_model), ''))), '') AS label
@@ -444,7 +456,7 @@ func (store *PostgresStore) GetInspirationStatistics(ctx context.Context, userID
 		         CASE WHEN dimension = 'collection_months' THEN value END ASC,
 		         CASE WHEN dimension <> 'collection_months' THEN image_count END DESC,
 		         value
-	`, userID).Scan(&rows).Error; err != nil {
+	`, scope.OrgID, userID).Scan(&rows).Error; err != nil {
 		return model.InspirationStatistics{}, persistenceError(err)
 	}
 
@@ -597,7 +609,7 @@ func (store *PostgresStore) UpdateInspirationWithTagNames(ctx context.Context, u
 		}
 		if len(newTags) > 0 {
 			if err := tx.Clauses(clause.OnConflict{
-				Columns:   []clause.Column{{Name: "user_id"}, {Name: "content"}},
+				Columns:   []clause.Column{{Name: "orgid"}, {Name: "user_id"}, {Name: "content"}},
 				DoNothing: true,
 			}).Create(&newTags).Error; err != nil {
 				return persistenceError(err)
@@ -693,6 +705,25 @@ func (store *PostgresStore) IsInspirationFileReferenced(ctx context.Context, ima
 		Where("business_id <> ? AND (image_key = ? OR data ->> 'source_image_key' = ?)", exceptInspirationID, imageKey, imageKey).
 		Limit(1).Take(&inspiration).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
+		// 同一私有文件可能同时用作头像、计划封面或项目附件，清理原图前必须核对全部持久引用。
+		checks := []struct {
+			entity    any
+			condition string
+		}{
+			{&model.User{}, "avatar_key = ?"},
+			{&model.Plan{}, "cover_image_key = ?"},
+			{&model.Project{}, "cover_image_key = ?"},
+			{&model.ProjectAttachment{}, "storekey = ?"},
+		}
+		for _, check := range checks {
+			var count int64
+			if err := store.db.WithContext(ctx).Model(check.entity).Where(check.condition, imageKey).Limit(1).Count(&count).Error; err != nil {
+				return false, persistenceError(err)
+			}
+			if count > 0 {
+				return true, nil
+			}
+		}
 		return false, nil
 	}
 	if err != nil {
@@ -739,7 +770,7 @@ func (store *PostgresStore) DeleteInspiration(ctx context.Context, userID, inspi
 			return persistenceError(err)
 		}
 		var usages int64
-		if err := tx.Model(&model.ProjectInspirationUsage{}).Where("user_id = ? AND inspiration_business_id = ?", userID, inspirationID).Count(&usages).Error; err != nil {
+		if err := tx.Model(&model.ProjectInspirationUsage{}).Where("inspiration_business_id = ?", inspirationID).Count(&usages).Error; err != nil {
 			return persistenceError(err)
 		}
 		if usages > 0 {
@@ -756,6 +787,10 @@ func (store *PostgresStore) DeleteInspiration(ctx context.Context, userID, inspi
 func persistenceError(err error) error {
 	if err == nil {
 		return nil
+	}
+	var applicationError *fault.Error
+	if errors.As(err, &applicationError) {
+		return err
 	}
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return fault.NotFound()

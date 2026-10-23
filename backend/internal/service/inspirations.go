@@ -23,6 +23,7 @@ import (
 	"github.com/photo-nini/backend/internal/filestore"
 	"github.com/photo-nini/backend/internal/imagecompress"
 	"github.com/photo-nini/backend/internal/model"
+	"github.com/photo-nini/backend/internal/tenant"
 )
 
 // InspirationRepository 定义灵感图 CRUD、分页检索及标签业务 UUID 所有权校验接口。
@@ -70,6 +71,9 @@ const (
 
 // inspirationCompressionJob 只携带业务 UUID、图片 key 和创建/更新时捕获的异步代次。
 type inspirationCompressionJob struct {
+	// scope 在入队时捕获可信组织；任务脱离 HTTP 后不得回退到其他租户。
+	scope         tenant.Scope
+	scoped        bool
 	userID        uuid.UUID
 	inspirationID uuid.UUID
 	imageKey      string
@@ -190,6 +194,9 @@ func (service *InspirationService) Create(ctx context.Context, userID uuid.UUID,
 	if err != nil {
 		return model.Inspiration{}, err
 	}
+	if err := service.validateFileReferences(ctx, input.ImageKey, input.Data); err != nil {
+		return model.Inspiration{}, err
+	}
 	fileName, err := normalizeInspirationFileName(input.FileName)
 	if err != nil {
 		return model.Inspiration{}, err
@@ -215,7 +222,7 @@ func (service *InspirationService) Create(ctx context.Context, userID uuid.UUID,
 		return model.Inspiration{}, err
 	}
 	if storeKeyImage {
-		service.enqueueCompression(inspirationCompressionJob{userID: userID, inspirationID: inspiration.BusinessID,
+		service.enqueueScopedCompression(ctx, inspirationCompressionJob{userID: userID, inspirationID: inspiration.BusinessID,
 			imageKey: input.ImageKey, asyncVersion: inspiration.AsyncVersion})
 	}
 	return inspiration, nil
@@ -275,6 +282,9 @@ func (service *InspirationService) Update(ctx context.Context, userID, inspirati
 		if err := validateEditorData(input.Data); err != nil {
 			return model.Inspiration{}, err
 		}
+		if err := service.validateFileReferences(ctx, "", input.Data); err != nil {
+			return model.Inspiration{}, err
+		}
 		updates["data"] = model.JSONB(append([]byte(nil), input.Data...))
 	} else if imageKeySet {
 		// 缺少该次换图的 source_image_key 时，清除旧原图引用并让后台安全回退到新工作图。
@@ -287,6 +297,9 @@ func (service *InspirationService) Update(ctx context.Context, userID, inspirati
 		}
 	}
 	if imageKeySet {
+		if err := service.validateFileReferences(ctx, input.ImageKey, nil); err != nil {
+			return model.Inspiration{}, err
+		}
 		updates["image_key"] = input.ImageKey
 		// 新图片尚未处理完成时清空旧文件元数据，避免把旧图的哈希或大小返回给前端。
 		updates["file_hash"] = nil
@@ -315,7 +328,7 @@ func (service *InspirationService) Update(ctx context.Context, userID, inspirati
 			return model.Inspiration{}, err
 		}
 		if storeKeyImage {
-			service.enqueueCompression(inspirationCompressionJob{userID: userID, inspirationID: inspirationID,
+			service.enqueueScopedCompression(ctx, inspirationCompressionJob{userID: userID, inspirationID: inspirationID,
 				imageKey: input.ImageKey, asyncVersion: updated.AsyncVersion})
 		}
 		return updated, nil
@@ -325,7 +338,7 @@ func (service *InspirationService) Update(ctx context.Context, userID, inspirati
 		if err != nil {
 			return model.Inspiration{}, err
 		}
-		service.enqueueCompression(inspirationCompressionJob{userID: userID, inspirationID: inspirationID,
+		service.enqueueScopedCompression(ctx, inspirationCompressionJob{userID: userID, inspirationID: inspirationID,
 			imageKey: input.ImageKey, asyncVersion: updated.AsyncVersion})
 		return updated, nil
 	}
@@ -334,7 +347,10 @@ func (service *InspirationService) Update(ctx context.Context, userID, inspirati
 
 // validateInspirationImageKey 同步拒绝格式错误的 storekey，并在提交异步任务前检查文件处理依赖。
 func (service *InspirationService) validateInspirationImageKey(imageKey string) (bool, error) {
-	if _, err := filestore.ParseKey(imageKey); err == nil {
+	if parsed, err := filestore.ParseKey(imageKey); err == nil {
+		if parsed.Public {
+			return false, fault.InvalidField("image_key", "灵感图不能引用公开反馈图片")
+		}
 		if service.files == nil || service.maxImageBytes < 1 {
 			return false, fault.Unavailable(errors.New("灵感图文件存储或图片大小配置未初始化"))
 		}
@@ -345,6 +361,30 @@ func (service *InspirationService) validateInspirationImageKey(imageKey string) 
 		return false, fault.InvalidField("image_key", "storekey 格式无效")
 	}
 	return false, nil
+}
+
+// validateFileReferences 校验图片及编辑文档原图 key；普通非文件图片标识保留既有兼容行为。
+func (service *InspirationService) validateFileReferences(ctx context.Context, imageKey string, data []byte) error {
+	keys := []string{imageKey, sourceImageKeyFromData(model.JSONB(data))}
+	for _, key := range keys {
+		if key == "" {
+			continue
+		}
+		parsed, err := filestore.ParseKey(key)
+		if err != nil {
+			if key == imageKey && !strings.HasPrefix(key, "local_") && !strings.HasPrefix(key, "oss_") && !strings.HasPrefix(key, "public_") {
+				continue
+			}
+			return fault.InvalidField("image_key", "图片文件引用格式无效")
+		}
+		if parsed.Public {
+			return fault.NotFound()
+		}
+		if err := authorizeFileReference(ctx, service.files, key); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // compressStoreKeyContent 在后台读取并压缩有效 storekey 图片，但暂不覆盖文件以便先检查任务代次。
@@ -360,7 +400,7 @@ func (service *InspirationService) compressStoreKeyContent(ctx context.Context, 
 		return nil, fault.Unavailable(ctx.Err())
 	default:
 	}
-	reader, size, _, err := service.files.Open(imageKey)
+	reader, size, _, err := OpenFile(ctx, service.files, imageKey)
 	if err != nil {
 		return nil, mapInspirationFileError(err)
 	}
@@ -405,7 +445,7 @@ func (service *InspirationService) enqueueCompression(job inspirationCompression
 	service.compressionMutex.Lock()
 	for index := range service.compressionJobs {
 		queued := &service.compressionJobs[index]
-		if queued.inspirationID != job.inspirationID {
+		if queued.inspirationID != job.inspirationID || queued.scope.OrgID != job.scope.OrgID || queued.userID != job.userID {
 			continue
 		}
 		if job.asyncVersion > queued.asyncVersion {
@@ -418,6 +458,12 @@ func (service *InspirationService) enqueueCompression(job inspirationCompression
 	service.compressionJobs = append(service.compressionJobs, job)
 	service.compressionCond.Signal()
 	service.compressionMutex.Unlock()
+}
+
+// enqueueScopedCompression 将组织身份与轻量任务一并保存，避免 HTTP 结束后丢失隔离范围。
+func (service *InspirationService) enqueueScopedCompression(ctx context.Context, job inspirationCompressionJob) {
+	job.scope, job.scoped = tenant.FromContext(ctx)
+	service.enqueueCompression(job)
 }
 
 // runCompressionWorker 按固定并发数消费后台任务，异步失败只记录错误类型，不记录图片 key 或底层路径。
@@ -454,6 +500,9 @@ func (service *InspirationService) runCompressionWorker() {
 func (service *InspirationService) processCompressionJob(job inspirationCompressionJob) error {
 	ctx, cancel := context.WithTimeout(context.Background(), inspirationCompressionTimeout)
 	defer cancel()
+	if job.scoped {
+		ctx = tenant.WithScope(ctx, job.scope)
+	}
 	unlockFile := service.fileLocks.acquire(job.imageKey)
 	defer unlockFile()
 
@@ -466,6 +515,9 @@ func (service *InspirationService) processCompressionJob(job inspirationCompress
 	}
 	if current.ImageKey != job.imageKey || current.AsyncVersion != job.asyncVersion {
 		return nil
+	}
+	if err := service.validateFileReferences(ctx, current.ImageKey, current.Data); err != nil {
+		return err
 	}
 	service.extractAndSaveOriginalMetadata(ctx, job, current)
 
@@ -523,6 +575,10 @@ func (service *InspirationService) removeCompressedSourceImage(ctx context.Conte
 		service.clearCompressedSourceImageReference(ctx, job, sourceKey)
 		return
 	}
+	if err := authorizeFileReference(ctx, service.files, sourceKey); err != nil {
+		service.captureOriginalImageCleanupError(err)
+		return
+	}
 	if service.files == nil {
 		service.captureOriginalImageCleanupError(errors.New("灵感图文件存储未初始化，无法删除原图"))
 		return
@@ -574,7 +630,7 @@ func (service *InspirationService) extractAndSaveOriginalMetadata(ctx context.Co
 		if _, err := filestore.ParseKey(key); err != nil {
 			continue
 		}
-		reader, size, _, err := service.files.Open(key)
+		reader, size, _, err := OpenFile(ctx, service.files, key)
 		if err != nil || reader == nil {
 			if reader != nil {
 				_ = reader.Close()
@@ -634,6 +690,10 @@ func (service *InspirationService) WaitForCompression(ctx context.Context) error
 
 // mapInspirationFileError 将文件后端错误转为稳定 API 语义，不向客户端泄露本地路径。
 func mapInspirationFileError(err error) error {
+	var accessError *fault.Error
+	if errors.As(err, &accessError) {
+		return accessError
+	}
 	switch {
 	case errors.Is(err, filestore.ErrInvalidStoreKey):
 		return fault.InvalidField("image_key", "storekey 格式无效")

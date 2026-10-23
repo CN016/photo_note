@@ -16,6 +16,8 @@ export interface UserProfile {
   phone: string
   avatar_key: string | null
   is_admin: boolean
+  orgid: number
+  organization_role: 'personal' | 'admin' | 'member'
   created_at: string
   updated_at: string
 }
@@ -34,6 +36,36 @@ export interface TokenPair {
   token_type: 'Bearer'
   expires_in: number
   refresh_expires_in: number
+  orgid: number
+  session_id: string
+  session_version: number
+}
+
+/** 空间列表只包含当前账号可进入的个人空间和有效组织。 */
+export interface Environment {
+  orgid: number
+  business_id: string | null
+  name: string
+  role: 'personal' | 'admin' | 'member'
+  status: 'active' | 'disabled'
+}
+
+/** 组织编号是独立业务编号，数据库内部自增 ID 不出现在接口中。 */
+export interface Organization {
+  business_id: string
+  orgid: number
+  name: string
+  status: 'active' | 'disabled'
+  created_at: string
+  updated_at: string
+}
+
+export interface OrganizationMember {
+  business_id: string
+  user_id: string
+  nickname: string
+  role: 'admin' | 'member'
+  status: 'active' | 'removed'
 }
 
 export interface AuthResponse {

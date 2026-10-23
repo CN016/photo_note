@@ -2,9 +2,10 @@
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { ChatDotRound, Delete, Picture, Plus, Search, Setting, User } from '@element-plus/icons-vue'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
+import { onBeforeRouteLeave, useRoute } from 'vue-router'
 import { api } from '../api/client'
-import type { ConsoleConfigRecord, ConsoleFeedbackRecord, ConsoleInspirationRecord, ConsoleUserRecord } from '../api/types'
+import type { ConsoleConfigRecord, ConsoleFeedbackRecord, ConsoleInspirationRecord, ConsoleUserRecord, Organization } from '../api/types'
 import AppHeader from '../components/AppHeader.vue'
 import AuthenticatedImageThumbnail from '../components/AuthenticatedImageThumbnail.vue'
 import InspirationThumbnail from '../components/InspirationThumbnail.vue'
@@ -12,7 +13,17 @@ import { useAuthStore } from '../stores/auth'
 
 const { t, locale } = useI18n()
 const auth = useAuthStore()
-const activeTab = ref<'users' | 'configs' | 'inspirations' | 'feedback'>('users')
+const route = useRoute()
+const platform = computed(() => route.name === 'atelier-console')
+const activeTab = ref<'users' | 'configs' | 'inspirations' | 'feedback'>(platform.value && route.query.tab !== 'inspirations' ? 'users' : 'inspirations')
+const selectedOrg = ref<number | undefined>(platform.value && route.query.orgid !== undefined && Number.isSafeInteger(Number(route.query.orgid)) ? Number(route.query.orgid) : undefined)
+const organizationOptions = ref<Organization[]>([])
+async function searchOrganizations(query = '') { if (platform.value) organizationOptions.value = (await api.organizations(1, query)).items }
+/** 缩略图固定本次选中的组织，避免平台范围变化后继续使用新范围读取旧列表。 */
+function managedLoader(item: ConsoleInspirationRecord) {
+  const orgid = platform.value ? selectedOrg.value : undefined
+  return (key: string) => api.managementImage(item.business_id, key, orgid)
+}
 const loading = ref(false)
 const saving = ref(false)
 const error = ref('')
@@ -79,10 +90,11 @@ async function loadConfigs() {
 
 /** 全站灵感图只读检索使用后端文件名/昵称查询和白名单排序。 */
 async function loadInspirations() {
+  if (platform.value && selectedOrg.value === undefined) { inspirations.value = []; inspirationTotal.value = 0; return }
   loading.value = true
   error.value = ''
   try {
-    const result = await api.consoleInspirations(inspirationPage.value, pageSize, inspirationSearch.value, inspirationSort.value)
+    const result = await api.consoleInspirations(inspirationPage.value, pageSize, inspirationSearch.value, inspirationSort.value, selectedOrg.value, !platform.value)
     inspirations.value = result.items
     inspirationTotal.value = result.total
   } catch { error.value = t('console.loadError') }
@@ -132,7 +144,8 @@ watch(feedbackStatus, () => {
 })
 
 watch(activeTab, () => { void loadActiveSection() })
-onMounted(() => { void loadUsers() })
+watch(selectedOrg, () => { inspirationPage.value = 1; closePreview(); inspirations.value = []; void loadInspirations() })
+onMounted(() => { void loadActiveSection(); if (platform.value) void searchOrganizations().catch(() => { error.value = t('console.loadError') }) })
 
 /** 更新账号角色并同步当前账号的角色副本，后端仍会独立校验每个请求。 */
 async function toggleUserRole(user: ConsoleUserRecord) {
@@ -280,7 +293,7 @@ async function saveFeedbackReply(item: ConsoleFeedbackRecord) {
 }
 
 /** 预览图片通过鉴权接口读取，并在关闭预览或切换图片时释放 blob 地址。 */
-async function openPreview(storekey: string, label: string) {
+async function openPreview(storekey: string, label: string, inspirationID?: string) {
   const version = ++previewRequest
   if (previewURL.value) URL.revokeObjectURL(previewURL.value)
   previewURL.value = ''
@@ -288,7 +301,7 @@ async function openPreview(storekey: string, label: string) {
   previewLoading.value = true
   previewDialog.value = true
   try {
-    const blob = await api.download(storekey)
+    const blob = inspirationID ? await api.managementImage(inspirationID, storekey, platform.value ? selectedOrg.value : undefined) : await api.download(storekey)
     if (version !== previewRequest) return
     previewURL.value = URL.createObjectURL(blob)
   } catch { error.value = t('console.loadError') }
@@ -303,6 +316,21 @@ function closePreview() {
   if (previewURL.value) URL.revokeObjectURL(previewURL.value)
   previewURL.value = ''
 }
+
+async function deleteManagedImage(item: ConsoleInspirationRecord) {
+  try {
+    await ElMessageBox.confirm(t('organizations.deleteImageConfirm'), t('organizations.deleteImage'), { confirmButtonText: t('organizations.deleteImage'), cancelButtonText: t('common.cancel'), type: 'warning' })
+    saving.value = true
+    await api.managementDeleteInspiration(item.business_id, platform.value ? selectedOrg.value : undefined)
+    await loadInspirations()
+  } catch { error.value = t('console.saveError') }
+  finally { saving.value = false }
+}
+
+onBeforeRouteLeave(to => {
+  if (to.path !== '/spaces') return true
+  return !saving.value && !replySavingID.value && !configDialog.value && !Object.values(feedbackReplyDrafts).some(draft => draft.newImages.length || draft.content !== (feedbackItems.value.find(item => feedbackReplyDrafts[item.business_id] === draft)?.reply_content ?? ''))
+})
 
 /** 切换页码并重新读取当前分区。 */
 function changePage(delta: number) {
@@ -330,17 +358,17 @@ onBeforeUnmount(() => {
       <header class="console-heading">
         <div>
           <p class="eyebrow">{{ t('common.product') }}</p>
-          <h1>{{ t('console.title') }}</h1>
-          <p>{{ t('console.subtitle') }}</p>
+          <h1>{{ t(platform ? 'console.title' : 'organizationConsole.title') }}</h1>
+          <p>{{ t(platform ? 'console.subtitle' : 'organizationConsole.subtitle') }}</p>
         </div>
         <div class="console-heading-mark" aria-hidden="true"><el-icon><Setting /></el-icon></div>
       </header>
 
       <el-tabs v-model="activeTab" class="console-tabs">
-        <el-tab-pane name="users"><template #label><span class="console-tab-label"><el-icon><User /></el-icon>{{ t('console.users') }}</span></template></el-tab-pane>
-        <el-tab-pane name="configs"><template #label><span class="console-tab-label"><el-icon><Setting /></el-icon>{{ t('console.configurations') }}</span></template></el-tab-pane>
-        <el-tab-pane name="inspirations"><template #label><span class="console-tab-label"><el-icon><Picture /></el-icon>{{ t('console.inspirations') }}</span></template></el-tab-pane>
-        <el-tab-pane name="feedback"><template #label><span class="console-tab-label"><el-icon><ChatDotRound /></el-icon>{{ t('console.feedback') }}</span></template></el-tab-pane>
+        <el-tab-pane v-if="platform" name="users"><template #label><span class="console-tab-label"><el-icon><User /></el-icon>{{ t('console.users') }}</span></template></el-tab-pane>
+        <el-tab-pane v-if="platform" name="configs"><template #label><span class="console-tab-label"><el-icon><Setting /></el-icon>{{ t('console.configurations') }}</span></template></el-tab-pane>
+        <el-tab-pane name="inspirations"><template #label><span class="console-tab-label"><el-icon><Picture /></el-icon>{{ t(platform ? 'console.inspirations' : 'organizationConsole.inspirations') }}</span></template></el-tab-pane>
+        <el-tab-pane v-if="platform" name="feedback"><template #label><span class="console-tab-label"><el-icon><ChatDotRound /></el-icon>{{ t('console.feedback') }}</span></template></el-tab-pane>
       </el-tabs>
 
       <div v-if="error" class="inline-error" role="alert"><span>{{ error }}</span><el-button text @click="loadActiveSection">{{ t('console.search') }}</el-button></div>
@@ -377,6 +405,7 @@ onBeforeUnmount(() => {
 
       <section v-else-if="activeTab === 'inspirations'" class="console-section">
         <div class="console-toolbar">
+          <el-select v-if="platform" v-model="selectedOrg" filterable remote :remote-method="searchOrganizations" :placeholder="t('organizations.selectOrganization')" style="min-width: 240px"><el-option :value="-1" :label="t('organizations.personal')" /><el-option v-for="organization in organizationOptions" :key="organization.orgid" :value="organization.orgid" :label="`${organization.name} (${organization.orgid})`" /></el-select>
           <el-input v-model="inspirationSearch" class="console-search" clearable :placeholder="t('console.searchInspirations')"><template #prefix><el-icon><Search /></el-icon></template></el-input>
           <el-select v-model="inspirationSort" class="console-sort">
             <el-option :label="t('console.sortNewest')" value="created_desc" />
@@ -386,8 +415,9 @@ onBeforeUnmount(() => {
         </div>
         <div v-if="inspirations.length" class="console-inspiration-grid">
           <article v-for="item in inspirations" :key="item.business_id" class="console-inspiration-card">
-            <button class="console-inspiration-image" type="button" :aria-label="t('console.openImage', { name: item.file_name })" @click="openPreview(item.image_key, item.file_name)"><InspirationThumbnail :record="item" /></button>
+            <button class="console-inspiration-image" type="button" :aria-label="t('console.openImage', { name: item.file_name })" @click="openPreview(item.image_key, item.file_name, item.business_id)"><InspirationThumbnail :record="item" :load-image="managedLoader(item)" /></button>
             <div class="console-inspiration-caption"><strong>{{ item.file_name || t('gallery.untitled') }}</strong><span>{{ t('console.submittedBy', { name: item.owner_nickname }) }}</span><small>{{ displayDate(item.created_at) }}</small></div>
+            <div><RouterLink :to="{ path: `${platform ? '/atelier-7f3c9a2e' : '/organization-console'}/inspirations/${item.business_id}`, query: platform ? { orgid: selectedOrg } : {} }"><el-button text>{{ t('organizations.editImage') }}</el-button></RouterLink><el-button text type="danger" :disabled="saving" @click="deleteManagedImage(item)">{{ t('organizations.deleteImage') }}</el-button></div>
           </article>
         </div>
         <div v-else-if="!loading" class="console-empty">{{ t('console.noInspirations') }}</div>

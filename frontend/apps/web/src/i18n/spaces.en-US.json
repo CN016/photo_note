@@ -1,0 +1,12 @@
+{
+  "title": "Switch space",
+  "description": "Personal and organization data are stored separately. Switching waits for every tab to finish saving and uploading.",
+  "personal": "Personal space",
+  "current": "Current space",
+  "enter": "Enter space",
+  "preparing": "Waiting for all tabs to finish saving…",
+  "loadError": "Could not load spaces. Refresh and try again.",
+  "switchError": "Could not complete the switch. Finish saving and uploading in other tabs, then try again. Sign in again if your session expired.",
+  "unsupported": "This browser cannot safely synchronize all tabs. Use a browser with Web Locks to switch spaces.",
+  "role": { "personal": "Private personal data", "admin": "Organization administrator", "member": "Organization member" }
+}

@@ -5,7 +5,7 @@ import { onBeforeRouteLeave, useRoute, useRouter } from 'vue-router'
 import { ElMessageBox, type UploadFile } from 'element-plus'
 import { ArrowLeft, ArrowRight, Check, Close, Crop, FullScreen, Lock, Plus, Picture, RefreshLeft, RefreshRight, UploadFilled } from '@element-plus/icons-vue'
 import AppHeader from '../components/AppHeader.vue'
-import { api } from '../api/client'
+import { api as baseApi } from '../api/client'
 import { ApiError, type InspirationImageMetadata, type InspirationRecord } from '../api/types'
 import { useAnchorDisplayStore } from '../stores/anchorDisplay'
 import {
@@ -27,6 +27,18 @@ const route = useRoute()
 const router = useRouter()
 const anchorDisplayStore = useAnchorDisplayStore()
 const itemId = computed(() => typeof route.params.id === 'string' ? route.params.id : '')
+const managementMode = computed(() => route.name === 'organization-edit-inspiration' || route.name === 'platform-edit-inspiration')
+const managementOrgID = computed(() => route.name === 'platform-edit-inspiration' ? Number(route.query.orgid) : undefined)
+/** 管理模式走独立授权接口，后端从原记录取得创建者，普通用户入口始终保持私有语义。 */
+const api = {
+  ...baseApi,
+  inspiration: (id: string) => managementMode.value ? baseApi.managementInspiration(id, managementOrgID.value) : baseApi.inspiration(id),
+  download: (key: string) => managementMode.value ? baseApi.managementImage(itemId.value, key, managementOrgID.value) : baseApi.download(key),
+  updateInspiration: (id: string, data: Record<string, unknown>, imageMetadata?: import('../api/types').InspirationImageMetadata) => managementMode.value
+    ? baseApi.managementSaveInspiration(id, { data, ...(imageMetadata ? { image_metadata: imageMetadata } : {}) }, managementOrgID.value)
+    : baseApi.updateInspiration(id, data, imageMetadata),
+  updateInspirationTags: (id: string, names: string[]) => managementMode.value ? baseApi.managementSaveInspiration(id, { tag_names: names }, managementOrgID.value) : baseApi.updateInspirationTags(id, names),
+}
 const isExisting = computed(() => itemId.value.length > 0)
 const isEditing = ref(false)
 const editSnapshot = ref('')
@@ -443,6 +455,7 @@ async function loadExisting(): Promise<void> {
 
 /** 通过带用户范围的分页接口远程检索标签名称，保留当前已选项供多选框稳定显示。 */
 function searchTagOptions(query: string): void {
+  if (managementMode.value) { tagOptions.value = [...tagNames.value]; return }
   if (tagSearchTimer !== undefined) window.clearTimeout(tagSearchTimer)
   const version = ++tagSearchVersion
   tagSearchError.value = ''
@@ -802,8 +815,18 @@ onMounted(() => {
 })
 
 /** 通过页内返回或浏览器导航离开时，同样确认是否丢弃已有灵感图的未保存调整。 */
-onBeforeRouteLeave(async () => {
+onBeforeRouteLeave(async to => {
+  // 多步上传和图片保存尚未完成时不能卸载旧空间；切换协调器会保留旧组织供重试。
+  if (saving.value || loading.value) return false
   if (tagWritePromise) await tagWritePromise
+  if (colorWritePromise) await colorWritePromise
+  if (to.path === '/spaces') {
+    if (!isExisting.value && imageReady.value) return false
+    if (isExisting.value && isEditing.value && hasUnsavedChanges.value) {
+      await save()
+      return !isEditing.value || !hasUnsavedChanges.value
+    }
+  }
   if (!isExisting.value || !isEditing.value || !hasUnsavedChanges.value) return true
   try {
     await ElMessageBox.confirm(t('editor.discardChangesText'), t('editor.discardChangesTitle'), {

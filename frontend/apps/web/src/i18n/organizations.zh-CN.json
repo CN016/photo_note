@@ -1,0 +1,14 @@
+{
+  "title": "组织管理", "description": "管理组织资料和成员。组织管理员可管理本组织灵感图库，反馈由平台统一处理。",
+  "name": "组织名称", "orgid": "组织编号", "status": "状态", "active": "启用", "disabled": "停用", "actions": "操作",
+  "create": "创建组织", "rename": "修改名称", "enable": "启用", "disable": "停用", "search": "搜索组织",
+  "members": "成员管理", "gallery": "管理图库", "empty": "暂无组织", "noMembers": "暂无成员",
+  "userID": "用户业务 UUID", "nickname": "昵称", "role": "角色", "admin": "组织管理员", "member": "成员",
+  "addMember": "添加成员", "promote": "设为管理员", "demote": "设为成员", "remove": "移除成员",
+  "removeConfirm": "移除后该成员将不能访问本组织空间，已有数据会保留。是否继续？",
+  "memberHint": "使用已有账号的业务 UUID 添加成员；至少保留一位组织管理员。",
+  "initialAdmin": "首位管理员业务 UUID", "initialAdminHint": "首位管理员必须为已注册账号；创建组织不会迁移个人数据。",
+  "operationError": "操作失败，请检查填写内容、组织状态和管理权限；组织至少需要保留一位管理员。",
+  "selectOrganization": "请选择一个组织或个人空间范围", "personal": "个人空间范围", "editImage": "编辑图片", "deleteImage": "删除图片",
+  "deleteImageConfirm": "确定删除此灵感图？被项目引用的灵感图不能删除。"
+}

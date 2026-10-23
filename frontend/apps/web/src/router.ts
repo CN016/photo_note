@@ -30,6 +30,11 @@ export const router = createRouter({
     { path: '/projects/:id', name: 'project-editor', component: () => import('./views/ProjectEditorPage.vue') },
     { path: '/messages', name: 'messages', component: () => import('./views/MessagesPage.vue') },
     { path: '/profile', name: 'profile', component: () => import('./views/ProfilePage.vue') },
+    { path: '/spaces', name: 'spaces', component: () => import('./views/SpacesPage.vue') },
+    { path: '/organizations', name: 'organizations', component: () => import('./views/OrganizationsPage.vue') },
+    { path: '/organization-console', name: 'organization-console', component: () => import('./views/ConsolePage.vue') },
+    { path: '/organization-console/inspirations/:id', name: 'organization-edit-inspiration', component: () => import('./views/EditorPage.vue') },
+    { path: '/atelier-7f3c9a2e/inspirations/:id', name: 'platform-edit-inspiration', component: () => import('./views/EditorPage.vue') },
     { path: '/atelier-7f3c9a2e', name: 'atelier-console', component: () => import('./views/ConsolePage.vue') },
     { path: '/:pathMatch(.*)*', redirect: defaultAuthenticatedRoute },
   ],
@@ -52,13 +57,17 @@ router.beforeEach(async to => {
   await auth.initialize()
   if (to.meta.public && auth.user && to.name !== 'public-booking') return defaultAuthenticatedRoute()
   if (!to.meta.public && !auth.user) return '/login'
-  if (to.name === 'atelier-console') {
+  if (to.name === 'atelier-console' || to.name === 'platform-edit-inspiration') {
     try {
       auth.user = await api.currentUser()
     } catch {
       return auth.user ? defaultAuthenticatedRoute() : '/login'
     }
     if (!auth.user.is_admin) return defaultAuthenticatedRoute()
+  }
+  if (['organization-console', 'organization-edit-inspiration', 'organizations'].includes(String(to.name))) {
+    try { await auth.refreshProfile() } catch { return defaultAuthenticatedRoute() }
+    if (!(to.name === 'organizations' && auth.user?.is_admin) && auth.user?.organization_role !== 'admin') return defaultAuthenticatedRoute()
   }
   return true
 })

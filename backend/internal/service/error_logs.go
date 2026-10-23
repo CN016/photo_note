@@ -18,6 +18,7 @@ import (
 	"github.com/lib/pq"
 	"github.com/photo-nini/backend/internal/domain/fault"
 	"github.com/photo-nini/backend/internal/model"
+	"github.com/photo-nini/backend/internal/tenant"
 )
 
 const errorLogQueueSize = 512
@@ -174,7 +175,8 @@ func (service *ErrorLogService) enqueue(entry model.ErrorLog) {
 
 // persist 保存新日志或增加一分钟内重复次数；每条事件的数据库和通知操作最多占用五秒。
 func (service *ErrorLogService) persist(parent context.Context, entry model.ErrorLog) {
-	ctx, cancel := context.WithTimeout(parent, 5*time.Second)
+	// 全局诊断表与管理员通知属于系统路径，和原请求的组织私有资源访问隔离。
+	ctx, cancel := context.WithTimeout(tenant.System(parent), 5*time.Second)
 	defer cancel()
 	recorded, inserted, err := service.repository.RecordErrorLog(ctx, entry)
 	if err != nil {

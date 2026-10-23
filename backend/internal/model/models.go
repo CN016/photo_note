@@ -10,7 +10,9 @@ import (
 
 // BaseModel 声明所有项目业务表共用字段；ID 只用于数据库内部，自增键绝不进入 API DTO。
 type BaseModel struct {
-	ID         int       `gorm:"column:id;primaryKey;autoIncrement" json:"-"`
+	ID int `gorm:"column:id;primaryKey;autoIncrement" json:"-"`
+	// OrgID 是独立于内部主键的租户业务编号；-1 表示个人或明确的系统数据域，正数表示组织。
+	OrgID      int64     `gorm:"column:orgid;type:bigint;not null;default:-1" json:"-"`
 	BusinessID uuid.UUID `gorm:"column:business_id;type:uuid;not null;uniqueIndex" json:"-"`
 	CreatedAt  time.Time `gorm:"column:created_at;type:timestamptz;not null" json:"-"`
 	UpdatedAt  time.Time `gorm:"column:updated_at;type:timestamptz;not null" json:"-"`
@@ -263,7 +265,7 @@ type ConsoleInspiration struct {
 	BusinessID    uuid.UUID      `gorm:"column:business_id"`
 	UserID        uuid.UUID      `gorm:"column:user_id"`
 	OwnerNickname string         `gorm:"column:owner_nickname"`
-	TagIDs        pq.StringArray `gorm:"column:tag_ids"`
+	TagIDs        pq.StringArray `gorm:"column:tag_ids;type:uuid[]"`
 	ImageKey      string         `gorm:"column:image_key"`
 	FileName      string         `gorm:"column:file_name"`
 	CreatedAt     time.Time      `gorm:"column:created_at"`
@@ -276,9 +278,9 @@ type ConsoleFeedback struct {
 	UserID         *uuid.UUID     `gorm:"column:user_id"`
 	Nickname       string         `gorm:"column:nickname"`
 	Content        string         `gorm:"column:content"`
-	ImageKeys      pq.StringArray `gorm:"column:image_keys"`
+	ImageKeys      pq.StringArray `gorm:"column:image_keys;type:text[]"`
 	ReplyContent   string         `gorm:"column:reply_content"`
-	ReplyImageKeys pq.StringArray `gorm:"column:reply_image_keys"`
+	ReplyImageKeys pq.StringArray `gorm:"column:reply_image_keys;type:text[]"`
 	Status         string         `gorm:"column:feedback_status"`
 	CreatedAt      time.Time      `gorm:"column:created_at"`
 	UpdatedAt      time.Time      `gorm:"column:updated_at"`

@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref } from 'vue'
+import { onBeforeRouteLeave } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { ElMessage } from 'element-plus'
 import type { UploadFile } from 'element-plus'
@@ -27,6 +28,7 @@ const passwordError = ref('')
 const currentPassword = ref('')
 const newPassword = ref('')
 const confirmPassword = ref('')
+onBeforeRouteLeave(to => to.path !== '/spaces' || (!profileBusy.value && !passwordBusy.value && !avatarBusy.value && !pendingAvatar.value && nickname.value === auth.user?.nickname && !currentPassword.value && !newPassword.value && !confirmPassword.value))
 
 async function chooseAvatar(file: UploadFile) {
   if (!file.raw) return
@@ -47,7 +49,7 @@ async function saveProfile() {
   profileBusy.value = true
   try {
     let avatarKey = auth.user?.avatar_key
-    if (pendingAvatar.value) avatarKey = (await api.upload(pendingAvatar.value.blob, pendingAvatar.value.filename)).storekey
+    if (pendingAvatar.value) avatarKey = (await api.uploadAvatar(pendingAvatar.value.blob, pendingAvatar.value.filename)).storekey
     const user = await api.updateProfile({ nickname: trimmed, ...(avatarKey ? { avatar_key: avatarKey } : {}) })
     auth.user = user
     if (pendingAvatar.value) {

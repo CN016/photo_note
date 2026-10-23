@@ -22,6 +22,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/photo-nini/backend/internal/domain/fault"
 	"github.com/photo-nini/backend/internal/model"
+	"github.com/photo-nini/backend/internal/tenant"
 )
 
 // NoticeRepository 抽象用户隔离的站内消息、私有渠道设置和可恢复 webhook outbox 持久化。
@@ -88,6 +89,8 @@ func (service *NoticeService) SetErrorLogService(errorLogs *ErrorLogService) {
 
 // PublishErrorLog 为系统配置指定的管理员创建站内消息，不把内部诊断写入管理员的外部 webhook。
 func (service *NoticeService) PublishErrorLog(ctx context.Context, userID uuid.UUID, entry model.ErrorLog) error {
+	// 系统错误只进入接收者个人消息空间，不继承触发错误的组织资源权限。
+	ctx = tenant.Personal(ctx, userID)
 	payload, err := json.Marshal(map[string]any{
 		"error_code":  entry.ErrorCode,
 		"source_file": entry.SourceFile,
@@ -110,6 +113,7 @@ const feedbackWebhookPartLimit = 3800
 
 // PublishFeedbackSubmitted 以稳定事件键创建反馈正文、来源资料和图片链接，并为启用的 webhook 配置生成安全分段。
 func (service *NoticeService) PublishFeedbackSubmitted(ctx context.Context, userID, feedbackID uuid.UUID, reporter FeedbackReporter, content string, imageURLs []string) error {
+	ctx = tenant.Personal(ctx, userID)
 	markdown, err := feedbackMarkdown(reporter, content, imageURLs)
 	if err != nil {
 		return err
@@ -564,7 +568,7 @@ func (service *NoticeService) RunDeliveryWorker(ctx context.Context) {
 			return
 		default:
 		}
-		delivery, config, claimed, err := service.repository.ClaimNoticeDelivery(ctx)
+		delivery, config, claimed, err := service.repository.ClaimNoticeDelivery(tenant.System(ctx))
 		if err != nil {
 			if ctx.Err() != nil {
 				return
@@ -578,8 +582,13 @@ func (service *NoticeService) RunDeliveryWorker(ctx context.Context) {
 			claimed = false
 		}
 		if claimed {
-			errorCode := service.deliver(ctx, delivery, config)
-			finishCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			// 任务领取允许跨租户，执行、关联查询及完成回写只使用该持久化任务的组织。
+			deliveryCtx := tenant.WithScope(ctx, tenant.Scope{OrgID: delivery.OrgID, UserID: delivery.UserID})
+			errorCode := "resource_scope_mismatch"
+			if config.OrgID == delivery.OrgID && config.UserID == delivery.UserID {
+				errorCode = service.deliver(deliveryCtx, delivery, config)
+			}
+			finishCtx, cancel := context.WithTimeout(context.WithoutCancel(deliveryCtx), 5*time.Second)
 			finishErr := service.repository.FinishNoticeDelivery(finishCtx, delivery.BusinessID, delivery.AttemptCount, errorCode == "", errorCode)
 			cancel()
 			if finishErr != nil {
@@ -601,6 +610,9 @@ func (service *NoticeService) RunDeliveryWorker(ctx context.Context) {
 
 // deliver 对目标机器人使用有界 HTTP 客户端，返回稳定错误码而不返回响应正文、地址或秘密。
 func (service *NoticeService) deliver(parent context.Context, delivery model.NoticeDelivery, config model.NoticeConfig) string {
+	if code := service.authorizeDispatch(parent, delivery); code != "" {
+		return code
+	}
 	requestTimeout := 12 * time.Second
 	if config.Provider == "feishu" && (delivery.EventType == "feedback.submitted" || delivery.EventType == "feedback.replied") {
 		// 飞书原生图片路径包含令牌获取、图片上传和 webhook 投递多个有界请求。
@@ -631,6 +643,10 @@ func (service *NoticeService) deliver(parent context.Context, delivery model.Not
 	}
 	request.Header.Set("Content-Type", "application/json; charset=utf-8")
 	request.Header.Set("Accept", "application/json")
+	// 领取任务或飞书图片准备后可能发生停用、移除或禁用渠道；实际外发前重新读取可信状态。
+	if code := service.authorizeDispatch(requestCtx, delivery); code != "" {
+		return code
+	}
 	response, err := service.client.Do(request)
 	if err != nil {
 		var netErr net.Error
@@ -649,6 +665,28 @@ func (service *NoticeService) deliver(parent context.Context, delivery model.Not
 	}
 	if providerRejected(responseBody) {
 		return "provider_rejected"
+	}
+	return ""
+}
+
+// authorizeDispatch 将任务外发授权绑定持久化任务及当前组织，不用入队时缓存的成员资格代替检查。
+func (service *NoticeService) authorizeDispatch(ctx context.Context, delivery model.NoticeDelivery) string {
+	if _, scoped := tenant.FromContext(ctx); !scoped {
+		// 旧的独立协议测试没有数据库作用域；实际 worker 总是恢复持久化组织身份。
+		return ""
+	}
+	checker, ok := service.repository.(interface {
+		CanDispatchNoticeDelivery(context.Context, uuid.UUID) (bool, error)
+	})
+	if !ok {
+		return "dispatch_authorization_unavailable"
+	}
+	allowed, err := checker.CanDispatchNoticeDelivery(ctx, delivery.BusinessID)
+	if err != nil {
+		return "dispatch_authorization_unavailable"
+	}
+	if !allowed {
+		return "delivery_unavailable"
 	}
 	return ""
 }

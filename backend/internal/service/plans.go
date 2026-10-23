@@ -16,6 +16,7 @@ import (
 	"github.com/photo-nini/backend/internal/filestore"
 	"github.com/photo-nini/backend/internal/imagecompress"
 	"github.com/photo-nini/backend/internal/model"
+	"github.com/photo-nini/backend/internal/tenant"
 )
 
 const (
@@ -244,6 +245,8 @@ func (service *PlanService) RunReminderWorker(ctx context.Context) {
 
 // processDuePlanReminders 每批按业务 UUID 调用通知服务；通知事务失败时不改变任务状态。
 func (service *PlanService) processDuePlanReminders(ctx context.Context) {
+	// 仅调度器可全局发现任务；每个提醒事务再从持久化记录恢复组织作用域。
+	ctx = tenant.System(ctx)
 	if service.notices == nil {
 		service.captureWorkerError(errors.New("计划提醒通知服务未初始化"))
 		return
@@ -311,7 +314,10 @@ func (service *PlanService) validatePlanCover(ctx context.Context, emoji, imageK
 	if service.files == nil || service.maxBytes < 1 {
 		return fault.Unavailable(errors.New("计划图片存储或大小配置未初始化"))
 	}
-	reader, size, _, err := service.files.Open(imageKey)
+	if err := authorizeFileReference(ctx, service.files, imageKey); err != nil {
+		return err
+	}
+	reader, size, _, err := OpenFile(ctx, service.files, imageKey)
 	if err != nil {
 		if errors.Is(err, filestore.ErrFileNotFound) || errors.Is(err, filestore.ErrInvalidStoreKey) {
 			return fault.InvalidField("cover_image_key", "封面图片不存在或格式无效")

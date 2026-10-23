@@ -52,6 +52,7 @@ let saveTimer: number | undefined
 let changeVersion = 0
 let saveFlight: Promise<boolean> | null = null
 let hydrating = true
+let uploadingAttachments = 0
 
 const editor = useEditor({
   // 段落对齐作用于段落和标题；任务清单依赖独立的列表与任务项扩展。
@@ -141,6 +142,8 @@ const imageExtensions = new Set(['jpg', 'jpeg', 'png', 'webp', 'heic', 'heif'])
 
 /** 常见静态图片沿用灵感图压缩、元数据和引用流程；视频、GIF、Office、PDF 保持原文件作为附件。 */
 async function uploadFiles(event: Event) {
+  uploadingAttachments += 1
+  try {
   const input = event.target as HTMLInputElement
   const files = Array.from(input.files ?? [])
   let hasNewAttachments = false
@@ -165,6 +168,7 @@ async function uploadFiles(event: Event) {
   }
   // 新附件需要先进入项目关联清单，之后项目授权预览接口才能读取；此处提前提交一次正文快照。
   if (hasNewAttachments) await saveNow()
+  } finally { uploadingAttachments -= 1 }
 }
 
 const mimeByExtension: Record<string, string> = {
@@ -208,6 +212,8 @@ watch(projectID, () => { if (projectID.value) void loadProject() })
 onMounted(() => { void loadProject(); void loadUploadLimit() })
 onBeforeUnmount(() => { if (saveTimer) window.clearTimeout(saveTimer) })
 onBeforeRouteLeave(async () => {
+  // 整条导入链包括解码与多次上传，不能只等待单个 HTTP 请求。
+  if (uploadingAttachments > 0 || loading.value) return false
   while (saveTimer || savingState.value === 'unsaved' || savingState.value === 'saving' || savingState.value === 'error') {
     if (saveFlight) await saveFlight
     else if (!await saveNow()) return false

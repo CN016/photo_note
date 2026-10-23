@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from 'vue'
+import { onBeforeRouteLeave } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { ArrowLeft, ArrowRight, Plus, Share } from '@element-plus/icons-vue'
 import { useI18n } from 'vue-i18n'
@@ -29,6 +30,7 @@ const saving = ref(false)
 const shareBusy = ref(false)
 const scopeTip = ref('')
 const form = reactive<ScheduleFields>(emptySchedule())
+onBeforeRouteLeave(to => to.path !== '/spaces' || (!dialogOpen.value && !saving.value && !shareBusy.value))
 
 const effectiveDays = computed(() => view.value === 'seven' ? 7 : view.value === 'fourteen' ? 14 : view.value === 'custom' ? clampScheduleDays(customDays.value) : 0)
 const monthKey = computed(() => focusDate.value.slice(0, 7))

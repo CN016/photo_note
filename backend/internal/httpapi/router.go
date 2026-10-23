@@ -23,6 +23,7 @@ import (
 	"github.com/photo-nini/backend/internal/model"
 	"github.com/photo-nini/backend/internal/service"
 	"github.com/photo-nini/backend/internal/store"
+	"github.com/photo-nini/backend/internal/tenant"
 	"github.com/photo-nini/backend/internal/version"
 )
 
@@ -62,6 +63,8 @@ type Dependencies struct {
 	TrustedProxyCIDRs     []string
 	ErrorLogs             *service.ErrorLogService
 	Console               *service.ConsoleService
+	Organizations         *service.OrganizationService
+	RegistrationFiles     fileStorage
 }
 
 // fileStorage 是 HTTP 上传和读取使用的文件存储能力，不包含用户归属或文件元数据管理。
@@ -97,8 +100,13 @@ func Router(dependencies Dependencies) *gin.Engine {
 	api.POST("/auth/register", upgradeRequiredHandler())
 	api.POST("/auth/login", loginHandler(dependencies.Auth))
 	api.POST("/auth/refresh", refreshHandler(dependencies.Auth))
+	api.POST("/auth/switch-environment", switchEnvironmentHandler(dependencies.Auth))
+	var scopeResolver tenantScopeResolver = dependencies.Organizations
+	if dependencies.Organizations == nil {
+		scopeResolver, _ = dependencies.Tokens.(tenantScopeResolver)
+	}
 	api.GET("/configs/public", publicConfigsHandler(dependencies.PublicConfigs))
-	api.POST("/feedback", optionalAuthenticationMiddleware(dependencies.Tokens), feedbackHandler(dependencies))
+	api.POST("/feedback", optionalAuthenticationMiddleware(dependencies.Tokens), personalAccountScopeMiddleware(scopeResolver), feedbackHandler(dependencies))
 	api.GET("/public-feedback-images/:storekey", publicFeedbackImageHandler(dependencies.Files))
 	api.GET("/book/:share_token/slots", publicScheduleSlotsHandler(dependencies.Schedule))
 	api.POST("/book/:share_token/requests", scheduleBookingHandler(dependencies.Schedule))
@@ -109,12 +117,15 @@ func Router(dependencies Dependencies) *gin.Engine {
 	router.GET("/healthz", healthHandler(dependencies.PostgresPing, dependencies.RedisPing))
 
 	protected := api.Group("")
-	protected.Use(authenticationMiddleware(dependencies.Tokens))
+	protected.Use(authenticationMiddleware(dependencies.Tokens), tenantScopeMiddleware(scopeResolver, dependencies.Organizations))
+	protected.GET("/environments", environmentsHandler(dependencies.Organizations))
 	protected.POST("/auth/logout", logoutHandler(dependencies.Auth))
 	protected.POST("/files", uploadFileHandler(dependencies.Files, dependencies.MaxUploadBytes, dependencies.CurrentFileStoreType))
 	protected.POST("/projects/cover-upload", uploadProjectCoverHandler(dependencies.Files, dependencies.MaxUploadBytes, dependencies.CurrentFileStoreType))
 	protected.GET("/files/:storekey", downloadFileHandler(dependencies.Files))
 	protected.GET("/users/me", getCurrentUserHandler(dependencies.Users))
+	protected.GET("/users/me/avatar", currentAvatarHandler(dependencies.Users, dependencies.Files))
+	protected.POST("/users/me/avatar", personalAvatarUploadHandler(dependencies.Files, dependencies.MaxUploadBytes, dependencies.CurrentFileStoreType))
 	protected.PATCH("/users/me", patchCurrentUserHandler(dependencies.Users))
 	protected.POST("/users/me/password", changePasswordHandler(dependencies.Auth))
 	protected.GET("/tags", listTagsHandler(dependencies.Tags))
@@ -178,7 +189,40 @@ func Router(dependencies Dependencies) *gin.Engine {
 	console.GET("/configs", consoleConfigsHandler(dependencies.Console))
 	console.POST("/configs", createConsoleConfigHandler(dependencies.Console))
 	console.PATCH("/configs/:config_key", updateConsoleConfigHandler(dependencies.Console))
-	console.GET("/inspirations", consoleInspirationsHandler(dependencies.Console))
+	gallery := console.Group("/inspirations")
+	gallery.Use(selectedGalleryOrganizationMiddleware())
+	gallery.GET("", consoleInspirationsHandler(dependencies.Console))
+	gallery.GET("/:business_id", managedInspirationGetHandler(dependencies.Inspirations))
+	gallery.PATCH("/:business_id", managedInspirationPatchHandler(dependencies.Inspirations))
+	gallery.DELETE("/:business_id", managedInspirationDeleteHandler(dependencies.Inspirations))
+	gallery.GET("/:business_id/tags", managedInspirationTagsHandler(dependencies.Inspirations))
+	gallery.POST("/:business_id/files", managedInspirationUploadHandler(dependencies.Inspirations, dependencies.MaxUploadBytes, dependencies.CurrentFileStoreType))
+	gallery.GET("/:business_id/files/:storekey", managedInspirationFileHandler(dependencies.Inspirations))
+	gallery.GET("/:business_id/file", managedInspirationFileHandler(dependencies.Inspirations))
+	console.GET("/organizations", organizationsHandler(dependencies.Organizations))
+	console.POST("/organizations", createOrganizationHandler(dependencies.Organizations))
+	console.GET("/organizations/:orgid", getOrganizationHandler(dependencies.Organizations, true))
+	console.PATCH("/organizations/:orgid", updateOrganizationHandler(dependencies.Organizations, true))
+	console.GET("/organizations/:orgid/members", organizationMembersHandler(dependencies.Organizations, true))
+	console.POST("/organizations/:orgid/members", setOrganizationMemberHandler(dependencies.Organizations, true, false))
+	console.PATCH("/organizations/:orgid/members/:user_id", setOrganizationMemberHandler(dependencies.Organizations, true, true))
+	console.DELETE("/organizations/:orgid/members/:user_id", removeOrganizationMemberHandler(dependencies.Organizations, true))
+	org := protected.Group("/organization")
+	org.Use(organizationAdministratorMiddleware(dependencies.Organizations))
+	org.GET("", getOrganizationHandler(dependencies.Organizations, false))
+	org.PATCH("", updateOrganizationHandler(dependencies.Organizations, false))
+	org.GET("/members", organizationMembersHandler(dependencies.Organizations, false))
+	org.POST("/members", setOrganizationMemberHandler(dependencies.Organizations, false, false))
+	org.PATCH("/members/:user_id", setOrganizationMemberHandler(dependencies.Organizations, false, true))
+	org.DELETE("/members/:user_id", removeOrganizationMemberHandler(dependencies.Organizations, false))
+	org.GET("/inspirations", consoleInspirationsHandler(dependencies.Console))
+	org.GET("/inspirations/:business_id", managedInspirationGetHandler(dependencies.Inspirations))
+	org.PATCH("/inspirations/:business_id", managedInspirationPatchHandler(dependencies.Inspirations))
+	org.DELETE("/inspirations/:business_id", managedInspirationDeleteHandler(dependencies.Inspirations))
+	org.GET("/inspirations/:business_id/tags", managedInspirationTagsHandler(dependencies.Inspirations))
+	org.POST("/inspirations/:business_id/files", managedInspirationUploadHandler(dependencies.Inspirations, dependencies.MaxUploadBytes, dependencies.CurrentFileStoreType))
+	org.GET("/inspirations/:business_id/files/:storekey", managedInspirationFileHandler(dependencies.Inspirations))
+	org.GET("/inspirations/:business_id/file", managedInspirationFileHandler(dependencies.Inspirations))
 	console.GET("/feedbacks", consoleFeedbacksHandler(dependencies.Console))
 	console.PATCH("/feedbacks/:business_id/status", consoleFeedbackStatusHandler(dependencies.Console))
 	console.PATCH("/feedbacks/:business_id/reply", consoleFeedbackReplyHandler(dependencies.Console, dependencies.Files, dependencies.MaxUploadBytes, dependencies.CurrentFileStoreType))
@@ -491,7 +535,11 @@ func upgradeRequiredHandler() gin.HandlerFunc {
 // registerV2Handler 校验头像后保存文件，再创建手机号账户并签发令牌；失败时回收未绑定文件。
 func registerV2Handler(dependencies Dependencies) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		if dependencies.Auth == nil || dependencies.Files == nil || dependencies.CurrentFileStoreType == nil {
+		registrationFiles := dependencies.RegistrationFiles
+		if registrationFiles == nil {
+			registrationFiles = dependencies.Files
+		}
+		if dependencies.Auth == nil || registrationFiles == nil || dependencies.CurrentFileStoreType == nil {
 			writeError(c, fault.Unavailable(errors.New("注册服务未配置")))
 			return
 		}
@@ -539,7 +587,7 @@ func registerV2Handler(dependencies Dependencies) gin.HandlerFunc {
 			writeError(c, fault.Unavailable(err))
 			return
 		}
-		avatarKey, err := dependencies.Files.Store(c.Request.Context(), storeType, avatarFiles[0].Filename, bytes.NewReader(content), dependencies.MaxUploadBytes)
+		avatarKey, err := registrationFiles.Store(c.Request.Context(), storeType, avatarFiles[0].Filename, bytes.NewReader(content), dependencies.MaxUploadBytes)
 		if err != nil {
 			writeError(c, fileStoreError(err))
 			return
@@ -547,7 +595,7 @@ func registerV2Handler(dependencies Dependencies) gin.HandlerFunc {
 		result, err := dependencies.Auth.RegisterWithAvatar(c.Request.Context(), phone, password, nickname, avatarKey)
 		if err != nil {
 			if result.User.BusinessID == uuid.Nil {
-				_ = dependencies.Files.Delete(context.Background(), avatarKey)
+				_ = registrationFiles.Delete(context.Background(), avatarKey)
 			}
 			writeError(c, err)
 			return
@@ -816,18 +864,30 @@ type authResponse struct {
 
 // userResponse 只包含对外业务 UUID、用户资料和时间字段，不暴露内部自增主键。
 type userResponse struct {
-	BusinessID uuid.UUID `json:"business_id"`
-	Nickname   string    `json:"nickname"`
-	Phone      string    `json:"phone"`
-	AvatarKey  *string   `json:"avatar_key"`
-	IsAdmin    bool      `json:"is_admin"`
-	CreatedAt  time.Time `json:"created_at"`
-	UpdatedAt  time.Time `json:"updated_at"`
+	BusinessID       uuid.UUID `json:"business_id"`
+	Nickname         string    `json:"nickname"`
+	Phone            string    `json:"phone"`
+	AvatarKey        *string   `json:"avatar_key"`
+	IsAdmin          bool      `json:"is_admin"`
+	OrgID            int64     `json:"orgid"`
+	OrganizationRole string    `json:"organization_role"`
+	CreatedAt        time.Time `json:"created_at"`
+	UpdatedAt        time.Time `json:"updated_at"`
 }
 
 // userDTO 显式映射公开资料字段，确保数据库主键、密码哈希和内部 user_id 不会被序列化。
-func userDTO(user model.User) userResponse {
-	return userResponse{BusinessID: user.BusinessID, Nickname: user.Nickname, Phone: user.Phone,
+func userDTO(user model.User, contexts ...context.Context) userResponse {
+	orgID := tenant.GlobalOrgID
+	role := "personal"
+	if len(contexts) > 0 {
+		if scope, ok := tenant.FromContext(contexts[0]); ok {
+			orgID = scope.OrgID
+			if value, ok := contexts[0].Value(organizationRoleKey{}).(string); ok {
+				role = value
+			}
+		}
+	}
+	return userResponse{OrgID: orgID, OrganizationRole: role, BusinessID: user.BusinessID, Nickname: user.Nickname, Phone: user.Phone,
 		AvatarKey: user.AvatarKey, IsAdmin: user.IsAdmin, CreatedAt: user.CreatedAt, UpdatedAt: user.UpdatedAt}
 }
 
@@ -844,7 +904,7 @@ func getCurrentUserHandler(users *service.UserService) gin.HandlerFunc {
 			writeError(c, err)
 			return
 		}
-		writeData(c, http.StatusOK, userDTO(user))
+		writeData(c, http.StatusOK, userDTO(user, c.Request.Context()))
 	}
 }
 
@@ -889,7 +949,7 @@ func patchCurrentUserHandler(users *service.UserService) gin.HandlerFunc {
 			writeError(c, err)
 			return
 		}
-		writeData(c, http.StatusOK, userDTO(user))
+		writeData(c, http.StatusOK, userDTO(user, c.Request.Context()))
 	}
 }
 

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { useRouter } from 'vue-router'
+import { onBeforeRouteLeave, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { ArrowLeft, ArrowRight, Delete, Files, More, Plus, Search, UploadFilled } from '@element-plus/icons-vue'
 import AppHeader from '../components/AppHeader.vue'
@@ -29,6 +29,7 @@ const coverPreview = ref('')
 const coverLoading = ref(false)
 const maxUploadBytes = ref(50 * 1024 * 1024)
 const deletingID = ref('')
+onBeforeRouteLeave(to => to.path !== '/spaces' || (!dialogOpen.value && !saving.value && !coverLoading.value && !deletingID.value))
 const fileInput = ref<HTMLInputElement | null>(null)
 const emojiPool = ['✨', '🌿', '🪴', '🌈', '🌙', '🧩', '🪄', '🪷', '🧸', '🌻', '🪐', '📚', '🎨', '🎧', '🧵', '☕']
 let searchTimer: number | undefined

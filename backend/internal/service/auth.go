@@ -11,6 +11,7 @@ import (
 	"github.com/photo-nini/backend/internal/model"
 	"github.com/photo-nini/backend/internal/security"
 	"github.com/photo-nini/backend/internal/store"
+	"github.com/photo-nini/backend/internal/tenant"
 )
 
 var phone11Pattern = regexp.MustCompile(`^[0-9]{11}$`)
@@ -36,9 +37,10 @@ type SessionTokens interface {
 
 // AuthService 编排注册、登录、刷新和退出流程，密码与 token 的原始内容不会进入日志。
 type AuthService struct {
-	users     UserRepository
-	tokens    SessionTokens
-	passwords *security.PasswordManager
+	users         UserRepository
+	tokens        SessionTokens
+	passwords     *security.PasswordManager
+	organizations *OrganizationService
 }
 
 // AuthResult 同时携带用户资料和令牌对，handler 将用户映射为不含数据库 ID/密码的 DTO。
@@ -50,6 +52,11 @@ type AuthResult struct {
 // NewAuthService 注入用户存储、Redis 会话和密码哈希器，避免业务流程依赖具体基础设施。
 func NewAuthService(users UserRepository, tokens SessionTokens, passwords *security.PasswordManager) *AuthService {
 	return &AuthService{users: users, tokens: tokens, passwords: passwords}
+}
+
+// SetOrganizations 注入每次刷新和切换所需的组织资格校验。
+func (service *AuthService) SetOrganizations(organizations *OrganizationService) {
+	service.organizations = organizations
 }
 
 // Register 校验规范化手机号和密码规则，生成业务 UUID 后保存 Argon2id 哈希并签发 token pair。
@@ -92,14 +99,24 @@ func (service *AuthService) register(ctx context.Context, phone, password, nickn
 		return AuthResult{}, fault.Internal(err)
 	}
 	user := model.User{
-		BaseModel:    model.BaseModel{BusinessID: uuid.New()},
+		BaseModel:    model.BaseModel{BusinessID: uuid.New(), OrgID: tenant.GlobalOrgID},
 		Nickname:     nickname,
 		Phone:        phone,
 		PasswordHash: passwordHash,
 		AvatarKey:    avatarKey,
 	}
-	if err := service.users.CreateUser(ctx, &user); err != nil {
+	if err := service.users.CreateUser(tenant.System(ctx), &user); err != nil {
 		return AuthResult{}, err
+	}
+	if avatarKey != nil {
+		// 注册头像先由匿名上传入口保存；账号 UUID 生成后才登记个人空间授权。
+		if registrar, ok := service.users.(interface {
+			RegisterFileOwnership(context.Context, string, uuid.UUID) error
+		}); ok {
+			if err := registrar.RegisterFileOwnership(tenant.Personal(ctx, user.BusinessID), *avatarKey, user.BusinessID); err != nil {
+				return AuthResult{User: user}, err
+			}
+		}
 	}
 	tokens, err := service.tokens.Issue(ctx, user.BusinessID)
 	if err != nil {
@@ -118,7 +135,7 @@ func (service *AuthService) Login(ctx context.Context, phone, password string) (
 	if err := validatePassword(password); err != nil {
 		return AuthResult{}, err
 	}
-	user, err := service.users.FindUserByPhone(ctx, phone)
+	user, err := service.users.FindUserByPhone(tenant.System(ctx), phone)
 	if fault.Is(err, 404, "not_found") {
 		service.passwords.VerifyDummy(password)
 		return AuthResult{}, fault.Unauthorized()
@@ -131,7 +148,7 @@ func (service *AuthService) Login(ctx context.Context, phone, password string) (
 		return AuthResult{}, err
 	}
 	defer release()
-	user, err = service.users.FindUserPasswordHash(ctx, user.BusinessID)
+	user, err = service.users.FindUserPasswordHash(tenant.System(ctx), user.BusinessID)
 	if err != nil {
 		return AuthResult{}, err
 	}
@@ -142,7 +159,7 @@ func (service *AuthService) Login(ctx context.Context, phone, password string) (
 	if !valid {
 		return AuthResult{}, fault.Unauthorized()
 	}
-	profile, err := service.users.FindUserByBusinessID(ctx, user.BusinessID)
+	profile, err := service.users.FindUserByBusinessID(tenant.System(ctx), user.BusinessID)
 	if err != nil {
 		return AuthResult{}, err
 	}
@@ -155,17 +172,65 @@ func (service *AuthService) Login(ctx context.Context, phone, password string) (
 
 // Refresh 消费旧 refresh token 并签发新的一对令牌，Redis 中不存在旧 token 时拒绝重放。
 func (service *AuthService) Refresh(ctx context.Context, refreshToken string) (store.TokenPair, error) {
+	// 先检查资格，再消费令牌；停用组织或移除成员不能靠刷新取得新 token。
+	if reader, ok := service.tokens.(interface {
+		ReadRefreshClaims(context.Context, string) (store.TokenClaims, error)
+	}); ok && service.organizations != nil {
+		claims, err := reader.ReadRefreshClaims(ctx, refreshToken)
+		if err != nil {
+			return store.TokenPair{}, err
+		}
+		if _, err = service.organizations.ResolveScope(ctx, claims.UserBusinessID, claims.OrgID, claims.SessionID, claims.SessionVersion); err != nil {
+			return store.TokenPair{}, err
+		}
+	}
 	pair, claims, err := service.tokens.Rotate(ctx, refreshToken)
 	if err != nil {
 		return store.TokenPair{}, err
 	}
-	if _, err := service.users.FindUserByBusinessID(ctx, claims.UserBusinessID); err != nil {
+	if _, err := service.users.FindUserByBusinessID(tenant.System(ctx), claims.UserBusinessID); err != nil {
 		if fault.Is(err, 404, "not_found") {
 			return store.TokenPair{}, fault.Unauthorized()
 		}
 		return store.TokenPair{}, err
 	}
 	return pair, nil
+}
+
+// SwitchEnvironment 只使用当前浏览器刷新凭证切换空间；普通业务接口不接受orgid覆盖token。
+func (service *AuthService) SwitchEnvironment(ctx context.Context, raw string, orgID, expected int64, switchID string) (store.TokenPair, error) {
+	if service.organizations == nil {
+		return store.TokenPair{}, fault.Unavailable(nil)
+	}
+	if !ValidOrgID(orgID) || expected < 1 {
+		return store.TokenPair{}, fault.InvalidRequest("组织或预期会话版本无效")
+	}
+	if _, err := uuid.Parse(switchID); err != nil {
+		return store.TokenPair{}, fault.InvalidField("switch_id", "切换标识必须为UUID")
+	}
+	tokens, ok := service.tokens.(interface {
+		ReadSwitchClaims(context.Context, string, string) (store.TokenClaims, error)
+		SwitchEnvironment(context.Context, string, int64, int64, string) (store.TokenPair, error)
+	})
+	if !ok {
+		return store.TokenPair{}, fault.Unavailable(nil)
+	}
+	claims, err := tokens.ReadSwitchClaims(ctx, raw, switchID)
+	if err != nil {
+		return store.TokenPair{}, err
+	}
+	release, err := service.tokens.AcquireUserLock(ctx, claims.UserBusinessID)
+	if err != nil {
+		return store.TokenPair{}, err
+	}
+	defer release()
+	if _, err = service.users.FindUserByBusinessID(tenant.System(ctx), claims.UserBusinessID); err != nil {
+		return store.TokenPair{}, err
+	}
+	if err = service.organizations.ValidateEnvironment(ctx, claims.UserBusinessID, orgID); err != nil {
+		return store.TokenPair{}, err
+	}
+	return tokens.SwitchEnvironment(ctx, raw, orgID, expected, switchID)
 }
 
 // Logout 撤销当前 access token 所属会话索引中的 access 和 refresh token。
@@ -183,7 +248,7 @@ func (service *AuthService) ChangePassword(ctx context.Context, userID uuid.UUID
 		return err
 	}
 	defer release()
-	user, err := service.users.FindUserPasswordHash(ctx, userID)
+	user, err := service.users.FindUserPasswordHash(tenant.System(ctx), userID)
 	if err != nil {
 		return err
 	}
@@ -202,7 +267,7 @@ func (service *AuthService) ChangePassword(ctx context.Context, userID uuid.UUID
 	if err := service.tokens.RevokeOtherSessions(ctx, userID, sessionID); err != nil {
 		return err
 	}
-	return service.users.UpdateUserPasswordHash(ctx, userID, hash)
+	return service.users.UpdateUserPasswordHash(tenant.System(ctx), userID, hash)
 }
 
 // normalizeRegistrationPhone 仅接受并保存 11 位数字，注册时不猜测国家区号。

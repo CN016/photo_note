@@ -22,7 +22,7 @@ const avatarSrc = computed(() => {
 let stopNotificationListener: (() => void) | null = null
 
 /** 页面切换时复用 store 内的数据；只有账号首次出现或变化时才建立头像缓存和全局轮询。 */
-watch(() => auth.user ? [auth.user.business_id, auth.user.avatar_key] as const : null, identity => {
+watch(() => auth.user ? [auth.user.business_id, auth.user.avatar_key, auth.orgid, auth.sessionVersion] as const : null, identity => {
   stopNotificationListener?.()
   stopNotificationListener = null
   if (!identity) {
@@ -78,8 +78,12 @@ function active(path: string): boolean {
       <RouterLink class="nav-item" :class="{ active: active('/plans') }" to="/plans"><el-icon aria-hidden="true"><List /></el-icon>{{ t('common.plans') }}</RouterLink>
       <RouterLink class="nav-item" :class="{ active: active('/profile') }" to="/profile"><el-icon aria-hidden="true"><User /></el-icon>{{ t('common.profile') }}</RouterLink>
       <RouterLink v-if="auth.user?.is_admin" class="nav-item" :class="{ active: active('/atelier-7f3c9a2e') }" to="/atelier-7f3c9a2e"><el-icon aria-hidden="true"><Setting /></el-icon>{{ t('common.console') }}</RouterLink>
+      <RouterLink v-if="auth.user?.organization_role === 'admin'" class="nav-item" to="/organization-console"><el-icon aria-hidden="true"><Picture /></el-icon>{{ t('common.organizationConsole') }}</RouterLink>
+      <RouterLink v-if="auth.user?.is_admin || auth.user?.organization_role === 'admin'" class="nav-item" to="/organizations"><el-icon aria-hidden="true"><User /></el-icon>{{ t('common.organizations') }}</RouterLink>
+      <RouterLink class="nav-item" to="/spaces"><el-icon aria-hidden="true"><House /></el-icon>{{ t('common.spaces') }}</RouterLink>
     </nav>
     <div class="navigation-account">
+      <RouterLink to="/spaces" class="nav-item">{{ t('common.spaces') }} · {{ auth.orgid === -1 ? t('spaces.personal') : auth.orgid }}</RouterLink>
       <div v-if="auth.user" class="nav-user"><el-avatar :size="36" :src="avatarSrc || undefined" @error="fallbackAvatar">{{ auth.user.nickname.slice(0, 1) }}</el-avatar><span>{{ auth.user.nickname }}</span></div>
       <div class="navigation-preferences"><ThemeSwitcher /><LanguageSwitcher /></div>
       <el-button class="sign-out" text @click="signOut">{{ t('common.logout') }}</el-button>

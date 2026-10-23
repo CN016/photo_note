@@ -206,7 +206,7 @@ func syncProjectAttachments(tx *gorm.DB, userID, projectID uuid.UUID, items []mo
 		item := byKey[key]
 		item.ID, item.BusinessID, item.CreatedAt, item.UpdatedAt = 0, uuid.New(), now, now
 		item.UserID, item.ProjectBusinessID = userID, projectID
-		if err := tx.Clauses(clause.OnConflict{Columns: []clause.Column{{Name: "user_id"}, {Name: "project_business_id"}, {Name: "storekey"}}, DoUpdates: clause.Assignments(map[string]any{"file_name": item.FileName, "file_size": item.FileSize, "content_type": item.ContentType, "asset_role": item.AssetRole, "updated_at": now})}).Create(&item).Error; err != nil {
+		if err := tx.Clauses(clause.OnConflict{Columns: []clause.Column{{Name: "orgid"}, {Name: "user_id"}, {Name: "project_business_id"}, {Name: "storekey"}}, DoUpdates: clause.Assignments(map[string]any{"file_name": item.FileName, "file_size": item.FileSize, "content_type": item.ContentType, "asset_role": item.AssetRole, "updated_at": now})}).Create(&item).Error; err != nil {
 			return persistenceError(err)
 		}
 	}

@@ -21,6 +21,8 @@ import (
 type TokenClaims struct {
 	UserBusinessID uuid.UUID `json:"user_business_id"`
 	SessionID      string    `json:"session_id"`
+	OrgID          int64     `json:"orgid"`
+	SessionVersion int64     `json:"session_version"`
 }
 
 // TokenPair 是注册、登录和刷新接口返回的两种不透明随机令牌。
@@ -30,6 +32,9 @@ type TokenPair struct {
 	TokenType        string `json:"token_type"`
 	ExpiresIn        int64  `json:"expires_in"`
 	RefreshExpiresIn int64  `json:"refresh_expires_in"`
+	OrgID            int64  `json:"orgid"`
+	SessionID        string `json:"session_id"`
+	SessionVersion   int64  `json:"session_version"`
 }
 
 // TokenStore 负责签发、校验、原子刷新和撤销 Redis 会话内的所有令牌。
@@ -63,173 +68,212 @@ func (store *TokenStore) Close() error {
 	return store.client.Close()
 }
 
-// Issue 为一个用户会话分别生成两个 32 字节随机 token，并以摘要 key 存储其 TTL。
+// Issue 为新浏览器会话签发个人空间令牌；每个会话独立维护当前组织和版本栅栏。
 func (store *TokenStore) Issue(ctx context.Context, userID uuid.UUID) (TokenPair, error) {
-	accessToken, err := secureToken()
+	claims := TokenClaims{UserBusinessID: userID, SessionID: uuid.NewString(), OrgID: -1, SessionVersion: 1}
+	access, err := secureToken()
 	if err != nil {
 		return TokenPair{}, fault.Internal(err)
 	}
-	refreshToken, err := secureToken()
+	refresh, err := secureToken()
 	if err != nil {
 		return TokenPair{}, fault.Internal(err)
 	}
-	claims := TokenClaims{UserBusinessID: userID, SessionID: uuid.NewString()}
-	serialized, err := json.Marshal(claims)
-	if err != nil {
-		return TokenPair{}, fault.Internal(err)
-	}
-	accessKey := accessTokenKey(accessToken)
-	refreshKey := refreshTokenKey(refreshToken)
-	sessionKey := sessionRedisKey(claims.SessionID)
-
-	// Redis MULTI/EXEC 将两种 token 和会话索引作为一组写入，避免只签发半对令牌。
+	serialized, _ := json.Marshal(claims)
 	pipe := store.client.TxPipeline()
-	pipe.Set(ctx, accessKey, serialized, store.accessTokenTTL)
-	pipe.Set(ctx, refreshKey, serialized, store.refreshTokenTTL)
-	pipe.SAdd(ctx, sessionKey, accessKey, refreshKey)
-	pipe.Expire(ctx, sessionKey, store.refreshTokenTTL)
+	pipe.Set(ctx, accessTokenKey(access), serialized, store.accessTokenTTL)
+	pipe.Set(ctx, refreshTokenKey(refresh), serialized, store.refreshTokenTTL)
+	pipe.Set(ctx, sessionStateKey(claims.SessionID), serialized, store.refreshTokenTTL)
+	pipe.SAdd(ctx, sessionRedisKey(claims.SessionID), accessTokenKey(access), refreshTokenKey(refresh))
+	pipe.Expire(ctx, sessionRedisKey(claims.SessionID), store.refreshTokenTTL)
 	pipe.SAdd(ctx, userSessionRedisKey(userID), claims.SessionID)
 	pipe.Expire(ctx, userSessionRedisKey(userID), store.refreshTokenTTL)
 	if _, err := pipe.Exec(ctx); err != nil {
 		return TokenPair{}, fault.Unavailable(err)
 	}
-	return store.pair(accessToken, refreshToken), nil
+	return store.scopedPair(access, refresh, claims), nil
 }
 
-// ValidateAccess 通过 SHA-256 摘要查 Redis，令牌格式正确但 key 不存在时仍视为未认证。
-func (store *TokenStore) ValidateAccess(ctx context.Context, rawToken string) (TokenClaims, error) {
-	if rawToken == "" {
-		return TokenClaims{}, fault.Unauthorized()
-	}
-	serialized, err := store.client.Get(ctx, accessTokenKey(rawToken)).Bytes()
-	if errors.Is(err, redis.Nil) {
-		return TokenClaims{}, fault.Unauthorized()
-	}
+// validClaims 拒绝升级前缺少组织/版本的旧会话；orgid=0 从不代表个人版。
+func validClaims(claims TokenClaims) bool {
+	return claims.UserBusinessID != uuid.Nil && claims.SessionID != "" && claims.SessionVersion > 0 && (claims.OrgID == -1 || claims.OrgID > 0)
+}
+
+// readCurrentClaims 在同一 Redis Lua 中检查令牌声明与当前会话状态，避免读取后切换的时间窗口。
+func (store *TokenStore) readCurrentClaims(ctx context.Context, key string) (TokenClaims, error) {
+	const script = `
+      local value=redis.call('GET',KEYS[1]); if not value then return '' end
+      local ok,c=pcall(cjson.decode,value); if not ok or not c.session_id or not c.session_version or not c.orgid then return '' end
+      if redis.call('GET','auth:session-state:'..c.session_id) ~= value then return '' end
+      return value`
+	value, err := store.client.Eval(ctx, script, []string{key}).Text()
 	if err != nil {
 		return TokenClaims{}, fault.Unavailable(err)
 	}
 	var claims TokenClaims
-	if err := json.Unmarshal(serialized, &claims); err != nil || claims.UserBusinessID == uuid.Nil || claims.SessionID == "" {
-		return TokenClaims{}, fault.Unavailable(fmt.Errorf("Redis access token 数据损坏"))
+	if value == "" || json.Unmarshal([]byte(value), &claims) != nil || !validClaims(claims) {
+		return TokenClaims{}, fault.Unauthorized()
 	}
 	return claims, nil
 }
 
-// Rotate 原子消费旧 refresh token 并签发新 token pair；并发重放只有一个请求可以成功。
-func (store *TokenStore) Rotate(ctx context.Context, rawToken string) (TokenPair, TokenClaims, error) {
-	if rawToken == "" {
-		return TokenPair{}, TokenClaims{}, fault.Unauthorized()
+// ValidateAccess 校验会话版本；被空间切换撤销的旧 access token 即使 TTL 尚存也不能继续访问。
+func (store *TokenStore) ValidateAccess(ctx context.Context, raw string) (TokenClaims, error) {
+	if raw == "" {
+		return TokenClaims{}, fault.Unauthorized()
 	}
-	oldKey := refreshTokenKey(rawToken)
-	serialized, err := store.client.Get(ctx, oldKey).Bytes()
-	if errors.Is(err, redis.Nil) {
-		return TokenPair{}, TokenClaims{}, fault.Unauthorized()
-	}
-	if err != nil {
-		return TokenPair{}, TokenClaims{}, fault.Unavailable(err)
-	}
-	var claims TokenClaims
-	if err := json.Unmarshal(serialized, &claims); err != nil || claims.UserBusinessID == uuid.Nil || claims.SessionID == "" {
-		return TokenPair{}, TokenClaims{}, fault.Unavailable(fmt.Errorf("Redis refresh token 数据损坏"))
-	}
-	accessToken, err := secureToken()
-	if err != nil {
-		return TokenPair{}, TokenClaims{}, fault.Internal(err)
-	}
-	refreshToken, err := secureToken()
-	if err != nil {
-		return TokenPair{}, TokenClaims{}, fault.Internal(err)
-	}
-	newAccessKey := accessTokenKey(accessToken)
-	newRefreshKey := refreshTokenKey(refreshToken)
-	accessValue, err := json.Marshal(claims)
-	if err != nil {
-		return TokenPair{}, TokenClaims{}, fault.Internal(err)
-	}
-	refreshValue, err := json.Marshal(claims)
-	if err != nil {
-		return TokenPair{}, TokenClaims{}, fault.Internal(err)
-	}
-
-	// Lua 脚本在 Redis 单线程执行中校验旧 key、替换 refresh token 并更新同一会话索引。
-	const rotateScript = `
-		local old_value = redis.call('GET', KEYS[1])
-		if not old_value then return 0 end
-		local old_claims = cjson.decode(old_value)
-		if old_claims.session_id ~= ARGV[1] or old_claims.user_business_id ~= ARGV[2] then return 0 end
-		if redis.call('SISMEMBER', KEYS[4], KEYS[1]) == 0 then return 0 end
-		if redis.call('EXISTS', KEYS[2]) == 1 or redis.call('EXISTS', KEYS[3]) == 1 then return -1 end
-		redis.call('SET', KEYS[2], ARGV[3], 'EX', ARGV[4])
-		redis.call('SET', KEYS[3], ARGV[5], 'EX', ARGV[6])
-		redis.call('DEL', KEYS[1])
-		redis.call('SREM', KEYS[4], KEYS[1])
-		redis.call('SADD', KEYS[4], KEYS[2], KEYS[3])
-		redis.call('EXPIRE', KEYS[4], ARGV[6])
-		redis.call('SADD', KEYS[5], ARGV[1])
-		redis.call('EXPIRE', KEYS[5], ARGV[6])
-		return 1
-	`
-	result, err := store.client.Eval(ctx, rotateScript,
-		[]string{oldKey, newAccessKey, newRefreshKey, sessionRedisKey(claims.SessionID), userSessionRedisKey(claims.UserBusinessID)},
-		claims.SessionID, claims.UserBusinessID.String(), string(accessValue), ttlSeconds(store.accessTokenTTL),
-		string(refreshValue), ttlSeconds(store.refreshTokenTTL)).Int64()
-	if err != nil {
-		return TokenPair{}, TokenClaims{}, fault.Unavailable(err)
-	}
-	if result != 1 {
-		if result < 0 {
-			return TokenPair{}, TokenClaims{}, fault.Unavailable(fmt.Errorf("Redis token key collision"))
-		}
-		return TokenPair{}, TokenClaims{}, fault.Unauthorized()
-	}
-	return store.pair(accessToken, refreshToken), claims, nil
+	return store.readCurrentClaims(ctx, accessTokenKey(raw))
 }
 
-// RevokeSession 通过 Redis Lua 原子删除索引中登记的 token key，刷新与退出并发时仍保持完整撤销。
+// ReadRefreshClaims 只校验当前刷新令牌，不消费它，供业务层先验证组织和成员状态。
+func (store *TokenStore) ReadRefreshClaims(ctx context.Context, raw string) (TokenClaims, error) {
+	if raw == "" {
+		return TokenClaims{}, fault.Unauthorized()
+	}
+	return store.readCurrentClaims(ctx, refreshTokenKey(raw))
+}
+
+// Rotate 单次消费 refresh token；普通刷新保留当前空间版本，Lua 同时核验版本栅栏。
+func (store *TokenStore) Rotate(ctx context.Context, raw string) (TokenPair, TokenClaims, error) {
+	claims, err := store.ReadRefreshClaims(ctx, raw)
+	if err != nil {
+		return TokenPair{}, TokenClaims{}, err
+	}
+	access, err := secureToken()
+	if err != nil {
+		return TokenPair{}, TokenClaims{}, fault.Internal(err)
+	}
+	refresh, err := secureToken()
+	if err != nil {
+		return TokenPair{}, TokenClaims{}, fault.Internal(err)
+	}
+	serialized, _ := json.Marshal(claims)
+	const script = `
+      if redis.call('GET',KEYS[1])~=ARGV[1] or redis.call('GET',KEYS[4])~=ARGV[1] then return 0 end
+      if redis.call('SISMEMBER',KEYS[5],KEYS[1])==0 then return 0 end
+      redis.call('SET',KEYS[2],ARGV[1],'EX',ARGV[2]); redis.call('SET',KEYS[3],ARGV[1],'EX',ARGV[3])
+      redis.call('DEL',KEYS[1]); redis.call('SREM',KEYS[5],KEYS[1]); redis.call('SADD',KEYS[5],KEYS[2],KEYS[3])
+      redis.call('EXPIRE',KEYS[5],ARGV[3]); redis.call('EXPIRE',KEYS[4],ARGV[3]);
+      redis.call('SADD',KEYS[6],ARGV[4]); redis.call('EXPIRE',KEYS[6],ARGV[3]); return 1`
+	n, err := store.client.Eval(ctx, script, []string{refreshTokenKey(raw), accessTokenKey(access), refreshTokenKey(refresh), sessionStateKey(claims.SessionID), sessionRedisKey(claims.SessionID), userSessionRedisKey(claims.UserBusinessID)}, string(serialized), ttlSeconds(store.accessTokenTTL), ttlSeconds(store.refreshTokenTTL), claims.SessionID).Int()
+	if err != nil {
+		return TokenPair{}, TokenClaims{}, fault.Unavailable(err)
+	}
+	if n != 1 {
+		return TokenPair{}, TokenClaims{}, fault.Unauthorized()
+	}
+	return store.scopedPair(access, refresh, claims), claims, nil
+}
+
+// switchReceipt 不保存令牌原文；原刷新凭证与随机切换 UUID 共同支持响应丢失后的有限恢复。
+type switchReceipt struct {
+	Claims          TokenClaims `json:"claims"`
+	SwitchID        string      `json:"switch_id"`
+	PreviousVersion int64       `json:"previous_version"`
+}
+
+// ReadSwitchClaims 仅允许相同切换 UUID 使用旧刷新凭证恢复已提交结果，不恢复普通刷新权限。
+func (store *TokenStore) ReadSwitchClaims(ctx context.Context, raw, switchID string) (TokenClaims, error) {
+	claims, err := store.ReadRefreshClaims(ctx, raw)
+	if err == nil {
+		return claims, nil
+	}
+	if !fault.Is(err, 401, "unauthorized") {
+		return TokenClaims{}, err
+	}
+	receipt, readErr := store.client.Get(ctx, switchReceiptKey(raw)).Bytes()
+	if errors.Is(readErr, redis.Nil) {
+		return TokenClaims{}, fault.Unauthorized()
+	}
+	if readErr != nil {
+		return TokenClaims{}, fault.Unavailable(readErr)
+	}
+	var saved switchReceipt
+	if json.Unmarshal(receipt, &saved) != nil || saved.SwitchID != switchID || !validClaims(saved.Claims) {
+		return TokenClaims{}, fault.Unauthorized()
+	}
+	state, stateErr := store.client.Get(ctx, sessionStateKey(saved.Claims.SessionID)).Bytes()
+	if errors.Is(stateErr, redis.Nil) {
+		return TokenClaims{}, fault.Unauthorized()
+	}
+	if stateErr != nil {
+		return TokenClaims{}, fault.Unavailable(stateErr)
+	}
+	var current TokenClaims
+	if json.Unmarshal(state, &current) != nil || current != saved.Claims {
+		return TokenClaims{}, fault.Unauthorized()
+	}
+	return saved.Claims, nil
+}
+
+// SwitchEnvironment 以预期版本原子切换并撤销该会话全部旧令牌；幂等恢复只重新签发同一版本。
+func (store *TokenStore) SwitchEnvironment(ctx context.Context, raw string, orgID, expected int64, switchID string) (TokenPair, error) {
+	claims, err := store.ReadSwitchClaims(ctx, raw, switchID)
+	if err != nil {
+		return TokenPair{}, err
+	}
+	oldSerialized, _ := json.Marshal(claims)
+	next := claims
+	if claims.SessionVersion == expected {
+		next.OrgID = orgID
+		next.SessionVersion++
+	} else if claims.SessionVersion != expected+1 || claims.OrgID != orgID {
+		return TokenPair{}, fault.Conflict("空间会话已变更，请重新读取当前状态")
+	}
+	access, err := secureToken()
+	if err != nil {
+		return TokenPair{}, fault.Internal(err)
+	}
+	refresh, err := secureToken()
+	if err != nil {
+		return TokenPair{}, fault.Internal(err)
+	}
+	nextSerialized, _ := json.Marshal(next)
+	receipt, _ := json.Marshal(switchReceipt{Claims: next, SwitchID: switchID, PreviousVersion: expected})
+	const script = `
+      local old=redis.call('GET',KEYS[1]); local receipt=redis.call('GET',KEYS[7]);
+      local recovery=false
+      if receipt then local r=cjson.decode(receipt); recovery=(r.switch_id==ARGV[7] and r.previous_version==tonumber(ARGV[8]) and r.claims.orgid==tonumber(ARGV[9])) end
+      local state=redis.call('GET',KEYS[4])
+      if recovery then if state~=ARGV[2] then return 0 end
+      else if old~=ARGV[1] or state~=ARGV[1] then return 0 end end
+      local keys=redis.call('SMEMBERS',KEYS[5]); for _,k in ipairs(keys) do redis.call('DEL',k) end
+      redis.call('DEL',KEYS[5]);
+      redis.call('SET',KEYS[2],ARGV[2],'EX',ARGV[3]); redis.call('SET',KEYS[3],ARGV[2],'EX',ARGV[4]);
+      redis.call('SET',KEYS[4],ARGV[2],'EX',ARGV[4]); redis.call('SADD',KEYS[5],KEYS[2],KEYS[3]); redis.call('EXPIRE',KEYS[5],ARGV[4]);
+      redis.call('SADD',KEYS[6],ARGV[5]); redis.call('EXPIRE',KEYS[6],ARGV[4]);
+      redis.call('SET',KEYS[7],ARGV[6],'EX',ARGV[3]); return 1`
+	n, err := store.client.Eval(ctx, script, []string{refreshTokenKey(raw), accessTokenKey(access), refreshTokenKey(refresh), sessionStateKey(next.SessionID), sessionRedisKey(next.SessionID), userSessionRedisKey(next.UserBusinessID), switchReceiptKey(raw)}, string(oldSerialized), string(nextSerialized), ttlSeconds(store.accessTokenTTL), ttlSeconds(store.refreshTokenTTL), next.SessionID, string(receipt), switchID, expected, orgID).Int()
+	if err != nil {
+		return TokenPair{}, fault.Unavailable(err)
+	}
+	if n != 1 {
+		return TokenPair{}, fault.Conflict("空间会话已变更，请重新读取当前状态")
+	}
+	return store.scopedPair(access, refresh, next), nil
+}
+
+// RevokeSession 同时撤销令牌集合与会话版本，迟到的切换恢复也不能重新激活已退出会话。
 func (store *TokenStore) RevokeSession(ctx context.Context, sessionID string) error {
-	const revokeScript = `
-		local token_keys = redis.call('SMEMBERS', KEYS[1])
-		for _, token_key in ipairs(token_keys) do
-			local token_value = redis.call('GET', token_key)
-			if token_value then
-				local claims = cjson.decode(token_value)
-				redis.call('SREM', 'auth:user-sessions:' .. claims.user_business_id, claims.session_id)
-			end
-			redis.call('DEL', token_key)
-		end
-		redis.call('DEL', KEYS[1])
-		return #token_keys
-	`
-	if err := store.client.Eval(ctx, revokeScript, []string{sessionRedisKey(sessionID)}).Err(); err != nil {
+	const script = `local keys=redis.call('SMEMBERS',KEYS[1]); for _,k in ipairs(keys) do local v=redis.call('GET',k); if v then local c=cjson.decode(v); redis.call('SREM','auth:user-sessions:'..c.user_business_id,c.session_id) end; redis.call('DEL',k) end; redis.call('DEL',KEYS[1],KEYS[2]); return 1`
+	if err := store.client.Eval(ctx, script, []string{sessionRedisKey(sessionID), sessionStateKey(sessionID)}).Err(); err != nil {
 		return fault.Unavailable(err)
 	}
 	return nil
 }
 
-// RevokeOtherSessions 撤销用户索引中的其他设备会话，并保留当前请求所属会话。
-func (store *TokenStore) RevokeOtherSessions(ctx context.Context, userID uuid.UUID, keepSessionID string) error {
-	const revokeScript = `
-		local session_ids = redis.call('SMEMBERS', KEYS[1])
-		for _, session_id in ipairs(session_ids) do
-			if session_id ~= ARGV[1] then
-				local session_key = 'auth:session:' .. session_id
-				local token_keys = redis.call('SMEMBERS', session_key)
-				for _, token_key in ipairs(token_keys) do redis.call('DEL', token_key) end
-				redis.call('DEL', session_key)
-				redis.call('SREM', KEYS[1], session_id)
-			end
-		end
-		return 1
-	`
-	if err := store.client.Eval(ctx, revokeScript, []string{userSessionRedisKey(userID)}, keepSessionID).Err(); err != nil {
+// RevokeOtherSessions 改密撤销整个账号的其他设备会话，不把撤销范围缩小为当前组织。
+func (store *TokenStore) RevokeOtherSessions(ctx context.Context, userID uuid.UUID, keep string) error {
+	const script = `local ids=redis.call('SMEMBERS',KEYS[1]); for _,sid in ipairs(ids) do if sid~=ARGV[1] then local sk='auth:session:'..sid; for _,k in ipairs(redis.call('SMEMBERS',sk)) do redis.call('DEL',k) end; redis.call('DEL',sk,'auth:session-state:'..sid); redis.call('SREM',KEYS[1],sid) end end; return 1`
+	if err := store.client.Eval(ctx, script, []string{userSessionRedisKey(userID)}, keep).Err(); err != nil {
 		return fault.Unavailable(err)
 	}
 	return nil
 }
 
-// AcquireUserLock 串行同一用户的登录令牌签发与密码变更，避免旧密码在撤销边界并发生成新会话。
+// AcquireUserLock 串行登录签发与改密；Redis 中仅保存随机锁值，不记录密码或令牌。
 func (store *TokenStore) AcquireUserLock(ctx context.Context, userID uuid.UUID) (func(), error) {
-	lockValue, err := secureToken()
+	value, err := secureToken()
 	if err != nil {
 		return nil, fault.Internal(err)
 	}
@@ -239,21 +283,16 @@ func (store *TokenStore) AcquireUserLock(ctx context.Context, userID uuid.UUID) 
 	ticker := time.NewTicker(25 * time.Millisecond)
 	defer ticker.Stop()
 	for {
-		acquired, setErr := store.client.SetNX(ctx, key, lockValue, time.Minute).Result()
-		if setErr != nil {
-			return nil, fault.Unavailable(setErr)
+		ok, err := store.client.SetNX(ctx, key, value, time.Minute).Result()
+		if err != nil {
+			return nil, fault.Unavailable(err)
 		}
-		if acquired {
-			release := func() {
-				const unlockScript = `
-					if redis.call('GET', KEYS[1]) == ARGV[1] then return redis.call('DEL', KEYS[1]) end
-					return 0
-				`
-				unlockCtx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		if ok {
+			return func() {
+				c, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 				defer cancel()
-				_ = store.client.Eval(unlockCtx, unlockScript, []string{key}, lockValue).Err()
-			}
-			return release, nil
+				_ = store.client.Eval(c, `if redis.call('GET',KEYS[1])==ARGV[1] then return redis.call('DEL',KEYS[1]) end return 0`, []string{key}, value).Err()
+			}, nil
 		}
 		select {
 		case <-ctx.Done():
@@ -265,43 +304,43 @@ func (store *TokenStore) AcquireUserLock(ctx context.Context, userID uuid.UUID) 
 	}
 }
 
-// IndexExistingSessions 为启用跨设备撤销前签发的会话补建用户索引，启动期间只读取令牌声明。
+// IndexExistingSessions 只给新格式有效会话补建账号索引；升级前缺少组织版本的令牌始终被拒绝。
 func (store *TokenStore) IndexExistingSessions(ctx context.Context) error {
-	iterator := store.client.Scan(ctx, 0, "auth:session:*", 100).Iterator()
-	for iterator.Next(ctx) {
-		sessionKey := iterator.Val()
-		tokenKeys, err := store.client.SMembers(ctx, sessionKey).Result()
+	it := store.client.Scan(ctx, 0, "auth:session-state:*", 100).Iterator()
+	for it.Next(ctx) {
+		raw, err := store.client.Get(ctx, it.Val()).Bytes()
+		if errors.Is(err, redis.Nil) {
+			continue
+		}
 		if err != nil {
 			return fault.Unavailable(err)
 		}
-		var claims TokenClaims
-		for _, tokenKey := range tokenKeys {
-			serialized, getErr := store.client.Get(ctx, tokenKey).Bytes()
-			if errors.Is(getErr, redis.Nil) {
-				continue
-			}
-			if getErr != nil {
-				return fault.Unavailable(getErr)
-			}
-			if json.Unmarshal(serialized, &claims) == nil && claims.UserBusinessID != uuid.Nil && claims.SessionID != "" {
-				break
-			}
-		}
-		if claims.UserBusinessID == uuid.Nil || claims.SessionID == "" {
+		var c TokenClaims
+		if json.Unmarshal(raw, &c) != nil || !validClaims(c) {
 			continue
 		}
-		pipe := store.client.Pipeline()
-		pipe.SAdd(ctx, userSessionRedisKey(claims.UserBusinessID), claims.SessionID)
-		pipe.Expire(ctx, userSessionRedisKey(claims.UserBusinessID), store.refreshTokenTTL)
-		if _, err := pipe.Exec(ctx); err != nil {
+		if err := store.client.SAdd(ctx, userSessionRedisKey(c.UserBusinessID), c.SessionID).Err(); err != nil {
 			return fault.Unavailable(err)
 		}
+		_ = store.client.Expire(ctx, userSessionRedisKey(c.UserBusinessID), store.refreshTokenTTL).Err()
 	}
-	if err := iterator.Err(); err != nil {
+	if err := it.Err(); err != nil {
 		return fault.Unavailable(err)
 	}
 	return nil
 }
+
+// scopedPair 把不透明令牌对应的可信空间信息一并返回，客户端无需解析 bearer secret。
+func (store *TokenStore) scopedPair(access, refresh string, claims TokenClaims) TokenPair {
+	pair := store.pair(access, refresh)
+	pair.OrgID = claims.OrgID
+	pair.SessionID = claims.SessionID
+	pair.SessionVersion = claims.SessionVersion
+	return pair
+}
+
+func sessionStateKey(id string) string   { return "auth:session-state:" + id }
+func switchReceiptKey(raw string) string { return "auth:switch-receipt:" + tokenDigest(raw) }
 
 // CheckFeedbackLimit 使用 IP 摘要执行滚动一小时计数，不在 Redis 键或日志中保存原始 IP。
 func (store *TokenStore) CheckFeedbackLimit(ctx context.Context, clientIP string, limit int) (bool, error) {

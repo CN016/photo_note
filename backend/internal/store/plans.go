@@ -10,6 +10,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/photo-nini/backend/internal/domain/fault"
 	"github.com/photo-nini/backend/internal/model"
+	"github.com/photo-nini/backend/internal/tenant"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )
@@ -144,6 +145,7 @@ func (store *PostgresStore) DeletePlan(ctx context.Context, userID, planID uuid.
 
 // DuePlanReminderIDs 按数据库当前时间取消已逾期计划提醒，并读取尚未开始计划的已到期任务。
 func (store *PostgresStore) DuePlanReminderIDs(ctx context.Context, limit int) ([]uuid.UUID, error) {
+	ctx = tenant.System(ctx)
 	if limit < 1 || limit > 1000 {
 		limit = 100
 	}
@@ -154,13 +156,20 @@ func (store *PostgresStore) DuePlanReminderIDs(ctx context.Context, limit int) (
 			SET reminder_status = 'cancelled', updated_at = CURRENT_TIMESTAMP
 			FROM plans AS plan
 			WHERE reminder.plan_business_id = plan.business_id
+			  AND reminder.orgid = plan.orgid AND reminder.user_id = plan.user_id
 			  AND reminder.reminder_status = 'pending'
-			  AND (plan.plan_status <> 'active' OR plan.deleted_at IS NOT NULL OR plan.starts_at <= CURRENT_TIMESTAMP)
+			  AND (plan.plan_status <> 'active' OR plan.deleted_at IS NOT NULL OR plan.starts_at <= CURRENT_TIMESTAMP
+			       OR (plan.orgid > 0 AND NOT EXISTS (
+			           SELECT 1 FROM organizations AS organization
+			           JOIN organization_members AS member ON member.orgid = organization.orgid
+			           WHERE organization.orgid = plan.orgid AND organization.organization_status = 'active'
+			             AND member.user_id = plan.user_id AND member.member_status = 'active'
+			       )))
 		`).Error; err != nil {
 			return persistenceError(err)
 		}
 		if err := tx.Table("plan_reminders AS reminder").
-			Joins("JOIN plans AS plan ON plan.business_id = reminder.plan_business_id").
+			Joins("JOIN plans AS plan ON plan.business_id = reminder.plan_business_id AND plan.orgid = reminder.orgid AND plan.user_id = reminder.user_id").
 			Where("reminder.reminder_status = 'pending' AND plan.plan_status = 'active' AND plan.deleted_at IS NULL AND plan.starts_at > CURRENT_TIMESTAMP AND reminder.remind_at <= CURRENT_TIMESTAMP").
 			Order("reminder.remind_at ASC, reminder.created_at ASC").Limit(limit).
 			Pluck("reminder.business_id", &ids).Error; err != nil {
@@ -173,24 +182,31 @@ func (store *PostgresStore) DuePlanReminderIDs(ctx context.Context, limit int) (
 
 // CreatePlanReminderNotification 锁定计划与提醒并重验数据库时间，在一笔事务中写消息、webhook outbox 和 sent 状态。
 func (store *PostgresStore) CreatePlanReminderNotification(ctx context.Context, reminderID uuid.UUID) (bool, error) {
+	// 唯一提醒 UUID 仅来自受控 worker 队列；识别原资源后立即恢复租户，所有关联与写入继续受隔离回调保护。
+	var identity model.PlanReminder
+	if err := store.db.WithContext(tenant.System(ctx)).Select("business_id", "orgid", "user_id", "plan_business_id").Where("business_id = ?", reminderID).First(&identity).Error; err != nil {
+		return false, persistenceError(err)
+	}
+	ctx = scopedResourceContext(ctx, identity.OrgID, identity.UserID)
 	created := false
 	err := store.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		var identity struct {
-			PlanBusinessID uuid.UUID `gorm:"column:plan_business_id"`
-		}
-		if err := tx.Model(&model.PlanReminder{}).Select("plan_business_id").Where("business_id = ?", reminderID).First(&identity).Error; err != nil {
-			return persistenceError(err)
-		}
 		var plan model.Plan
-		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("business_id = ?", identity.PlanBusinessID).First(&plan).Error; err != nil {
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("business_id = ? AND user_id = ?", identity.PlanBusinessID, identity.UserID).First(&plan).Error; err != nil {
 			return persistenceError(err)
 		}
 		var reminder model.PlanReminder
-		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("business_id = ?", reminderID).First(&reminder).Error; err != nil {
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("business_id = ? AND user_id = ? AND plan_business_id = ?", reminderID, identity.UserID, plan.BusinessID).First(&reminder).Error; err != nil {
 			return persistenceError(err)
 		}
 		if reminder.Status != "pending" {
 			return nil
+		}
+		available, err := resourceOrganizationAvailable(tx, plan.OrgID, plan.UserID)
+		if err != nil {
+			return persistenceError(err)
+		}
+		if !available {
+			return persistenceError(tx.Model(&reminder).Updates(map[string]any{"reminder_status": "cancelled", "updated_at": time.Now().UTC()}).Error)
 		}
 		var databaseNow time.Time
 		if err := tx.Raw("SELECT CURRENT_TIMESTAMP").Scan(&databaseNow).Error; err != nil {
@@ -213,7 +229,7 @@ func (store *PostgresStore) CreatePlanReminderNotification(ctx context.Context, 
 			UserID:    plan.UserID, EventType: planReminderEventType, EventKey: eventKey,
 			ResourceType: "plan", ResourceBusinessID: &plan.BusinessID, Payload: payload,
 		}
-		result := tx.Clauses(clause.OnConflict{Columns: []clause.Column{{Name: "user_id"}, {Name: "event_key"}}, DoNothing: true}).Create(&notification)
+		result := tx.Clauses(clause.OnConflict{Columns: []clause.Column{{Name: "orgid"}, {Name: "user_id"}, {Name: "event_key"}}, DoNothing: true}).Create(&notification)
 		if result.Error != nil {
 			return persistenceError(result.Error)
 		}

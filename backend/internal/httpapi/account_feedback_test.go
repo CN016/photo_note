@@ -23,6 +23,7 @@ import (
 	"github.com/photo-nini/backend/internal/security"
 	"github.com/photo-nini/backend/internal/service"
 	"github.com/photo-nini/backend/internal/store"
+	"github.com/photo-nini/backend/internal/tenant"
 )
 
 type testUserRepository struct {
@@ -101,7 +102,7 @@ func (tokens *testTokenStore) ValidateAccess(_ context.Context, raw string) (sto
 	if raw != "valid" {
 		return store.TokenClaims{}, fault.Unauthorized()
 	}
-	return store.TokenClaims{UserBusinessID: tokens.userID, SessionID: "session-current"}, nil
+	return store.TokenClaims{UserBusinessID: tokens.userID, SessionID: "session-current", OrgID: -1, SessionVersion: 1}, nil
 }
 
 func (*testTokenStore) Issue(context.Context, uuid.UUID) (store.TokenPair, error) {
@@ -417,4 +418,15 @@ func TestFeedbackTextImageAndRateBoundaries(t *testing.T) {
 	if response := feedbackRequest(t, rateRouter, "sixth", 0, ""); response.Code != http.StatusTooManyRequests {
 		t.Fatalf("sixth request status = %d, want 429", response.Code)
 	}
+}
+
+// ResolveScope 为HTTP单元测试提供明确的身份适配器，生产仍由OrganizationService实时校验。
+func (tokens *testTokenStore) ResolveScope(_ context.Context, userID uuid.UUID, orgID int64, sessionID string, version int64) (tenant.Scope, error) {
+	if userID == uuid.Nil || version < 1 || (orgID != -1 && orgID <= 0) {
+		return tenant.Scope{}, fault.Unauthorized()
+	}
+	return tenant.Scope{OrgID: orgID, UserID: userID, SessionID: sessionID, Version: version}, nil
+}
+func (storage *testFileStorage) OpenContext(_ context.Context, key string) (io.ReadCloser, int64, string, error) {
+	return storage.Open(key)
 }

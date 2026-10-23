@@ -11,6 +11,7 @@ import (
 
 	"github.com/photo-nini/backend/internal/config"
 	"github.com/photo-nini/backend/internal/model"
+	"github.com/photo-nini/backend/internal/store"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
@@ -28,6 +29,9 @@ func OpenPostgres(ctx context.Context, cfg config.Config) (*gorm.DB, *sql.DB, er
 	})
 	if err != nil {
 		return nil, nil, fmt.Errorf("初始化 PostgreSQL 驱动失败: %w", err)
+	}
+	if err := store.RegisterTenantCallbacks(connection); err != nil {
+		return nil, nil, err
 	}
 
 	sqlDB, err := connection.DB()
@@ -83,8 +87,13 @@ func checkSchema(ctx context.Context, connection *gorm.DB) error {
 		"notice_deliveries":          &model.NoticeDelivery{},
 		"error_logs":                 &model.ErrorLog{},
 		"projects":                   &model.Project{},
+		"plans":                      &model.Plan{},
+		"plan_reminders":             &model.PlanReminder{},
 		"project_inspiration_usages": &model.ProjectInspirationUsage{},
 		"project_attachments":        &model.ProjectAttachment{},
+		"organizations":              &model.Organization{},
+		"organization_members":       &model.OrganizationMember{},
+		"file_ownerships":            &model.FileOwnership{},
 	} {
 		if !connection.WithContext(ctx).Migrator().HasTable(table) {
 			if name == "ledger_records" {
@@ -106,6 +115,10 @@ func checkSchema(ctx context.Context, connection *gorm.DB) error {
 				return fmt.Errorf("PostgreSQL schema 缺少反馈通知任务表 feedback_notification_jobs，请先执行 backend/migrations/000013_feedback_notifications.sql")
 			}
 			return fmt.Errorf("PostgreSQL schema 缺少表 %s，请先执行 backend/migrations 中的版本化 SQL", name)
+		}
+		// 所有自建表都必须完成租户迁移，不能让缺少隔离列的旧 schema 启动后才失败。
+		if !connection.WithContext(ctx).Migrator().HasColumn(table, "OrgID") {
+			return fmt.Errorf("PostgreSQL schema 缺少 %s.orgid，请先执行 backend/migrations/000021_multitenant_organizations.sql", name)
 		}
 		// 新 API 启动前检查公开标记列已由增量迁移创建，避免服务运行后才在公开读取请求中暴露迁移遗漏。
 		if name == "app_configs" && !connection.WithContext(ctx).Migrator().HasColumn(table, "IsPublic") {

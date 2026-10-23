@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
+import { onBeforeRouteLeave } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Calendar, Check, Clock, Delete, Edit, Plus, Refresh, UploadFilled } from '@element-plus/icons-vue'
 import { useI18n } from 'vue-i18n'
@@ -35,6 +36,7 @@ const localCoverURL = ref('')
 const fileInput = ref<HTMLInputElement | null>(null)
 const busyPlanID = ref('')
 const form = reactive<PlanFields>(emptyFields())
+onBeforeRouteLeave(to => to.path !== '/spaces' || (!dialogOpen.value && !saving.value && !uploadingCover.value && !busyPlanID.value))
 let dateTimer: number | undefined
 
 const activePlans = computed(() => plans.value.filter(item => item.status === 'active'))

@@ -177,7 +177,7 @@ func projectAttachmentHandler(projects *service.ProjectService) gin.HandlerFunc 
 	}
 }
 
-// uploadProjectCoverHandler 压缩封面图片后使用现有私有文件存储，不建立通用文件元数据或删除接口。
+// uploadProjectCoverHandler 压缩封面图片，并由文件服务登记当前组织和用户归属。
 func uploadProjectCoverHandler(files fileStorage, maxUploadBytes int64, currentStoreType func(context.Context) (string, error)) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		if files == nil || maxUploadBytes < 1 || currentStoreType == nil {
@@ -220,16 +220,16 @@ func uploadProjectCoverHandler(files fileStorage, maxUploadBytes int64, currentS
 			writeError(c, fileStoreError(err))
 			return
 		}
-		reader, size, contentType, err := files.Open(key)
+		reader, size, contentType, err := service.OpenFile(c.Request.Context(), files, key)
 		if err != nil {
-			_ = files.Delete(context.Background(), key)
+			_ = files.Delete(context.WithoutCancel(c.Request.Context()), key)
 			writeError(c, fault.Internal(err))
 			return
 		}
 		_ = reader.Close()
 		mediaType, _, _ := mime.ParseMediaType(contentType)
 		if size < 1 || !strings.HasPrefix(mediaType, "image/") {
-			_ = files.Delete(context.Background(), key)
+			_ = files.Delete(context.WithoutCancel(c.Request.Context()), key)
 			writeError(c, fault.InvalidField("file", "封面内容无效"))
 			return
 		}

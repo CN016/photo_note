@@ -6,7 +6,7 @@ import { api } from '../api/client'
 import { previewObjectUrl } from '../../../../packages/image-processing/src'
 
 type ThumbnailRecord = Pick<InspirationRecord, 'file_name' | 'image_key'> & { data?: Record<string, unknown> }
-const props = defineProps<{ record: ThumbnailRecord }>()
+const props = defineProps<{ record: ThumbnailRecord; loadImage?: (key: string) => Promise<Blob> }>()
 const { t } = useI18n()
 const element = ref<HTMLElement | null>(null)
 const imageUrl = ref<string | null>(null)
@@ -25,7 +25,7 @@ async function loadPreview() {
   loading.value = true
   failed.value = false
   try {
-    const blob = await api.download(imageKey.value)
+    const blob = await (props.loadImage ? props.loadImage(imageKey.value) : api.download(imageKey.value))
     const url = await previewObjectUrl(blob)
     if (version !== requestVersion) { URL.revokeObjectURL(url); return }
     imageUrl.value = url

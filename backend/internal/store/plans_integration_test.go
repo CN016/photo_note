@@ -12,6 +12,7 @@ import (
 	"github.com/photo-nini/backend/internal/domain/fault"
 	"github.com/photo-nini/backend/internal/model"
 	"github.com/photo-nini/backend/internal/store"
+	"github.com/photo-nini/backend/internal/tenant"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
@@ -34,13 +35,14 @@ func TestPlanReminderPersistenceIsolationAndConcurrentDelivery(t *testing.T) {
 	sqlDB.SetMaxOpenConns(32)
 	t.Cleanup(func() { _ = sqlDB.Close() })
 
-	ctx := context.Background()
+	ownerID, otherOwnerID := uuid.New(), uuid.New()
+	ctx := tenant.Personal(context.Background(), ownerID)
+	database = database.WithContext(ctx)
 	repository := store.NewPostgresStore(database)
 	var databaseNow time.Time
 	if err := database.Raw("SELECT CURRENT_TIMESTAMP").Scan(&databaseNow).Error; err != nil {
 		t.Fatalf("读取数据库时间失败: %v", err)
 	}
-	ownerID, otherOwnerID := uuid.New(), uuid.New()
 	t.Cleanup(func() {
 		userIDs := []uuid.UUID{ownerID, otherOwnerID}
 		_ = database.Where("user_id IN ?", userIDs).Delete(&model.NoticeDelivery{}).Error

@@ -177,7 +177,8 @@ async function uploadAll(): Promise<void> {
 }
 
 /** 上传或预览准备期间阻止离开，避免正在处理的文件批次失去可见状态。 */
-onBeforeRouteLeave(() => {
+onBeforeRouteLeave(to => {
+  if (to.path === '/spaces' && items.value.some(item => item.stage !== 'done')) return false
   if (!preparing.value && !uploading.value) return true
   ElMessage.warning(t('inspirationUpload.waitBeforeLeaving'))
   return false

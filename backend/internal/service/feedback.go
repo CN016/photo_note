@@ -10,6 +10,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/photo-nini/backend/internal/domain/fault"
 	"github.com/photo-nini/backend/internal/model"
+	"github.com/photo-nini/backend/internal/tenant"
 )
 
 // FeedbackRepository 定义反馈写入所需的最小持久化能力。
@@ -74,7 +75,7 @@ func (service *FeedbackService) Submit(ctx context.Context, userID *uuid.UUID, c
 		return err
 	}
 	feedback := &model.Feedback{
-		BaseModel: model.BaseModel{BusinessID: uuid.New()},
+		BaseModel: model.BaseModel{BusinessID: uuid.New(), OrgID: tenant.GlobalOrgID},
 		UserID:    userID,
 		Content:   strings.TrimSpace(content),
 		ImageKeys: imageKeys,
@@ -82,7 +83,7 @@ func (service *FeedbackService) Submit(ctx context.Context, userID *uuid.UUID, c
 	}
 	now := time.Now().UTC()
 	job := &model.FeedbackNotificationJob{
-		BaseModel:          model.BaseModel{BusinessID: uuid.New()},
+		BaseModel:          model.BaseModel{BusinessID: uuid.New(), OrgID: tenant.GlobalOrgID},
 		FeedbackBusinessID: feedback.BusinessID,
 		Status:             "pending",
 		NextAttemptAt:      now,

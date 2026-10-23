@@ -10,12 +10,14 @@ import (
 	"github.com/google/uuid"
 	"github.com/photo-nini/backend/internal/domain/fault"
 	"github.com/photo-nini/backend/internal/model"
+	"github.com/photo-nini/backend/internal/tenant"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )
 
 // CreateFeedbackNotification 在事务中按稳定事件键创建站内消息，并为每个启用渠道和 Markdown 分段创建独立 outbox。
 func (store *PostgresStore) CreateFeedbackNotification(ctx context.Context, userID, feedbackID uuid.UUID, eventKey string, payload model.JSONB, parts []string) error {
+	ctx = tenant.Personal(ctx, userID)
 	if len(parts) == 0 || !json.Valid(payload) {
 		return errors.New("反馈通知载荷无效")
 	}
@@ -31,7 +33,7 @@ func (store *PostgresStore) CreateFeedbackNotification(ctx context.Context, user
 			Payload:            payload,
 		}
 		result := tx.Clauses(clause.OnConflict{
-			Columns:   []clause.Column{{Name: "user_id"}, {Name: "event_key"}},
+			Columns:   []clause.Column{{Name: "orgid"}, {Name: "user_id"}, {Name: "event_key"}},
 			DoNothing: true,
 		}).Create(&notification)
 		if result.Error != nil {
@@ -288,6 +290,7 @@ func (store *PostgresStore) RetryNoticeDelivery(ctx context.Context, userID, del
 
 // ClaimNoticeDelivery 用 SKIP LOCKED 领取一项到期任务，进程崩溃后可回收超时的 sending 任务。
 func (store *PostgresStore) ClaimNoticeDelivery(ctx context.Context) (model.NoticeDelivery, model.NoticeConfig, bool, error) {
+	ctx = tenant.System(ctx)
 	var delivery model.NoticeDelivery
 	var config model.NoticeConfig
 	claimed := false
@@ -301,6 +304,15 @@ func (store *PostgresStore) ClaimNoticeDelivery(ctx context.Context) (model.Noti
 		}
 		if result.RowsAffected == 0 {
 			return nil
+		}
+		// 全局队列只负责领取，后续渠道查询和状态写入恢复该资源原租户。
+		tx = tx.WithContext(scopedResourceContext(ctx, delivery.OrgID, delivery.UserID))
+		available, err := resourceOrganizationAvailable(tx, delivery.OrgID, delivery.UserID)
+		if err != nil {
+			return persistenceError(err)
+		}
+		if !available {
+			return tx.Model(&delivery).Updates(map[string]any{"delivery_status": "cancelled", "last_error_code": "organization_unavailable", "updated_at": now}).Error
 		}
 		if err := tx.Where("user_id = ? AND business_id = ? AND deleted_at IS NULL", delivery.UserID, delivery.NoticeConfigBusinessID).First(&config).Error; err != nil {
 			if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -331,7 +343,9 @@ func (store *PostgresStore) ClaimNoticeDelivery(ctx context.Context) (model.Noti
 func (store *PostgresStore) FinishNoticeDelivery(ctx context.Context, deliveryID uuid.UUID, attemptCount int, succeeded bool, errorCode string) error {
 	now := time.Now().UTC()
 	updates := map[string]any{"updated_at": now, "last_error_code": errorCode}
-	if succeeded {
+	if errorCode == "delivery_unavailable" {
+		updates["delivery_status"] = "cancelled"
+	} else if succeeded {
 		updates["delivery_status"] = "delivered"
 		updates["delivered_at"] = now
 	} else if attemptCount >= 5 {
@@ -350,4 +364,20 @@ func (store *PostgresStore) FinishNoticeDelivery(ctx context.Context, deliveryID
 		return fault.NotFound()
 	}
 	return nil
+}
+
+// CanDispatchNoticeDelivery 在真正外发前重新验证任务、渠道、组织与成员状态，避免领取后权限撤销仍发送内容。
+func (store *PostgresStore) CanDispatchNoticeDelivery(ctx context.Context, deliveryID uuid.UUID) (bool, error) {
+	scope, err := tenant.Require(ctx)
+	if err != nil {
+		return false, err
+	}
+	var count int64
+	err = store.db.WithContext(ctx).Table("notice_deliveries AS delivery").
+		Joins("JOIN notice_config AS config ON config.business_id = delivery.notice_config_business_id AND config.orgid = delivery.orgid AND config.user_id = delivery.user_id").
+		Joins("LEFT JOIN organizations AS organization ON organization.orgid = delivery.orgid").
+		Joins("LEFT JOIN organization_members AS member ON member.orgid = delivery.orgid AND member.user_id = delivery.user_id").
+		Where("delivery.business_id = ? AND delivery.user_id = ? AND delivery.delivery_status = 'sending' AND config.deleted_at IS NULL AND (config.enabled = TRUE OR delivery.delivery_kind = 'test')", deliveryID, scope.UserID).
+		Where("delivery.orgid = -1 OR (organization.organization_status = 'active' AND member.member_status = 'active')").Count(&count).Error
+	return count == 1, persistenceError(err)
 }

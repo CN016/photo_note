@@ -39,7 +39,7 @@ export const useAppShellStore = defineStore('app-shell', {
       const requestVersion = ++avatarRequestVersion
       try {
         // 整页刷新会重建 Pinia；reload 确保新进程读取最新头像，而不是命中旧 HTTP 缓存。
-        const blob = await api.download(storekey, { cache: 'reload' })
+        const blob = await api.currentAvatar()
         if (requestVersion !== avatarRequestVersion || this.avatarBusinessID !== businessID || this.avatarStoreKey !== storekey) return
         this.avatarSrc = URL.createObjectURL(blob)
         this.avatarLoaded = true

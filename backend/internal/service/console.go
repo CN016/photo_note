@@ -12,6 +12,7 @@ import (
 	"github.com/photo-nini/backend/internal/domain/fault"
 	"github.com/photo-nini/backend/internal/filestore"
 	"github.com/photo-nini/backend/internal/model"
+	"github.com/photo-nini/backend/internal/tenant"
 )
 
 // ConsoleRepository 声明管理工作台的数据访问能力；角色判定和配置操作均由服务端执行。
@@ -54,7 +55,7 @@ func (service *ConsoleService) ConfigureFeedbackReplies(maxTextChars int, notice
 
 // IsAdministrator 每次从数据库读取当前权限，确保角色撤销会立即影响后续请求。
 func (service *ConsoleService) IsAdministrator(ctx context.Context, userID uuid.UUID) (bool, error) {
-	return service.repository.IsAdministrator(ctx, userID)
+	return service.repository.IsAdministrator(tenant.System(ctx), userID)
 }
 
 // ListUsers 按昵称或手机号检索用户并保留稳定分页。
@@ -63,7 +64,7 @@ func (service *ConsoleService) ListUsers(ctx context.Context, query string, page
 	if utf8.RuneCountInString(query) > 100 {
 		return Page[model.ConsoleUser]{}, fault.InvalidRequest("q 长度不能超过 100 个字符")
 	}
-	items, total, err := service.repository.ListConsoleUsers(ctx, query, page.Offset, page.PageSize)
+	items, total, err := service.repository.ListConsoleUsers(tenant.System(ctx), query, page.Offset, page.PageSize)
 	if err != nil {
 		return Page[model.ConsoleUser]{}, err
 	}
@@ -72,7 +73,7 @@ func (service *ConsoleService) ListUsers(ctx context.Context, query string, page
 
 // SetUserAdministrator 设置目标用户角色；保留最后一位管理员的规则由事务 repository 保证。
 func (service *ConsoleService) SetUserAdministrator(ctx context.Context, userID uuid.UUID, isAdmin bool) error {
-	return service.repository.SetUserAdministrator(ctx, userID, isAdmin)
+	return service.repository.SetUserAdministrator(tenant.System(ctx), userID, isAdmin)
 }
 
 // ConsoleConfig 是管理页可读取的配置项；秘密值只通过 IsConfigured 表示是否存在。
@@ -89,7 +90,7 @@ type ConsoleConfig struct {
 
 // ListConfigs 返回配置描述；秘密配置值只输出已配置状态，公开标志仍可见。
 func (service *ConsoleService) ListConfigs(ctx context.Context) ([]ConsoleConfig, error) {
-	rows, err := service.repository.ListConsoleConfigs(ctx)
+	rows, err := service.repository.ListConsoleConfigs(tenant.System(ctx))
 	if err != nil {
 		return nil, err
 	}
@@ -129,7 +130,7 @@ func (service *ConsoleService) CreateConfig(ctx context.Context, input ConsoleCo
 		BaseModel: model.BaseModel{BusinessID: uuid.New()}, ConfigKey: key, ConfigValue: input.Value,
 		Description: description, IsPublic: input.IsPublic, IsSecret: input.IsSecret,
 	}
-	if err := service.repository.CreateConsoleConfig(ctx, &row); err != nil {
+	if err := service.repository.CreateConsoleConfig(tenant.System(ctx), &row); err != nil {
 		return ConsoleConfig{}, err
 	}
 	return consoleConfigDTO(row), nil
@@ -154,7 +155,7 @@ func (service *ConsoleService) UpdateConfig(ctx context.Context, key string, pat
 	if !patch.ValueSet && !patch.ClearValue && !patch.DescriptionSet && !patch.IsPublicSet {
 		return ConsoleConfig{}, fault.InvalidRequest("至少提供一个需要更新的字段")
 	}
-	current, err := service.repository.FindConsoleConfig(ctx, key)
+	current, err := service.repository.FindConsoleConfig(tenant.System(ctx), key)
 	if err != nil {
 		return ConsoleConfig{}, err
 	}
@@ -187,7 +188,7 @@ func (service *ConsoleService) UpdateConfig(ctx context.Context, key string, pat
 	if len(updates) == 0 {
 		return consoleConfigDTO(current), nil
 	}
-	updated, err := service.repository.UpdateConsoleConfig(ctx, key, updates)
+	updated, err := service.repository.UpdateConsoleConfig(tenant.System(ctx), key, updates)
 	if err != nil {
 		return ConsoleConfig{}, err
 	}
@@ -208,7 +209,7 @@ func consoleConfigDTO(row model.AppConfig) ConsoleConfig {
 	return result
 }
 
-// ListInspirations 在全站范围内按文件名、排序白名单和分页只读查询。
+// ListInspirations 只查询路由已授权的单一组织数据域；平台与组织管理不得省略范围。
 func (service *ConsoleService) ListInspirations(ctx context.Context, query, sort string, page PageRequest) (Page[model.ConsoleInspiration], error) {
 	query = strings.TrimSpace(query)
 	if utf8.RuneCountInString(query) > 200 {
@@ -232,7 +233,7 @@ func (service *ConsoleService) ListFeedback(ctx context.Context, status string, 
 	if status != "" && status != "new" && status != "processed" {
 		return Page[model.ConsoleFeedback]{}, fault.InvalidRequest("status 只支持 new 或 processed")
 	}
-	items, total, err := service.repository.ListConsoleFeedback(ctx, status, page.Offset, page.PageSize)
+	items, total, err := service.repository.ListConsoleFeedback(tenant.System(ctx), status, page.Offset, page.PageSize)
 	if err != nil {
 		return Page[model.ConsoleFeedback]{}, err
 	}
@@ -244,7 +245,7 @@ func (service *ConsoleService) UpdateFeedbackStatus(ctx context.Context, feedbac
 	if status != "new" && status != "processed" {
 		return fault.InvalidField("status", "反馈状态只支持 new 或 processed")
 	}
-	return service.repository.UpdateConsoleFeedbackStatus(ctx, feedbackID, status)
+	return service.repository.UpdateConsoleFeedbackStatus(tenant.System(ctx), feedbackID, status)
 }
 
 // UpdateFeedbackReply 校验可保留图片并保存管理员回复；注册用户的非空回复由通知服务生成事务载荷。
@@ -259,7 +260,7 @@ func (service *ConsoleService) UpdateFeedbackReply(ctx context.Context, feedback
 	if len(retainedKeys)+len(newKeys) > 5 {
 		return nil, fault.InvalidField("images", "回复图片最多五张")
 	}
-	feedback, err := service.repository.GetConsoleFeedback(ctx, feedbackID)
+	feedback, err := service.repository.GetConsoleFeedback(tenant.System(ctx), feedbackID)
 	if err != nil {
 		return nil, err
 	}
@@ -300,12 +301,12 @@ func (service *ConsoleService) UpdateFeedbackReply(ctx context.Context, feedback
 		if service.feedbackReplyNotice == nil {
 			return nil, fault.Unavailable(errors.New("反馈回复通知服务未配置"))
 		}
-		eventKey, payload, parts, err = service.feedbackReplyNotice.PrepareFeedbackReply(ctx, feedbackID, content, imageKeys)
+		eventKey, payload, parts, err = service.feedbackReplyNotice.PrepareFeedbackReply(tenant.System(ctx), feedbackID, content, imageKeys)
 		if err != nil {
 			return nil, fault.Unavailable(err)
 		}
 	}
-	if err := service.repository.UpdateConsoleFeedbackReply(ctx, feedbackID, content, retainedKeys, newKeys, eventKey, payload, parts); err != nil {
+	if err := service.repository.UpdateConsoleFeedbackReply(tenant.System(ctx), feedbackID, content, retainedKeys, newKeys, eventKey, payload, parts); err != nil {
 		return nil, err
 	}
 	return imageKeys, nil

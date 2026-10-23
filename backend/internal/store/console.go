@@ -12,6 +12,7 @@ import (
 	"github.com/lib/pq"
 	"github.com/photo-nini/backend/internal/domain/fault"
 	"github.com/photo-nini/backend/internal/model"
+	"github.com/photo-nini/backend/internal/tenant"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )
@@ -121,7 +122,13 @@ func (store *PostgresStore) UpdateConsoleConfig(ctx context.Context, key string,
 
 // ListConsoleInspirations 提供全站只读图片摘要，明确不选择私人编辑文档 data 字段。
 func (store *PostgresStore) ListConsoleInspirations(ctx context.Context, search, sort string, offset, limit int) ([]model.ConsoleInspiration, int64, error) {
-	query := store.db.WithContext(ctx).Table("inspirations AS i").Joins("LEFT JOIN users AS u ON u.business_id = i.user_id")
+	if tenant.IsSystem(ctx) {
+		return nil, 0, fault.InvalidRequest("图库管理必须选择一个组织")
+	}
+	if _, err := tenant.Require(ctx); err != nil {
+		return nil, 0, err
+	}
+	query := store.db.WithContext(ctx).Table("inspirations AS i").Joins("LEFT JOIN users AS u ON u.business_id = i.user_id AND u.orgid = -1")
 	if search != "" {
 		pattern := escapedContainsPattern(search)
 		query = query.Where("i.file_name ILIKE ? ESCAPE E'\\\\' OR u.nickname ILIKE ? ESCAPE E'\\\\'", pattern, pattern)
@@ -145,7 +152,7 @@ func (store *PostgresStore) ListConsoleInspirations(ctx context.Context, search,
 
 // ListConsoleFeedback 按状态读取反馈及提交者昵称；游客或已删除用户使用中性称呼。
 func (store *PostgresStore) ListConsoleFeedback(ctx context.Context, status string, offset, limit int) ([]model.ConsoleFeedback, int64, error) {
-	query := store.db.WithContext(ctx).Table("feedbacks AS f").Joins("LEFT JOIN users AS u ON u.business_id = f.user_id")
+	query := store.db.WithContext(ctx).Table("feedbacks AS f").Joins("LEFT JOIN users AS u ON u.business_id = f.user_id AND u.orgid = -1")
 	if status != "" {
 		query = query.Where("f.feedback_status = ?", status)
 	}
@@ -221,6 +228,8 @@ func (store *PostgresStore) UpdateConsoleFeedbackReply(ctx context.Context, feed
 			return errors.New("反馈回复通知载荷无效")
 		}
 		userID := *feedback.UserID
+		// 系统反馈回复仅进入接收人的个人消息与个人渠道，绝不继承管理员当前组织。
+		tx = tx.WithContext(tenant.Personal(ctx, userID))
 		notification := model.Notification{
 			BaseModel:          model.BaseModel{BusinessID: uuid.New(), CreatedAt: now, UpdatedAt: now},
 			UserID:             userID,
@@ -231,7 +240,7 @@ func (store *PostgresStore) UpdateConsoleFeedbackReply(ctx context.Context, feed
 			Payload:            payload,
 		}
 		inserted := tx.Clauses(clause.OnConflict{
-			Columns:   []clause.Column{{Name: "user_id"}, {Name: "event_key"}},
+			Columns:   []clause.Column{{Name: "orgid"}, {Name: "user_id"}, {Name: "event_key"}},
 			DoNothing: true,
 		}).Create(&notification)
 		if inserted.Error != nil {

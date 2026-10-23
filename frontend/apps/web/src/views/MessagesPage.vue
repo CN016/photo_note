@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { useRouter } from 'vue-router'
+import { onBeforeRouteLeave, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { ArrowLeft, ArrowRight, Delete, Edit, Plus, TopRight } from '@element-plus/icons-vue'
 import AppHeader from '../components/AppHeader.vue'
@@ -35,6 +35,7 @@ const loadingConfigs = ref(false)
 const configError = ref(false)
 const editorOpen = ref(false)
 const editorBusy = ref(false)
+onBeforeRouteLeave(to => to.path !== '/spaces' || (!editorOpen.value && !editorBusy.value))
 const editingID = ref('')
 const providerOptions: NoticeConfig['provider'][] = ['wecom', 'dingtalk', 'feishu']
 const form = reactive({

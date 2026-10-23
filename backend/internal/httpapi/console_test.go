@@ -12,11 +12,13 @@ import (
 	"github.com/google/uuid"
 	"github.com/photo-nini/backend/internal/model"
 	"github.com/photo-nini/backend/internal/service"
+	"github.com/photo-nini/backend/internal/tenant"
 )
 
 type consoleRepositoryForHTTP struct {
-	admin   bool
-	configs []model.AppConfig
+	admin      bool
+	configs    []model.AppConfig
+	galleryOrg int64
 }
 
 func (repository *consoleRepositoryForHTTP) IsAdministrator(context.Context, uuid.UUID) (bool, error) {
@@ -40,7 +42,9 @@ func (*consoleRepositoryForHTTP) CreateConsoleConfig(context.Context, *model.App
 func (*consoleRepositoryForHTTP) UpdateConsoleConfig(context.Context, string, map[string]any) (model.AppConfig, error) {
 	return model.AppConfig{}, nil
 }
-func (*consoleRepositoryForHTTP) ListConsoleInspirations(context.Context, string, string, int, int) ([]model.ConsoleInspiration, int64, error) {
+func (repository *consoleRepositoryForHTTP) ListConsoleInspirations(ctx context.Context, _ string, _ string, _ int, _ int) ([]model.ConsoleInspiration, int64, error) {
+	scope, _ := tenant.FromContext(ctx)
+	repository.galleryOrg = scope.OrgID
 	return []model.ConsoleInspiration{}, 0, nil
 }
 func (*consoleRepositoryForHTTP) ListConsoleFeedback(context.Context, string, int, int) ([]model.ConsoleFeedback, int64, error) {

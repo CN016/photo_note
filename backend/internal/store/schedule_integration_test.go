@@ -15,6 +15,7 @@ import (
 	"github.com/photo-nini/backend/internal/model"
 	"github.com/photo-nini/backend/internal/service"
 	"github.com/photo-nini/backend/internal/store"
+	"github.com/photo-nini/backend/internal/tenant"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
@@ -47,6 +48,8 @@ func TestScheduleStoreIsolationCapacityExpirationPrivacyAndRevocation(t *testing
 
 	repository := store.NewPostgresStore(database)
 	ownerID, otherOwnerID := uuid.New(), uuid.New()
+	ctx := tenant.Personal(context.Background(), ownerID)
+	database = database.WithContext(ctx)
 	location := time.FixedZone("Asia/Shanghai", 8*60*60)
 	day := time.Now().In(location).AddDate(0, 0, 7)
 	start := time.Date(day.Year(), day.Month(), day.Day(), 9, 0, 0, 0, location)
@@ -60,7 +63,7 @@ func TestScheduleStoreIsolationCapacityExpirationPrivacyAndRevocation(t *testing
 	}
 	createItem := func(item *model.ScheduleItem) {
 		t.Helper()
-		if err := repository.CreateScheduleItem(context.Background(), item, func([]model.ScheduleItem, []model.ScheduleException) error { return nil }); err != nil {
+		if err := repository.CreateScheduleItem(ctx, item, func([]model.ScheduleItem, []model.ScheduleException) error { return nil }); err != nil {
 			t.Fatalf("创建档期测试数据失败: %v", err)
 		}
 	}
@@ -74,17 +77,17 @@ func TestScheduleStoreIsolationCapacityExpirationPrivacyAndRevocation(t *testing
 		t.Fatalf("创建私密工作事项测试数据失败: %v", err)
 	}
 
-	ownerItems, _, err := repository.ListScheduleData(context.Background(), ownerID)
+	ownerItems, _, err := repository.ListScheduleData(ctx, ownerID)
 	if err != nil || len(ownerItems) != 2 {
 		t.Fatalf("档期查询没有隔离到当前用户: items=%d err=%v", len(ownerItems), err)
 	}
-	otherItems, _, err := repository.ListScheduleData(context.Background(), otherOwnerID)
+	otherItems, _, err := repository.ListScheduleData(ctx, otherOwnerID)
 	if err != nil || len(otherItems) != 1 || otherItems[0].BusinessID != otherItem.BusinessID {
 		t.Fatalf("第二个用户读取到了错误档期: items=%d err=%v", len(otherItems), err)
 	}
 
 	calendar := service.NewScheduleService(repository, allowScheduleRequests{}, 10)
-	share, err := calendar.CreateShare(context.Background(), ownerID, "https://booking.example")
+	share, err := calendar.CreateShare(ctx, ownerID, "https://booking.example")
 	if err != nil {
 		t.Fatalf("创建预约分享链接失败: %v", err)
 	}
@@ -134,7 +137,7 @@ func TestScheduleStoreIsolationCapacityExpirationPrivacyAndRevocation(t *testing
 		t.Fatalf("并发申请超出时段容量: 成功数=%d", successes)
 	}
 
-	bookings, err := repository.ListScheduleBookings(context.Background(), ownerID, "all")
+	bookings, err := repository.ListScheduleBookings(ctx, ownerID, "all")
 	if err != nil || len(bookings) != 1 || bookings[0].Status != "pending" || bookings[0].ExpiresAt == nil {
 		t.Fatalf("预约申请没有按拥有者隔离并占位: bookings=%d err=%v", len(bookings), err)
 	}
@@ -142,7 +145,7 @@ func TestScheduleStoreIsolationCapacityExpirationPrivacyAndRevocation(t *testing
 	if err := database.Model(&model.ScheduleBooking{}).Where("business_id = ?", bookings[0].BusinessID).Update("expires_at", past).Error; err != nil {
 		t.Fatalf("设置过期预约测试数据失败: %v", err)
 	}
-	bookings, err = repository.ListScheduleBookings(context.Background(), ownerID, "all")
+	bookings, err = repository.ListScheduleBookings(ctx, ownerID, "all")
 	if err != nil || len(bookings) != 1 || bookings[0].Status != "expired" || bookings[0].ExpiresAt != nil {
 		t.Fatalf("超过 24 小时的待确认申请未释放名额: bookings=%#v err=%v", bookings, err)
 	}
@@ -150,7 +153,7 @@ func TestScheduleStoreIsolationCapacityExpirationPrivacyAndRevocation(t *testing
 		t.Fatalf("过期申请释放后仍无法预约: %v", err)
 	}
 
-	if err := repository.RevokeScheduleShare(context.Background(), ownerID); err != nil {
+	if err := repository.RevokeScheduleShare(ctx, ownerID); err != nil {
 		t.Fatalf("撤销预约分享链接失败: %v", err)
 	}
 	if _, err := calendar.PublicSlots(context.Background(), token, from, from.AddDate(0, 0, 1)); err == nil {

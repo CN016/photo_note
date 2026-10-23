@@ -77,21 +77,27 @@ func run() error {
 	if err != nil {
 		return err
 	}
+	fileService := service.NewFileService(fileManager, repository)
+	organizations := service.NewOrganizationService(repository)
+	authService := service.NewAuthService(repository, tokens, passwords)
+	authService.SetOrganizations(organizations)
 	notices := service.NewNoticeService(repository, runtimeConfigService)
-	notices.SetFeedbackImageStore(fileManager)
+	notices.SetFeedbackImageStore(fileService)
 	errorLogs := service.NewErrorLogService(repository, runtimeConfigService, notices)
 	notices.SetErrorLogService(errorLogs)
 	feedbackNotifications := service.NewFeedbackNotificationService(repository, runtimeConfigService, notices)
 	feedbackNotifications.SetErrorLogService(errorLogs)
 	consoleService := service.NewConsoleService(repository)
 	consoleService.ConfigureFeedbackReplies(runtimeConfig.FeedbackMaxTextChars, notices)
-	inspirations := service.NewInspirationService(repository, fileManager, runtimeConfig.MaxUploadBytes)
+	inspirations := service.NewInspirationService(repository, fileService, runtimeConfig.MaxUploadBytes)
 	inspirations.SetErrorLogService(errorLogs)
-	plans := service.NewPlanService(repository, fileManager, runtimeConfig.MaxUploadBytes, notices, runtimeConfigService)
+	plans := service.NewPlanService(repository, fileService, runtimeConfig.MaxUploadBytes, notices, runtimeConfigService)
 	plans.SetErrorLogService(errorLogs)
-	projects := service.NewProjectService(repository, fileManager, runtimeConfig.MaxUploadBytes)
+	projects := service.NewProjectService(repository, fileService, runtimeConfig.MaxUploadBytes)
 	dependencies := httpapi.Dependencies{
-		Auth:                  service.NewAuthService(repository, tokens, passwords),
+		Auth:                  authService,
+		Organizations:         organizations,
+		RegistrationFiles:     fileManager,
 		Users:                 service.NewUserService(repository),
 		Tags:                  service.NewTagService(repository),
 		Inspirations:          inspirations,
@@ -100,7 +106,7 @@ func run() error {
 		PostgresPing:          func(ctx context.Context) error { return database.Ping(ctx, databaseConnection) },
 		RedisPing:             func(ctx context.Context) error { return tokens.Client().Ping(ctx).Err() },
 		MaxBodyBytes:          runtimeConfig.MaxJSONBodyBytes,
-		Files:                 fileManager,
+		Files:                 fileService,
 		MaxUploadBytes:        runtimeConfig.MaxUploadBytes,
 		CurrentFileStoreType:  runtimeConfigService.CurrentFileStoreType,
 		PublicConfigs:         runtimeConfigService,

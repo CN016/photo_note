@@ -3,11 +3,13 @@ package store
 import (
 	"context"
 	"errors"
+	"fmt"
 	"time"
 
 	"github.com/google/uuid"
 	"github.com/photo-nini/backend/internal/domain/fault"
 	"github.com/photo-nini/backend/internal/model"
+	"github.com/photo-nini/backend/internal/tenant"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )
@@ -118,7 +120,7 @@ func (store *PostgresStore) SaveScheduleException(ctx context.Context, exception
 		if err := validate(items, exceptions); err != nil {
 			return err
 		}
-		columns := []clause.Column{{Name: "schedule_business_id"}, {Name: "occurrence_date"}}
+		columns := []clause.Column{{Name: "orgid"}, {Name: "schedule_business_id"}, {Name: "occurrence_date"}}
 		updates := []string{"exception_action", "title", "content", "start_at", "end_at", "capacity", "updated_at"}
 		result := tx.Clauses(clause.OnConflict{Columns: columns, DoUpdates: clause.AssignmentColumns(updates)}).Create(exception)
 		if result.Error != nil {
@@ -219,7 +221,7 @@ func (store *PostgresStore) GetScheduleShare(ctx context.Context, userID uuid.UU
 func (store *PostgresStore) SaveScheduleShare(ctx context.Context, share *model.ScheduleShare) error {
 	updates := []string{"business_id", "token_hash", "enabled", "updated_at"}
 	result := store.db.WithContext(ctx).Clauses(clause.OnConflict{
-		Columns: []clause.Column{{Name: "user_id"}}, DoUpdates: clause.AssignmentColumns(updates),
+		Columns: []clause.Column{{Name: "orgid"}, {Name: "user_id"}}, DoUpdates: clause.AssignmentColumns(updates),
 	}).Create(share)
 	if result.Error != nil {
 		return persistenceError(result.Error)
@@ -238,7 +240,7 @@ func (store *PostgresStore) RevokeScheduleShare(ctx context.Context, userID uuid
 // FindScheduleShareByHash 仅以令牌摘要查找分享，不在查询或日志中包含原始令牌。
 func (store *PostgresStore) FindScheduleShareByHash(ctx context.Context, tokenHash string) (model.ScheduleShare, error) {
 	var share model.ScheduleShare
-	if err := store.db.WithContext(ctx).Where("token_hash = ?", tokenHash).First(&share).Error; err != nil {
+	if err := store.db.WithContext(tenant.System(ctx)).Where("token_hash = ?", tokenHash).First(&share).Error; err != nil {
 		return model.ScheduleShare{}, persistenceError(err)
 	}
 	return share, nil
@@ -303,7 +305,11 @@ func loadScheduleData(tx *gorm.DB, userID uuid.UUID) ([]model.ScheduleItem, []mo
 
 // lockScheduleOwner 通过事务级 advisory lock 串行化同一用户可能产生档期冲突的写入。
 func lockScheduleOwner(tx *gorm.DB, userID uuid.UUID) error {
-	if err := tx.Exec("SELECT pg_advisory_xact_lock(hashtextextended(?, 0))", userID.String()).Error; err != nil {
+	scope, err := tenant.Require(tx.Statement.Context)
+	if err != nil {
+		return err
+	}
+	if err := tx.Exec("SELECT pg_advisory_xact_lock(hashtextextended(?, 0))", fmt.Sprintf("schedule:%d:%s", scope.OrgID, userID)).Error; err != nil {
 		return persistenceError(err)
 	}
 	return nil

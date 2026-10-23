@@ -13,6 +13,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/photo-nini/backend/internal/domain/fault"
 	"github.com/photo-nini/backend/internal/filestore"
+	"github.com/photo-nini/backend/internal/service"
 )
 
 const (
@@ -22,7 +23,7 @@ const (
 	multipartOverhead = 1 << 20
 )
 
-// uploadFileHandler 接收单个 multipart 文件；文件不写数据库，不记录用户归属，也不提供管理操作。
+// uploadFileHandler 接收单个 multipart 文件，由已装配的文件服务登记可信组织及用户归属。
 func uploadFileHandler(files fileStorage, maxUploadBytes int64, currentStoreType func(context.Context) (string, error)) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		if files == nil || maxUploadBytes < 1 || currentStoreType == nil {
@@ -90,7 +91,7 @@ func uploadFileHandler(files fileStorage, maxUploadBytes int64, currentStoreType
 	}
 }
 
-// downloadFileHandler 通过 storekey 读取文件；合法 key 即可定位文件，不做用户归属查询。
+// downloadFileHandler 在可信组织及用户归属通过校验后读取私有文件。
 func downloadFileHandler(files fileStorage) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		if files == nil {
@@ -103,8 +104,12 @@ func downloadFileHandler(files fileStorage) gin.HandlerFunc {
 			writeError(c, fault.InvalidRequest("storekey 格式无效"))
 			return
 		}
-		reader, size, contentType, err := files.Open(storekey)
+		reader, size, contentType, err := service.OpenFile(c.Request.Context(), files, storekey)
+		var accessError *fault.Error
 		switch {
+		case errors.As(err, &accessError):
+			writeError(c, accessError)
+			return
 		case errors.Is(err, filestore.ErrInvalidStoreKey):
 			writeError(c, fault.InvalidRequest("storekey 格式无效"))
 			return

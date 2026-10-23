@@ -1,30 +1,58 @@
 import { ApiError, type ApiEnvelope, type ApiErrorEnvelope, type AuthResponse, type ConsoleConfigRecord, type ConsoleFeedbackRecord, type ConsoleInspirationRecord, type ConsoleUserRecord, type InspirationImageMetadata, type InspirationRecord, type InspirationStatistics, type LedgerFields, type LedgerImportItem, type LedgerImportResult, type LedgerRecord, type NoticeConfig, type NoticeConfigList, type NoticeDelivery, type NotificationPage, type PageResult, type PlanFields, type PlanRecord, type ProjectRecord, type ProjectSaveInput, type ProjectSummary, type ScheduleBooking, type ScheduleBookingReceipt, type ScheduleFields, type ScheduleOccurrence, type SchedulePublicSlot, type ScheduleShare, type TagRecord, type TokenPair, type UserProfile } from './types'
 import { API_REQUEST_ORIGIN } from './config'
+import type { Environment, Organization, OrganizationMember } from './types'
 
 /** V1 业务路由统一加版本前缀；环境变量只提供服务主机。 */
 const API_BASE = `${API_REQUEST_ORIGIN}/api/v1`
 const REFRESH_KEY = 'photo-nini.refresh-token'
 const LOCK_KEY = 'photo-nini.refresh-lock'
+const SESSION_KEY = 'photo-nini.session'
+export const SPACE_SWITCH_KEY = 'photo-nini.space-switch'
 const refreshChannel = typeof BroadcastChannel !== 'undefined' ? new BroadcastChannel('photo-nini-auth') : null
 let accessToken: string | null = null
 let refreshFlight: Promise<string | null> | null = null
 let authLossHandler: (() => void) | null = null
+let requestsPaused = false
+let pendingRequests = 0
+
+/** 同一浏览器会话的组织与代次跟随凭证一起原子保存，迟到请求不能跨代次重试。 */
+export type SessionInfo = Pick<TokenPair, 'orgid' | 'session_id' | 'session_version'>
+export function getSessionInfo(): SessionInfo | null {
+  try { return JSON.parse(localStorage.getItem(SESSION_KEY) || 'null') as SessionInfo | null } catch { return null }
+}
+function sessionStamp(): string { const info = getSessionInfo(); return info ? `${info.session_id}:${info.orgid}:${info.session_version}` : '' }
+export function pauseSpaceRequests(paused: boolean): void { requestsPaused = paused }
+export async function drainSpaceRequests(deadline = Date.now() + 30000): Promise<void> {
+  while (pendingRequests > 0) {
+    if (Date.now() >= deadline) throw new ApiError('space_switch_timeout', 'space_switch_timeout', 409)
+    await new Promise(resolve => window.setTimeout(resolve, 25))
+  }
+}
+function assertSession(expected: string, auth: boolean): void {
+  if (auth && expected && expected !== sessionStamp()) throw new ApiError('space_changed', 'space_changed', 409)
+}
 
 /** Access Token 只驻留在当前页面内存；Refresh Token 才写入本地持久存储。 */
 export function setAccessToken(token: string | null): void { accessToken = token }
-export function getRefreshToken(): string | null { return localStorage.getItem(REFRESH_KEY) }
+export function getRefreshToken(): string | null {
+  try { return (JSON.parse(localStorage.getItem(SESSION_KEY) || 'null') as { refresh_token?: string } | null)?.refresh_token || localStorage.getItem(REFRESH_KEY) } catch { return null }
+}
 export function setAuthLossHandler(handler: (() => void) | null): void { authLossHandler = handler }
 
-refreshChannel?.addEventListener('message', (event: MessageEvent<{ type?: string; accessToken?: string }>) => {
-  if (event.data?.type === 'rotated' && typeof event.data.accessToken === 'string') accessToken = event.data.accessToken
+refreshChannel?.addEventListener('message', (event: MessageEvent<{ type?: string; accessToken?: string; stamp?: string }>) => {
+  if (event.data?.type === 'rotated' && event.data.stamp === sessionStamp() && typeof event.data.accessToken === 'string') {
+    accessToken = event.data.accessToken
+    window.dispatchEvent(new Event('photo-nini-session-updated'))
+  }
   if (event.data?.type === 'logged-out') { accessToken = null; localStorage.removeItem(REFRESH_KEY) }
 })
 
 window.addEventListener('storage', event => {
-  if (event.key === REFRESH_KEY && event.newValue === null) {
+  if ((event.key === REFRESH_KEY || event.key === SESSION_KEY) && event.newValue === null) {
     accessToken = null
     authLossHandler?.()
   }
+  if (event.key === SESSION_KEY && event.newValue) window.dispatchEvent(new Event('photo-nini-session-updated'))
 })
 
 /** 将后端错误码转换为可由页面翻译资源处理的 ApiError。 */
@@ -44,8 +72,8 @@ async function exchangeRefreshToken(refreshToken: string): Promise<Response> {
 }
 
 /** 通过 Web Locks 串行刷新；不支持该 API 的浏览器使用短租约并在失败时等待另一标签页轮换完成。 */
-async function withRefreshLock<T>(action: () => Promise<T>): Promise<T> {
-  if ('locks' in navigator && navigator.locks) return navigator.locks.request('photo-nini-refresh', { mode: 'exclusive' }, action)
+export async function withRefreshLock<T>(action: () => Promise<T>): Promise<T> {
+  if ('locks' in navigator && navigator.locks) return navigator.locks.request('photo-nini-auth-mutation', { mode: 'exclusive' }, action)
   const owner = `${Date.now()}-${Math.random().toString(36).slice(2)}`
   const deadline = Date.now() + 8000
   while (Date.now() < deadline) {
@@ -71,9 +99,7 @@ async function rotateRefreshToken(): Promise<string | null> {
       const response = await exchangeRefreshToken(token)
       if (response.ok) {
         const envelope = await response.json() as ApiEnvelope<{ tokens: TokenPair }>
-        localStorage.setItem(REFRESH_KEY, envelope.data.tokens.refresh_token)
-        accessToken = envelope.data.tokens.access_token
-        refreshChannel?.postMessage({ type: 'rotated', accessToken })
+        acceptTokenPair(envelope.data.tokens)
         return accessToken
       }
       if (response.status !== 401) throw await parseFailure(response)
@@ -82,8 +108,7 @@ async function rotateRefreshToken(): Promise<string | null> {
       if (!replacement || replacement === token) break
       token = replacement
     }
-    localStorage.removeItem(REFRESH_KEY)
-    accessToken = null
+    clearTokens()
     authLossHandler?.()
     return null
   }).finally(() => { refreshFlight = null })
@@ -102,40 +127,76 @@ async function waitForRefreshReplacement(previousToken: string): Promise<string 
 }
 
 /** 统一处理 JSON 封套、Bearer 鉴权以及过期 Access Token 的单次重试。 */
-async function request<T>(path: string, init: RequestInit = {}, auth = true, retry = true, apiBase = API_BASE): Promise<T> {
+async function request<T>(path: string, init: RequestInit = {}, auth = true, retry = true, apiBase = API_BASE, expected = sessionStamp()): Promise<T> {
+  assertSession(expected, auth)
+  if (auth && requestsPaused) throw new ApiError('space_switch_pending', 'space_switch_pending', 409)
   const headers = new Headers(init.headers)
   if (init.body && !(init.body instanceof FormData) && !headers.has('Content-Type')) headers.set('Content-Type', 'application/json')
   if (auth && accessToken) headers.set('Authorization', `Bearer ${accessToken}`)
   let response: Response
+  pendingRequests += 1
   try { response = await fetch(`${apiBase}${path}`, { ...init, headers }) }
   catch { throw new ApiError('network', 'network', 0) }
+  finally { pendingRequests -= 1 }
+  assertSession(expected, auth)
   if (response.status === 401 && auth && retry) {
     const nextToken = await rotateRefreshToken()
-    if (nextToken) return request<T>(path, init, auth, false, apiBase)
+    assertSession(expected, auth)
+    if (nextToken) return request<T>(path, init, auth, false, apiBase, expected)
     throw new ApiError('unauthorized', 'unauthorized', 401)
   }
-  if (!response.ok) throw await parseFailure(response)
+  if (!response.ok) {
+    const failure = await parseFailure(response)
+    if (auth && failure.code === 'environment_unavailable') { clearTokens(); authLossHandler?.() }
+    throw failure
+  }
   if (response.status === 204) return undefined as T
   const envelope = await response.json() as ApiEnvelope<T>
+  assertSession(expected, auth)
   return envelope.data
 }
 
 /** 二进制文件流保持 Blob 类型、沿用统一的令牌恢复流程，并允许头像读取指定 HTTP 缓存策略。 */
-async function requestBlob(path: string, retry = true, cache: RequestCache = 'default'): Promise<Blob> {
+async function requestBlob(path: string, retry = true, cache: RequestCache = 'default', expected = sessionStamp()): Promise<Blob> {
+  assertSession(expected, true)
+  if (requestsPaused) throw new ApiError('space_switch_pending', 'space_switch_pending', 409)
   const headers = new Headers()
   if (accessToken) headers.set('Authorization', `Bearer ${accessToken}`)
   let response: Response
+  pendingRequests += 1
   try { response = await fetch(`${API_BASE}${path}`, { headers, cache }) }
   catch { throw new ApiError('network', 'network', 0) }
+  finally { pendingRequests -= 1 }
+  assertSession(expected, true)
   if (response.status === 401 && retry) {
-    if (await rotateRefreshToken()) return requestBlob(path, false, cache)
+    if (await rotateRefreshToken()) { assertSession(expected, true); return requestBlob(path, false, cache, expected) }
     throw new ApiError('unauthorized', 'unauthorized', 401)
   }
-  if (!response.ok) throw await parseFailure(response)
-  return response.blob()
+  if (!response.ok) {
+    const failure = await parseFailure(response)
+    if (failure.code === 'environment_unavailable') { clearTokens(); authLossHandler?.() }
+    throw failure
+  }
+  const blob = await response.blob()
+  assertSession(expected, true)
+  return blob
 }
 
 export const api = {
+  /** 空间切换由跨标签页协调器调用，单次比较会话代次，禁止旧页面更换当前租户。 */
+  environments() { return request<{ items: Environment[] }>('/environments') },
+  switchEnvironment(orgid: number, expectedVersion: number, switchID: string) {
+    return request<{ tokens: TokenPair }>('/auth/switch-environment', { method: 'POST', body: JSON.stringify({ refresh_token: getRefreshToken(), orgid, expected_session_version: expectedVersion, switch_id: switchID }) }, false)
+  },
+  organizations(page = 1, q = '') { return request<PageResult<Organization>>(`/atelier-7f3c9a2e/organizations?page=${page}&page_size=20&q=${encodeURIComponent(q)}`) },
+  createOrganization(name: string, initialAdminID: string) { return request<Organization>('/atelier-7f3c9a2e/organizations', { method: 'POST', body: JSON.stringify({ name, initial_admin_user_id: initialAdminID }) }) },
+  updateOrganization(orgid: number, patch: { name?: string; status?: 'active' | 'disabled' }) { return request<Organization>(`/atelier-7f3c9a2e/organizations/${orgid}`, { method: 'PATCH', body: JSON.stringify(patch) }) },
+  currentOrganization() { return request<Organization>('/organization') },
+  renameCurrentOrganization(name: string) { return request<Organization>('/organization', { method: 'PATCH', body: JSON.stringify({ name }) }) },
+  organizationMembers(orgid?: number, page = 1) { return request<PageResult<OrganizationMember>>(`${orgid === undefined ? '/organization' : `/atelier-7f3c9a2e/organizations/${orgid}`}/members?page=${page}&page_size=20`) },
+  addOrganizationMember(userID: string, role: 'admin' | 'member', orgid?: number) { return request<OrganizationMember>(`${orgid === undefined ? '/organization' : `/atelier-7f3c9a2e/organizations/${orgid}`}/members`, { method: 'POST', body: JSON.stringify({ user_id: userID, role }) }) },
+  setOrganizationMemberRole(userID: string, role: 'admin' | 'member', orgid?: number) { return request<void>(`${orgid === undefined ? '/organization' : `/atelier-7f3c9a2e/organizations/${orgid}`}/members/${encodeURIComponent(userID)}`, { method: 'PATCH', body: JSON.stringify({ role }) }) },
+  removeOrganizationMember(userID: string, orgid?: number) { return request<void>(`${orgid === undefined ? '/organization' : `/atelier-7f3c9a2e/organizations/${orgid}`}/members/${encodeURIComponent(userID)}`, { method: 'DELETE' }) },
   /** 登录后端当前手机号密码认证入口。 */
   login(phone: string, password: string) { return request<AuthResponse>('/auth/login', { method: 'POST', body: JSON.stringify({ phone, password }) }, false) },
   /** 注册必须上传头像；multipart 请求由服务端验证文件内容后创建账号。 */
@@ -153,6 +214,8 @@ export const api = {
   logout() { return request<void>('/auth/logout', { method: 'POST' }) },
   /** 读取当前登录用户资料。 */
   currentUser() { return request<UserProfile>('/users/me') },
+  currentAvatar() { return requestBlob('/users/me/avatar', true, 'reload') },
+  uploadAvatar(file: Blob, filename: string) { const body = new FormData(); body.append('file', file, filename); return request<{ storekey: string }>('/users/me/avatar', { method: 'POST', body }) },
   /** 每次打开计划表单时绕过缓存，读取管理员当前公开的 emoji 配置。 */
   publicConfigs(keys: string[]) {
     const params = new URLSearchParams({ keys: keys.join(',') })
@@ -221,11 +284,16 @@ export const api = {
     return request<ConsoleConfigRecord>(`/atelier-7f3c9a2e/configs/${encodeURIComponent(key)}`, { method: 'PATCH', body: JSON.stringify(patch) })
   },
   /** 查询全站灵感图片摘要，结果不包含任何私有编辑文档。 */
-  consoleInspirations(page: number, pageSize = 20, q = '', sort: 'created_desc' | 'created_asc' | 'updated_desc' = 'created_desc') {
+  consoleInspirations(page: number, pageSize = 20, q = '', sort: 'created_desc' | 'created_asc' | 'updated_desc' = 'created_desc', orgid?: number, organizationOnly = false) {
     const params = new URLSearchParams({ page: String(page), page_size: String(pageSize), sort })
     if (q.trim()) params.set('q', q.trim())
-    return request<PageResult<ConsoleInspirationRecord>>(`/atelier-7f3c9a2e/inspirations?${params.toString()}`)
+    if (orgid !== undefined) params.set('orgid', String(orgid))
+    return request<PageResult<ConsoleInspirationRecord>>(`${organizationOnly ? '/organization' : '/atelier-7f3c9a2e'}/inspirations?${params.toString()}`)
   },
+  managementInspiration(id: string, orgid?: number) { return request<InspirationRecord>(managementPath(id, orgid)) },
+  managementSaveInspiration(id: string, patch: Record<string, unknown>, orgid?: number) { return request<InspirationRecord>(managementPath(id, orgid), { method: 'PATCH', body: JSON.stringify(patch) }) },
+  managementDeleteInspiration(id: string, orgid?: number) { return request<void>(managementPath(id, orgid), { method: 'DELETE' }) },
+  managementImage(id: string, key: string, orgid?: number) { const path = managementPath(id, orgid, '/file'); return requestBlob(`${path}${path.includes('?') ? '&' : '?'}storekey=${encodeURIComponent(key)}`) },
   /** 按处理状态分页读取反馈。 */
   consoleFeedbacks(page: number, pageSize = 20, status: '' | 'new' | 'processed' = '') {
     const params = new URLSearchParams({ page: String(page), page_size: String(pageSize) })
@@ -378,16 +446,27 @@ export const api = {
   },
 }
 
+/** 平台图库必须明确选择组织；组织管理员仅使用当前已验证会话的组织。 */
+function managementPath(id: string, orgid?: number, suffix = ''): string {
+  return `${orgid === undefined ? '/organization' : '/atelier-7f3c9a2e'}/inspirations/${encodeURIComponent(id)}${suffix}${orgid === undefined ? '' : `?orgid=${orgid}`}`
+}
+
 /** 初始化流程中写入登录签发的 Refresh Token，并只把 Access Token 留在内存。 */
 export function acceptTokenPair(tokens: TokenPair): void {
+  const previous = getSessionInfo()
+  if (previous?.session_id === tokens.session_id && previous.session_version > tokens.session_version) return
   accessToken = tokens.access_token
+  localStorage.setItem(SESSION_KEY, JSON.stringify({ refresh_token: tokens.refresh_token, orgid: tokens.orgid, session_id: tokens.session_id, session_version: tokens.session_version }))
   localStorage.setItem(REFRESH_KEY, tokens.refresh_token)
-  refreshChannel?.postMessage({ type: 'rotated', accessToken })
+  refreshChannel?.postMessage({ type: 'rotated', accessToken, stamp: sessionStamp() })
+  window.dispatchEvent(new Event('photo-nini-session-updated'))
 }
 
 /** 退出或鉴权彻底失效时清空当前页与同源标签页的登录态。 */
 export function clearTokens(): void {
   accessToken = null
   localStorage.removeItem(REFRESH_KEY)
+  localStorage.removeItem(SESSION_KEY)
   refreshChannel?.postMessage({ type: 'logged-out' })
+  window.dispatchEvent(new Event('photo-nini-session-updated'))
 }

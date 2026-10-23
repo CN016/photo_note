@@ -15,6 +15,7 @@ import (
 	"github.com/lib/pq"
 	"github.com/photo-nini/backend/internal/domain/fault"
 	"github.com/photo-nini/backend/internal/model"
+	"github.com/photo-nini/backend/internal/tenant"
 )
 
 var chinaLocation = time.FixedZone("Asia/Shanghai", 8*60*60)
@@ -222,6 +223,8 @@ func (service *ScheduleService) PublicSlots(ctx context.Context, token string, f
 	if err != nil || !share.Enabled {
 		return nil, fault.NotFound()
 	}
+	// 公开能力的组织只能来自已验证分享记录，不能采信调用方的组织参数。
+	ctx = tenant.WithScope(ctx, tenant.Scope{OrgID: share.OrgID, UserID: share.UserID})
 	items, exceptions, err := service.repository.ListScheduleData(ctx, share.UserID)
 	if err != nil {
 		return nil, err
@@ -270,6 +273,7 @@ func (service *ScheduleService) Request(ctx context.Context, clientIP, token str
 	if err != nil || !share.Enabled {
 		return model.ScheduleBooking{}, fault.NotFound()
 	}
+	ctx = tenant.WithScope(ctx, tenant.Scope{OrgID: share.OrgID, UserID: share.UserID})
 	startAt = startAt.In(chinaLocation)
 	booking := model.ScheduleBooking{
 		BaseModel: model.BaseModel{BusinessID: uuid.New()}, UserID: share.UserID,

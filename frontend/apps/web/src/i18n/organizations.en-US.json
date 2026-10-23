@@ -1,0 +1,14 @@
+{
+  "title": "Organizations", "description": "Manage organization details and members. Organization administrators manage their gallery; feedback is handled by the platform.",
+  "name": "Organization name", "orgid": "Organization number", "status": "Status", "active": "Active", "disabled": "Disabled", "actions": "Actions",
+  "create": "Create organization", "rename": "Rename", "enable": "Enable", "disable": "Disable", "search": "Search organizations",
+  "members": "Members", "gallery": "Manage gallery", "empty": "No organizations", "noMembers": "No members",
+  "userID": "User business UUID", "nickname": "Nickname", "role": "Role", "admin": "Administrator", "member": "Member",
+  "addMember": "Add member", "promote": "Make administrator", "demote": "Make member", "remove": "Remove member",
+  "removeConfirm": "This member will lose access to the organization. Existing data will be retained. Continue?",
+  "memberHint": "Add an existing account by its business UUID. Keep at least one organization administrator.",
+  "initialAdmin": "Initial administrator UUID", "initialAdminHint": "Choose an existing account. Creating an organization does not move personal data.",
+  "operationError": "The operation failed. Check the input, organization status and permissions. Keep at least one administrator.",
+  "selectOrganization": "Select one organization or the personal scope", "personal": "Personal scope", "editImage": "Edit image", "deleteImage": "Delete image",
+  "deleteImageConfirm": "Delete this inspiration? Inspirations used by projects cannot be deleted."
+}

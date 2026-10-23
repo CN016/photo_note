@@ -166,7 +166,7 @@ func (service *ProjectService) Attachment(ctx context.Context, userID, projectID
 	if err != nil {
 		return ProjectAttachmentView{}, nil, err
 	}
-	reader, size, _, err := service.files.Open(item.StoreKey)
+	reader, size, _, err := OpenFile(ctx, service.files, item.StoreKey)
 	if err != nil {
 		return ProjectAttachmentView{}, nil, fault.NotFound()
 	}
@@ -218,7 +218,7 @@ func (service *ProjectService) prepare(ctx context.Context, userID uuid.UUID, in
 		if input.CoverEmoji != "" {
 			return model.Project{}, nil, nil, fault.InvalidField("cover_image_key", "图片封面不能同时设置 emoji")
 		}
-		if err := service.validateFile(input.CoverImageKey, input.CoverFileName, true); err != nil {
+		if err := service.validateFile(ctx, input.CoverImageKey, input.CoverFileName, true); err != nil {
 			return model.Project{}, nil, nil, err
 		}
 		coverFileName = safeProjectFileName(input.CoverFileName)
@@ -235,7 +235,7 @@ func (service *ProjectService) prepare(ctx context.Context, userID uuid.UUID, in
 		attachments = append(attachments, item)
 	}
 	if input.CoverImageKey != "" {
-		cover, err := service.describeFile(input.CoverImageKey, coverFileName, "cover")
+		cover, err := service.describeFile(ctx, input.CoverImageKey, coverFileName, "cover")
 		if err != nil {
 			return model.Project{}, nil, nil, err
 		}
@@ -280,7 +280,7 @@ func (service *ProjectService) inspectNodes(ctx context.Context, userID uuid.UUI
 					if strings.TrimSpace(key) == "" {
 						return fault.InvalidField("document", "附件引用缺少 storekey")
 					}
-					item, err := service.describeFile(key, name, "content")
+					item, err := service.describeFile(ctx, key, name, "content")
 					if err != nil {
 						return err
 					}
@@ -322,11 +322,14 @@ func (service *ProjectService) inspectNodes(ctx context.Context, userID uuid.UUI
 }
 
 // describeFile 从鉴权存储读取实际大小和内容类型，避免信任浏览器传入的 MIME 与文件长度。
-func (service *ProjectService) describeFile(key, name, role string) (model.ProjectAttachment, error) {
+func (service *ProjectService) describeFile(ctx context.Context, key, name, role string) (model.ProjectAttachment, error) {
 	if service.files == nil {
 		return model.ProjectAttachment{}, fault.Unavailable(nil)
 	}
-	reader, size, _, err := service.files.Open(key)
+	if err := authorizeFileReference(ctx, service.files, key); err != nil {
+		return model.ProjectAttachment{}, err
+	}
+	reader, size, _, err := OpenFile(ctx, service.files, key)
 	if err != nil {
 		return model.ProjectAttachment{}, fault.InvalidField("document", "附件不存在或无法读取")
 	}
@@ -343,8 +346,8 @@ func (service *ProjectService) describeFile(key, name, role string) (model.Proje
 }
 
 // validateFile 校验封面图片真实字节，文件只在项目关联提交后进入项目附件清单。
-func (service *ProjectService) validateFile(key, name string, imageOnly bool) error {
-	item, err := service.describeFile(key, name, "cover")
+func (service *ProjectService) validateFile(ctx context.Context, key, name string, imageOnly bool) error {
+	item, err := service.describeFile(ctx, key, name, "cover")
 	if err != nil {
 		return err
 	}

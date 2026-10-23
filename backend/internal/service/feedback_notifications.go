@@ -13,6 +13,7 @@ import (
 	"github.com/photo-nini/backend/internal/domain/fault"
 	"github.com/photo-nini/backend/internal/filestore"
 	"github.com/photo-nini/backend/internal/model"
+	"github.com/photo-nini/backend/internal/tenant"
 )
 
 // ErrFeedbackNotificationConfigInvalid 表示私有反馈通知配置值不符合业务约束。
@@ -75,7 +76,7 @@ func (service *FeedbackNotificationService) Run(ctx context.Context) {
 		default:
 		}
 		claimCtx, cancelClaim := context.WithTimeout(ctx, 5*time.Second)
-		job, feedback, claimed, err := service.repository.ClaimFeedbackNotificationJob(claimCtx)
+		job, feedback, claimed, err := service.repository.ClaimFeedbackNotificationJob(tenant.System(claimCtx))
 		cancelClaim()
 		if err != nil {
 			if ctx.Err() != nil {
@@ -88,7 +89,7 @@ func (service *FeedbackNotificationService) Run(ctx context.Context) {
 			processCtx, cancelProcess := context.WithTimeout(ctx, 20*time.Second)
 			outcome, errorCode := service.process(processCtx, feedback)
 			cancelProcess()
-			finishCtx, cancelFinish := context.WithTimeout(context.Background(), 5*time.Second)
+			finishCtx, cancelFinish := context.WithTimeout(tenant.System(context.Background()), 5*time.Second)
 			finishErr := service.repository.CompleteFeedbackNotificationJob(finishCtx, job.BusinessID, job.AttemptCount, outcome, errorCode)
 			cancelFinish()
 			if finishErr != nil {
@@ -106,6 +107,8 @@ func (service *FeedbackNotificationService) Run(ctx context.Context) {
 
 // process 读取独立通知设置、定位已有用户，并在全部关键输入通过校验后发布幂等站内通知。
 func (service *FeedbackNotificationService) process(ctx context.Context, feedback model.Feedback) (string, string) {
+	// 反馈统一属于平台个人范围，不能将来源组织身份带入管理员通知渠道。
+	ctx = tenant.System(ctx)
 	if service.settings == nil || service.notices == nil || service.repository == nil {
 		return "failed", "service_unavailable"
 	}
