@@ -1,9 +1,10 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { NodeViewWrapper, type NodeViewProps } from '@tiptap/vue-3'
-import { ArrowLeft, ArrowRight, Delete, Edit, Rank } from '@element-plus/icons-vue'
+import { ArrowLeft, ArrowRight, BottomRight, Delete, Edit, Rank } from '@element-plus/icons-vue'
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
+import { useResourceResize } from '../resourceResize'
 import { useResourceMovement } from '../resourceMovement'
 import { api } from '../../api/client'
 import type { InspirationRecord } from '../../api/types'
@@ -19,9 +20,7 @@ const detailsOpen = ref(false)
 const detailsLoading = ref(false)
 const detailsFailed = ref(false)
 const record = ref<InspirationRecord | null>(null)
-const draftWidth = ref(100)
-const resizing = ref(false)
-const width = computed(() => Math.max(30, Math.min(100, Number(props.node.attrs.width) || 100)))
+const { widthLabel, smallMode, originalMode, setSizePreset, draftWidth, cornerResizing, displayWidth, beginResize, previewWidth, commitWidth, startCornerResize, moveCornerResize, finishCornerResize, cancelCornerResize, resizeWithKeyboard } = useResourceResize(props)
 const inspirationID = computed(() => String(props.node.attrs.src ?? '').replace(/^inspiration:\/\//, ''))
 const imageDimensions = computed(() => {
   const metadata = record.value?.image_metadata
@@ -29,7 +28,6 @@ const imageDimensions = computed(() => {
   return `${metadata.image_width} × ${metadata.image_height}`
 })
 let requestVersion = 0
-let lastCommittedWidth = width.value
 let recordRequest: { id: string; promise: Promise<InspirationRecord> } | null = null
 
 /** 读取当前用户有权访问的灵感图记录；同一节点的图片和详情共用进行中的请求。 */
@@ -82,27 +80,9 @@ function formatDate(value: string) {
   return Number.isNaN(date.getTime()) ? value : new Intl.DateTimeFormat(locale.value, { dateStyle: 'medium', timeStyle: 'short' }).format(date)
 }
 
-function beginResize() { resizing.value = true }
-function previewWidth(event: Event) {
-  const value = Number((event.target as HTMLInputElement).value)
-  draftWidth.value = Math.max(30, Math.min(100, value))
-}
-
-/** 尺寸滑杆只更新本地草稿；指针或键盘操作结束时才提交一次文档变更。 */
-function commitWidth() {
-  const nextWidth = draftWidth.value
-  resizing.value = false
-  if (nextWidth === lastCommittedWidth) return
-  lastCommittedWidth = nextWidth
-  props.updateAttributes({ width: nextWidth, layout: nextWidth === 100 ? 'original' : 'small' })
-}
-
 function remove() { props.deleteNode() }
 
-watch(width, value => {
-  lastCommittedWidth = value
-  if (!resizing.value) draftWidth.value = value
-})
+
 watch(inspirationID, () => {
   requestVersion += 1
   if (url.value) URL.revokeObjectURL(url.value)
@@ -112,15 +92,15 @@ watch(inspirationID, () => {
   detailsOpen.value = false
   void load()
 })
-onMounted(() => { draftWidth.value = width.value; void load() })
+onMounted(() => { void load() })
 onBeforeUnmount(() => { requestVersion += 1; if (url.value) URL.revokeObjectURL(url.value) })
 </script>
 
 <template>
   <NodeViewWrapper
     class="project-resource-node inspiration-node"
-    :class="{ 'is-selected': selected }"
-    :style="{ width: `calc(${width}% - 12px)` }"
+    :class="{ 'is-selected': selected, 'is-corner-resizing': cornerResizing }"
+    :style="{ width: `calc(${displayWidth}% - 12px)` }"
     draggable="true"
     @dblclick.prevent.stop="openDetails"
   >
@@ -135,7 +115,20 @@ onBeforeUnmount(() => { requestVersion += 1; if (url.value) URL.revokeObjectURL(
       <img v-if="url" :src="url" :alt="record?.file_name || t('projects.toolbar.insertInspiration')" draggable="false" />
       <span v-else class="resource-placeholder">{{ loading ? t('common.loading') : failed ? t('projects.inspirationLoadFailed') : t('projects.toolbar.insertInspiration') }}</span>
     </figure>
+    <el-tooltip v-if="selected" :content="t('projects.resizeMedia')" placement="bottom">
+      <button class="resource-resize-handle" type="button" contenteditable="false" draggable="false"
+        :aria-label="t('projects.resizeMedia')" @pointerdown.stop.prevent="startCornerResize"
+        @pointermove.stop.prevent="moveCornerResize" @pointerup.stop.prevent="finishCornerResize"
+        @pointercancel.stop="cancelCornerResize" @lostpointercapture="cancelCornerResize"
+        @keydown.stop="resizeWithKeyboard" @click.stop @dblclick.stop @dragstart.stop.prevent>
+        <el-icon><BottomRight /></el-icon>
+      </button>
+    </el-tooltip>
     <div v-if="selected" class="resource-controls" contenteditable="false" draggable="false" role="toolbar" :aria-label="t('projects.resourceActions')" @dblclick.stop>
+      <div class="resource-size-presets">
+        <el-tooltip :content="t('projects.smallMediaHint')"><el-button size="small" :type="smallMode ? 'primary' : 'default'" :aria-pressed="smallMode" @pointerdown.prevent @click.stop="setSizePreset(true)">{{ t('projects.smallMedia') }}</el-button></el-tooltip>
+        <el-tooltip :content="t('projects.originalMediaHint')"><el-button size="small" :type="originalMode ? 'primary' : 'default'" :aria-pressed="originalMode" @pointerdown.prevent @click.stop="setSizePreset(false)">{{ t('projects.originalMedia') }}</el-button></el-tooltip>
+      </div>
       <el-tooltip :content="t('projects.moveBlock')" placement="top">
         <span class="resource-drag-handle" data-drag-handle draggable="true" :aria-label="t('projects.moveBlock')"><el-icon><Rank /></el-icon></span>
       </el-tooltip>
@@ -158,7 +151,7 @@ onBeforeUnmount(() => { requestVersion += 1; if (url.value) URL.revokeObjectURL(
           @change.stop="commitWidth"
           @blur="commitWidth"
         />
-        <span>{{ draftWidth }}%</span>
+        <span>{{ widthLabel }}</span>
       </label>
       </el-tooltip>
       <el-tooltip :content="t('projects.removeBlock')" placement="top"><el-button size="small" circle text type="danger" :aria-label="t('projects.removeBlock')" @pointerdown.prevent @click.stop="remove"><el-icon><Delete /></el-icon></el-button></el-tooltip>
@@ -192,8 +185,10 @@ onBeforeUnmount(() => { requestVersion += 1; if (url.value) URL.revokeObjectURL(
 .project-resource-frame { display: grid; min-height: 80px; margin: 0; overflow: hidden; justify-items: center; border: 1px solid var(--line); border-radius: var(--radius-control); background: var(--surface-muted); cursor: inherit; }
 .project-resource-frame img { display: block; width: 100%; height: auto; max-height: 70vh; object-fit: contain; }
 .resource-placeholder { align-self: center; padding: 18px; color: var(--muted); font-size: 12px; text-align: center; }
-.resource-controls { position: absolute; top: -40px; right: 0; z-index: 5; display: flex; min-height: 34px; align-items: center; gap: 6px; padding: 3px 6px; border: 1px solid var(--line); border-radius: var(--radius-control); background: var(--surface-overlay); box-shadow: var(--shadow); cursor: default; }
+.resource-controls { position: absolute; top: -8px; right: 0; transform: translateY(-100%); z-index: 12; display: flex; flex-wrap: wrap; width: max-content; max-width: calc(100vw - 24px); min-height: 34px; align-items: center; gap: 6px; padding: 3px 6px; border: 1px solid var(--line); border-radius: var(--radius-control); background: var(--surface-overlay); box-shadow: var(--shadow); cursor: default; }
 .resource-controls .el-button { width: 28px; height: 28px; margin: 0; padding: 4px; }
+.resource-size-presets { display: flex; width: 100%; align-items: center; justify-content: center; gap: 6px; }
+.resource-size-presets .el-button { width: auto; padding: 0 10px; font-size: 11px; flex: 0 0 auto; }
 .resource-drag-handle { display: grid; width: 28px; height: 28px; flex: 0 0 28px; place-items: center; border: 0; border-radius: var(--radius-control); background: transparent; color: var(--muted); cursor: grab; }
 .resource-width { display: flex; align-items: center; gap: 7px; color: var(--muted); font-size: 11px; }
 .resource-width input { width: 110px; margin: 0; accent-color: var(--accent); cursor: ew-resize; touch-action: pan-y; }
@@ -211,8 +206,9 @@ onBeforeUnmount(() => { requestVersion += 1; if (url.value) URL.revokeObjectURL(
 .inspiration-detail-state.is-error { color: var(--danger); }
 @media (max-width: 768px) {
   /* 资源条与底部编辑工具栏错层，44px 操作区域无需挤入图片自身宽度。 */
-  .resource-controls { position: fixed; inset: auto 12px calc(72px + env(safe-area-inset-bottom)); min-height: 54px; justify-content: center; gap: 6px; padding: 4px; }
+  .resource-controls { position: fixed; width: auto; transform: none; inset: auto 12px calc(72px + env(safe-area-inset-bottom)); min-height: 54px; justify-content: center; gap: 6px; padding: 4px; }
   .resource-controls .el-button, .resource-drag-handle { width: 44px; height: 44px; min-height: 44px; flex: 0 0 44px; }
+  .resource-size-presets .el-button { width: auto; flex: 0 0 auto; padding: 0 12px; }
   .resource-width { min-height: 44px; }
   .resource-width input { width: 88px; height: 44px; }
   .inspiration-details { grid-template-columns: 1fr; gap: 14px; }

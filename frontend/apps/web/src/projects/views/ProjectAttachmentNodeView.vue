@@ -1,9 +1,10 @@
 <script setup lang="ts">
 import { computed, defineAsyncComponent, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { NodeViewWrapper, type NodeViewProps } from '@tiptap/vue-3'
-import { ArrowLeft, ArrowRight, Delete, Rank } from '@element-plus/icons-vue'
+import { ArrowLeft, ArrowRight, BottomRight, Delete, Rank } from '@element-plus/icons-vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute } from 'vue-router'
+import { useResourceResize } from '../resourceResize'
 import { useResourceMovement } from '../resourceMovement'
 import { api } from '../../api/client'
 
@@ -16,10 +17,8 @@ const url = ref('')
 const failed = ref(false)
 const loading = ref(false)
 const previewOpen = ref(false)
-const draftWidth = ref(100)
-const resizing = ref(false)
 const videoElement = ref<HTMLVideoElement | null>(null)
-const width = computed(() => Math.max(30, Math.min(100, Number(props.node.attrs.width) || 100)))
+const { widthLabel, smallMode, originalMode, setSizePreset, draftWidth, cornerResizing, displayWidth, beginResize, previewWidth, commitWidth, startCornerResize, moveCornerResize, finishCornerResize, cancelCornerResize, resizeWithKeyboard } = useResourceResize(props)
 const fileName = computed(() => String(props.node.attrs.fileName || 'attachment'))
 const mediaType = computed(() => String(props.node.attrs.contentType || 'application/octet-stream'))
 const storekey = computed(() => String(props.node.attrs.storekey || ''))
@@ -27,7 +26,6 @@ const isVideo = computed(() => mediaType.value.startsWith('video/'))
 const isImage = computed(() => mediaType.value.startsWith('image/'))
 const projectID = computed(() => String(route.params.id || ''))
 let requestVersion = 0
-let lastCommittedWidth = width.value
 let player: { dispose(): void } | null = null
 
 /** 只有会显示在正文中的图片和视频才预取内容；Office 和 PDF 在打开详情时再按项目权限读取。 */
@@ -45,21 +43,6 @@ async function load() {
 }
 
 function disposePlayer() { if (player) { player.dispose(); player = null } }
-function beginResize() { resizing.value = true }
-function previewWidth(event: Event) {
-  const value = Number((event.target as HTMLInputElement).value)
-  draftWidth.value = Math.max(30, Math.min(100, value))
-}
-
-/** 尺寸滑杆只更新本地草稿；指针或键盘操作结束时才提交一次文档变更。 */
-function commitWidth() {
-  const nextWidth = draftWidth.value
-  resizing.value = false
-  if (nextWidth === lastCommittedWidth) return
-  lastCommittedWidth = nextWidth
-  props.updateAttributes({ width: nextWidth, layout: nextWidth === 100 ? 'original' : 'small' })
-}
-
 function remove() { props.deleteNode() }
 function openPreview() { previewOpen.value = true }
 
@@ -79,24 +62,21 @@ watch(() => [storekey.value, projectID.value], () => {
   url.value = ''
   void load()
 })
-watch(width, value => {
-  lastCommittedWidth = value
-  if (!resizing.value) draftWidth.value = value
-})
+
 watch([url, isVideo], ([source, video]) => {
   if (!source || !video || !videoElement.value) return
   disposePlayer()
   void mountVideoPlayer(source)
 }, { flush: 'post' })
-onMounted(() => { draftWidth.value = width.value; void load() })
+onMounted(() => { void load() })
 onBeforeUnmount(() => { requestVersion += 1; disposePlayer(); if (url.value) URL.revokeObjectURL(url.value) })
 </script>
 
 <template>
   <NodeViewWrapper
     class="project-resource-node attachment-node"
-    :class="{ 'is-selected': selected }"
-    :style="{ width: `calc(${width}% - 12px)` }"
+    :class="{ 'is-selected': selected, 'is-corner-resizing': cornerResizing }"
+    :style="{ width: `calc(${displayWidth}% - 12px)` }"
     draggable="true"
     @dblclick.prevent.stop="openPreview"
   >
@@ -115,7 +95,20 @@ onBeforeUnmount(() => { requestVersion += 1; disposePlayer(); if (url.value) URL
         <span><strong>{{ fileName }}</strong><small>{{ loading ? t('common.loading') : failed ? t('projects.unsupportedPreview') : t('projects.openAttachmentDetails', { name: fileName }) }}</small></span>
       </div>
     </div>
+    <el-tooltip v-if="selected" :content="t('projects.resizeMedia')" placement="bottom">
+      <button class="resource-resize-handle" type="button" contenteditable="false" draggable="false"
+        :aria-label="t('projects.resizeMedia')" @pointerdown.stop.prevent="startCornerResize"
+        @pointermove.stop.prevent="moveCornerResize" @pointerup.stop.prevent="finishCornerResize"
+        @pointercancel.stop="cancelCornerResize" @lostpointercapture="cancelCornerResize"
+        @keydown.stop="resizeWithKeyboard" @click.stop @dblclick.stop @dragstart.stop.prevent>
+        <el-icon><BottomRight /></el-icon>
+      </button>
+    </el-tooltip>
     <div v-if="selected" class="resource-controls" contenteditable="false" draggable="false" role="toolbar" :aria-label="t('projects.resourceActions')" @dblclick.stop>
+      <div class="resource-size-presets">
+        <el-tooltip :content="t('projects.smallMediaHint')"><el-button size="small" :type="smallMode ? 'primary' : 'default'" :aria-pressed="smallMode" @pointerdown.prevent @click.stop="setSizePreset(true)">{{ t('projects.smallMedia') }}</el-button></el-tooltip>
+        <el-tooltip :content="t('projects.originalMediaHint')"><el-button size="small" :type="originalMode ? 'primary' : 'default'" :aria-pressed="originalMode" @pointerdown.prevent @click.stop="setSizePreset(false)">{{ t('projects.originalMedia') }}</el-button></el-tooltip>
+      </div>
       <el-tooltip :content="t('projects.moveBlock')" placement="top">
         <span class="resource-drag-handle" data-drag-handle draggable="true" :aria-label="t('projects.moveBlock')"><el-icon><Rank /></el-icon></span>
       </el-tooltip>
@@ -138,7 +131,7 @@ onBeforeUnmount(() => { requestVersion += 1; disposePlayer(); if (url.value) URL
           @change.stop="commitWidth"
           @blur="commitWidth"
         />
-        <span>{{ draftWidth }}%</span>
+        <span>{{ widthLabel }}</span>
       </label>
       </el-tooltip>
       <el-tooltip :content="t('projects.removeBlock')" placement="top"><el-button size="small" circle text type="danger" :aria-label="t('projects.removeBlock')" @pointerdown.prevent @click.stop="remove"><el-icon><Delete /></el-icon></el-button></el-tooltip>
@@ -159,16 +152,19 @@ onBeforeUnmount(() => { requestVersion += 1; disposePlayer(); if (url.value) URL
 .attachment-file > span:last-child { display: grid; min-width: 0; gap: 4px; }
 .attachment-file strong { overflow: hidden; font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
 .attachment-file small { color: var(--muted); font-size: 10px; }
-.resource-controls { position: absolute; top: -40px; right: 0; z-index: 5; display: flex; min-height: 34px; align-items: center; gap: 6px; padding: 3px 6px; border: 1px solid var(--line); border-radius: var(--radius-control); background: var(--surface-overlay); box-shadow: var(--shadow); cursor: default; }
+.resource-controls { position: absolute; top: -8px; right: 0; transform: translateY(-100%); z-index: 12; display: flex; flex-wrap: wrap; width: max-content; max-width: calc(100vw - 24px); min-height: 34px; align-items: center; gap: 6px; padding: 3px 6px; border: 1px solid var(--line); border-radius: var(--radius-control); background: var(--surface-overlay); box-shadow: var(--shadow); cursor: default; }
 .resource-controls .el-button { width: 28px; height: 28px; margin: 0; padding: 4px; }
+.resource-size-presets { display: flex; width: 100%; align-items: center; justify-content: center; gap: 6px; }
+.resource-size-presets .el-button { width: auto; padding: 0 10px; font-size: 11px; flex: 0 0 auto; }
 .resource-drag-handle { display: grid; width: 28px; height: 28px; flex: 0 0 28px; place-items: center; border: 0; border-radius: var(--radius-control); background: transparent; color: var(--muted); cursor: grab; }
 .resource-width { display: flex; align-items: center; gap: 7px; color: var(--muted); font-size: 11px; }
 .resource-width input { width: 110px; margin: 0; accent-color: var(--accent); cursor: ew-resize; touch-action: pan-y; }
 .resource-width > span { min-width: 34px; text-align: right; }
 /* 手机上将资源操作固定在编辑工具栏上方，避免窄图片的浮动按钮超出屏幕。 */
 @media (max-width: 768px) {
-  .resource-controls { position: fixed; inset: auto 12px calc(72px + env(safe-area-inset-bottom)); min-height: 54px; justify-content: center; gap: 6px; padding: 4px; }
+  .resource-controls { position: fixed; width: auto; transform: none; inset: auto 12px calc(72px + env(safe-area-inset-bottom)); min-height: 54px; justify-content: center; gap: 6px; padding: 4px; }
   .resource-controls .el-button, .resource-drag-handle { width: 44px; height: 44px; min-height: 44px; flex: 0 0 44px; }
+  .resource-size-presets .el-button { width: auto; flex: 0 0 auto; padding: 0 12px; }
   .resource-width { min-height: 44px; }
   .resource-width input { width: 88px; height: 44px; }
 }

@@ -90,6 +90,11 @@ watch(compatible, valid => { if (!valid) emit('incompatible') }, { immediate: tr
 .project-document-editor :deep(.tvp-img-bubble), .project-document-editor :deep(.tvp-media-bubble), .project-document-editor :deep(.tvp-file-bubble) { display: none; }
 /* 节点宽度包含左右间距，缩小后自然并排，剩余宽度不足时自动换行。 */
 .project-document-editor :deep(.project-resource-node) { display: inline-block; vertical-align: top; }
+/* 角落手柄独立于拖动排序，使用组件库图标与足够的触控面积；实时缩放关闭宽度过渡。 */
+.project-document-editor :deep(.project-resource-node.is-corner-resizing) { transition: none; }
+.project-document-editor :deep(.resource-resize-handle) { position: absolute; right: -8px; bottom: -8px; z-index: 6; display: grid; width: 26px; height: 26px; place-items: center; padding: 2px; border: 1px solid var(--accent); border-radius: 6px; background: var(--surface); color: var(--accent); cursor: nwse-resize; touch-action: none; }
+.project-document-editor :deep(.resource-resize-handle:focus-visible) { outline: 3px solid var(--focus); outline-offset: 2px; }
+@media (pointer: coarse) { .project-document-editor :deep(.resource-resize-handle) { width: 44px; height: 44px; right: -12px; bottom: -12px; } }
 .project-block-drag-handle { z-index: 12; display: grid; width: 28px; height: 32px; place-items: center; border-radius: var(--radius-control); background: var(--surface); color: var(--muted); cursor: grab; }
 @media (max-width: 768px) {
   .project-document-editor :deep(.tvp-content) { padding: 20px 22px 90px; }
