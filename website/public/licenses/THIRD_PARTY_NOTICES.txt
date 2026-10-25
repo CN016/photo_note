@@ -1,0 +1,8 @@
+取景台官网第三方说明
+
+@element-plus/icons-vue 2.3.2
+来源：https://github.com/element-plus/element-plus-icons
+许可：MIT，详见 element-plus-icons-vue-LICENSE.txt。
+
+页面场景均为本工程编写的 CSS 抽象图形，无第三方摄影图片或外部字体。
+Vue、vue-i18n 及构建依赖的许可证随包分发，可在安装后的各依赖目录查阅。

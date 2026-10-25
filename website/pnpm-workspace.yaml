@@ -1,0 +1,3 @@
+# esbuild 的平台二进制安装脚本是 Vite 构建所需，仅允许该依赖执行。
+allowBuilds:
+  esbuild: true

@@ -10,3 +10,9 @@
 /frontend/apps/web/.env
 /frontend/apps/web/.env.*
 !/frontend/apps/web/.env.example
+
+/website/node_modules/
+/website/dist/
+/website/.env
+/website/.env.*
+!/website/.env.example

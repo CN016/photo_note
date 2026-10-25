@@ -1,0 +1,26 @@
+{
+  "name": "@photo-nini/website",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 127.0.0.1",
+    "typecheck": "vue-tsc --noEmit",
+    "check:i18n": "node scripts/check-i18n.mjs",
+    "check:config": "node scripts/check-config.mjs",
+    "build": "pnpm typecheck && pnpm check:i18n && pnpm check:config && vite build",
+    "preview": "vite preview --host 127.0.0.1"
+  },
+  "dependencies": {
+    "@element-plus/icons-vue": "2.3.2",
+    "vue": "^3.5.18",
+    "vue-i18n": "^11.1.11"
+  },
+  "devDependencies": {
+    "@types/node": "24.0.0",
+    "@vitejs/plugin-vue": "^6.0.1",
+    "typescript": "^5.9.2",
+    "vite": "^7.1.3",
+    "vue-tsc": "^3.0.6"
+  }
+}

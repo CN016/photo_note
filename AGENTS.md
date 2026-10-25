@@ -21,6 +21,7 @@ photo_nini/
 │       ├── editor-core/           # 文档模型、编辑命令和历史记录
 │       ├── image-processing/      # 图片处理和导出
 │       └── platform-adapters/     # 平台 API 适配
+├── website/    # 独立官网工程（首页与下载页）
 ├── backend/    # 服务端接口、业务逻辑、数据访问和部署配置
 ├── docs/       # 项目设计、接口说明、决策记录和改动记录
 └── AGENTS.md   # 本项目的协作与开发规范
@@ -32,6 +33,8 @@ photo_nini/
 - `frontend/packages/` 放置可复用的编辑核心、图片处理和平台适配能力。适配器可按平台继续细分；只有在模块有明确边界和复用需要时才继续拆包。
 - `backend/` 内按业务域、接口层和基础设施拆分，沿用现有 Go、Gin、GORM、PostgreSQL 和 Redis 技术栈；新增框架或工具前先确认现有能力无法满足需求。
 - `docs/` 存放需要长期查阅的项目文档。生成的开发记录也统一放在这里。
+
+- `website/` 独立维护官网，不承载业务应用。官网语言包位于 `website/src/i18n/`，遵守中英文同键及命名空间规则；下述 `frontend/apps/web/src/i18n/` 路径仅针对业务 Web 应用。
 
 ## 3. 多平台前端
 
