@@ -1,0 +1,16 @@
+取景台 Android 内置浏览器第三方声明
+
+GeckoView 158.0.20261021001945
+Copyright Mozilla and contributors.
+Mozilla Public License 2.0 (MPL-2.0).
+本项目使用 Mozilla 官方发布的未修改二进制。
+对应源码：https://hg.mozilla.org/releases/mozilla-release/rev/e4ce606692cd81e6898547e2edd7c552fefcbb04
+对应发布包与源码归档：https://maven.mozilla.org/maven2/org/mozilla/geckoview/geckoview/158.0.20261021001945/
+许可证全文：同目录 MPL-2.0.txt。Gecko 内部组件的其他许可随原始 GeckoView 发布资源保留。
+
+AndroidX / Android Gradle Plugin
+Copyright The Android Open Source Project.
+Apache License 2.0. https://www.apache.org/licenses/LICENSE-2.0
+
+Web 应用第三方组件许可随共享 Web 的 licenses 目录和 THIRD_PARTY_NOTICES.txt 提供。
+取景台启动图标为本批 imagegen 原创素材，不使用第三方品牌标识。

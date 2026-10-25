@@ -13,6 +13,8 @@ export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '')
   const apiTarget = env.VITE_DEV_API_PROXY_TARGET || env.VITE_API_BASE_URL || 'http://127.0.0.1:8089'
   return {
+    // 安卓随包内置 Gecko：显式转译到稳定内核能力，Web 端保留原有默认目标。
+    build: process.env.PHOTO_NINI_ANDROID_BUILD === '1' ? { target: 'firefox140', cssTarget: 'firefox140' } : {},
     plugins: [
       vue(),
       AutoImport({ resolvers: [ElementPlusResolver()] }),

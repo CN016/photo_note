@@ -1,0 +1,7 @@
+{
+  "manifest_version": 2,
+  "name": "取景台内核合成测试",
+  "version": "1.0.0",
+  "browser_specific_settings": { "gecko": { "id": "photo-nini-tests@imcn016.love" } },
+  "permissions": ["nativeMessaging", "geckoViewAddons"]
+}

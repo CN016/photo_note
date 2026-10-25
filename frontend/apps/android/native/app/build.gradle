@@ -1,0 +1,72 @@
+apply plugin: 'com.android.application'
+
+// 将 Gecko 与 AndroidX 的完整依赖解析结果随工程提交，防止传递依赖静默漂移。
+dependencyLocking { lockAllConfigurations() }
+
+// Android 应用版本以壳的 package.json 为唯一来源；升级时同步递增整型安装版本。
+def shellPackage = new groovy.json.JsonSlurper().parse(file('../../package.json'))
+android {
+    namespace = "love.imcn016.photo"
+    compileSdk {
+        version = release(rootProject.ext.compileSdkVersion) { minorApiLevel = 2 }
+    }
+    defaultConfig {
+        applicationId "love.imcn016.photo"
+        minSdkVersion rootProject.ext.minSdkVersion
+        targetSdkVersion rootProject.ext.targetSdkVersion
+        versionCode shellPackage.androidVersionCode
+        versionName shellPackage.version
+        testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
+
+    }
+    // 正式签名仅由本机或 CI 的外部环境提供，不复用调试签名，也不提交密钥。
+    signingConfigs {
+        release {
+            if (System.getenv('PHOTO_NINI_KEYSTORE')) {
+                storeFile file(System.getenv('PHOTO_NINI_KEYSTORE'))
+                storePassword System.getenv('PHOTO_NINI_STORE_PASSWORD')
+                keyAlias System.getenv('PHOTO_NINI_KEY_ALIAS')
+                keyPassword System.getenv('PHOTO_NINI_KEY_PASSWORD')
+            }
+        }
+    }
+    buildTypes {
+        release {
+            signingConfig signingConfigs.release
+            minifyEnabled false
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+        }
+    }
+    // 独立架构包都包含完整内核，避免用户下载其他 CPU 架构的原生库。
+    splits {
+        abi {
+            enable true
+            reset()
+            include 'arm64-v8a', 'armeabi-v7a', 'x86_64'
+            universalApk false
+        }
+    }
+    packaging { jniLibs { useLegacyPackaging = true } }
+}
+
+dependencies {
+    implementation fileTree(include: ['*.jar'], dir: 'libs')
+    implementation "androidx.appcompat:appcompat:$androidxAppCompatVersion"
+    implementation "androidx.coordinatorlayout:coordinatorlayout:$androidxCoordinatorLayoutVersion"
+    implementation "androidx.core:core-splashscreen:$coreSplashScreenVersion"
+    implementation 'org.mozilla.geckoview:geckoview:158.0.20261021001945'
+    implementation 'androidx.activity:activity:1.11.0'
+    testImplementation "junit:junit:$junitVersion"
+    androidTestImplementation "androidx.test.ext:junit:$androidxJunitVersion"
+    androidTestImplementation "androidx.test.espresso:espresso-core:$androidxEspressoCoreVersion"
+    androidTestImplementation 'androidx.test.uiautomator:uiautomator:2.3.0'
+    // UIAutomator 的旧 JDK 扩展与 AndroidX 间接标准库保持同代，避免测试 APK 重复类。
+    androidTestImplementation platform('org.jetbrains.kotlin:kotlin-bom:2.4.20')
+
+}
+
+// 与内置 GeckoView 的 Java 17 API 保持兼容，工具链使用 JDK 21。
+android.compileOptions {
+    sourceCompatibility JavaVersion.VERSION_17
+    targetCompatibility JavaVersion.VERSION_17
+}

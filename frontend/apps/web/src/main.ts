@@ -12,6 +12,7 @@ import 'element-plus/theme-chalk/dark/css-vars.css'
 import './style.css'
 import { initializeTheme } from './theme'
 import { installBackendHealthMonitor } from './backendHealth'
+import { initializePlatform } from './platform'
 
 /** SPA 启动时同步根节点语言状态，再挂载共享 Web 应用。 */
 document.documentElement.lang = i18n.global.locale.value
@@ -24,3 +25,4 @@ app.use(router)
 app.provide('setLocale', setLocale)
 installBackendHealthMonitor(router)
 app.mount('#app')
+initializePlatform(router)

@@ -54,5 +54,15 @@
     "invalid_file": "无法读取此文件，请尝试其他图片。",
     "invalid_image": "图片格式或内容暂不支持。",
     "not_found": "没有找到该内容。"
+  },
+  "fileExport": {
+    "title": "导出文件",
+    "save": "保存到文件",
+    "share": "分享文件",
+    "cancel": "取消",
+    "saved": "文件已保存",
+    "busy": "请先完成当前导出",
+    "failed": "文件导出失败，请重试",
+    "tooLarge": "文件超过安卓单次导出上限 32 MB，请降低图片尺寸后重试"
   }
 }

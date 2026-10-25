@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">取景台</string>
+    <string name="title_activity_main">取景台</string>
+    <string name="engine_loading">正在启动内置浏览器…</string>
+    <string name="engine_failed">内置浏览器启动失败，请关闭后重新打开取景台。</string>
+</resources>

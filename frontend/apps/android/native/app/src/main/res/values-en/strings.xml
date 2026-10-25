@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">取景台</string>
+    <string name="title_activity_main">取景台</string>
+    <string name="engine_loading">Starting the built-in browser…</string>
+    <string name="engine_failed">Could not start the built-in browser. Close and reopen 取景台.</string>
+</resources>

@@ -54,5 +54,15 @@
     "invalid_file": "This file could not be read. Try another image.",
     "invalid_image": "This image format or content is not supported.",
     "not_found": "We couldn't find that item."
+  },
+  "fileExport": {
+    "title": "Export file",
+    "save": "Save to files",
+    "share": "Share file",
+    "cancel": "Cancel",
+    "saved": "File saved",
+    "busy": "Finish the current export first",
+    "failed": "Could not export the file. Please try again.",
+    "tooLarge": "The file exceeds the Android export limit of 32 MB. Reduce the image dimensions and try again."
   }
 }

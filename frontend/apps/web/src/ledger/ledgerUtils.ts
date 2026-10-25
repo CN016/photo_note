@@ -235,16 +235,6 @@ export function ledgerFingerprint(fields: LedgerFields): string {
   return [fields.date, fields.time, fields.type, fields.amount, fields.category.trim(), fields.payment_method, fields.flag, fields.note.trim()].join('\u001f')
 }
 
-/** 创建 UTF-8 文件下载并在浏览器完成导航后释放临时对象地址。 */
-export function downloadText(filename: string, content: string, mime: string): void {
-  const url = URL.createObjectURL(new Blob([content], { type: `${mime};charset=utf-8` }))
-  const anchor = document.createElement('a')
-  anchor.href = url
-  anchor.download = filename
-  anchor.click()
-  window.setTimeout(() => URL.revokeObjectURL(url), 0)
-}
-
 /** 转义 CSV 中含逗号、引号或换行的文本，保持 JSON/CSV 可反复导入。 */
 export function csvCell(value: string): string {
   return /[",\r\n]/.test(value) ? `"${value.replace(/"/g, '""')}"` : value

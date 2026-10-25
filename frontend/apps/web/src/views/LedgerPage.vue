@@ -5,10 +5,11 @@ import { useI18n } from 'vue-i18n'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { ArrowDown, ArrowLeft, ArrowRight, BottomRight, Calendar, Close, EditPen, Plus, Search, Switch, TopRight, TrendCharts } from '@element-plus/icons-vue'
 import AppHeader from '../components/AppHeader.vue'
+import { exportFile, FileExportError } from '../platform'
 import { api } from '../api/client'
 import { type LedgerFields, type LedgerImportItem, type LedgerRecord } from '../api/types'
 import {
-  amountToFen, csvCell, downloadText, editableFields, formatFen, fromDateKey, hasPendingDraft,
+  amountToFen, csvCell, editableFields, formatFen, fromDateKey, hasPendingDraft,
   ledgerFingerprint, parseLedgerCSV, parseLedgerJSON, toDateKey, toMonthKey,
 } from '../ledger/ledgerUtils'
 
@@ -509,17 +510,18 @@ async function copyYesterday(): Promise<void> {
   if (created) ElMessage.success(t('record.copyDone', { count: created }))
 }
 
-/** 在新窗口导出 JSON 文件，业务 UUID 支持后续导入更新本人记录。 */
+/** 经系统面板或浏览器导出 JSON，业务 UUID 支持后续导入更新本人记录。 */
 async function exportJSON(): Promise<void> {
   try {
     const all = await loadAllRecords()
     const completed = all.filter(item => item.status === 'complete').map(exportItem)
-    downloadText(`ledger-${toDateKey(new Date())}.json`, JSON.stringify({ formatVersion: 1, currency: 'CNY', records: completed }, null, 2), 'application/json')
+    const result = await exportFile(new Blob([JSON.stringify({ formatVersion: 1, currency: 'CNY', records: completed }, null, 2)], { type: 'application/json' }), `ledger-${toDateKey(new Date())}.json`)
+    if (result === 'cancelled') return
     ElMessage.info(t('export.draftsExcluded'))
-  } catch { ElMessage.error(t('export.failed')) }
+  } catch (error) { if (!(error instanceof FileExportError)) ElMessage.error(t('export.failed')) }
 }
 
-/** 在新窗口导出可重复导入的 UTF-8 CSV 文件。 */
+/** 经系统面板或浏览器导出可重复导入的 UTF-8 CSV 文件。 */
 async function exportCSV(): Promise<void> {
   try {
     const all = await loadAllRecords()
@@ -527,9 +529,10 @@ async function exportCSV(): Promise<void> {
     const header = ['business_id', 'date', 'time', 'type', 'amount', 'category', 'payment_method', 'flag', 'note']
     const rows = completed.map(item => exportItem(item))
     const csv = [header.join(','), ...rows.map(row => header.map(key => csvCell(String(row[key as keyof typeof row] ?? ''))).join(','))].join('\r\n')
-    downloadText(`ledger-${toDateKey(new Date())}.csv`, `\uFEFF${csv}`, 'text/csv')
+    const result = await exportFile(new Blob([`\uFEFF${csv}`], { type: 'text/csv;charset=utf-8' }), `ledger-${toDateKey(new Date())}.csv`)
+    if (result === 'cancelled') return
     ElMessage.info(t('export.draftsExcluded'))
-  } catch { ElMessage.error(t('export.failed')) }
+  } catch (error) { if (!(error instanceof FileExportError)) ElMessage.error(t('export.failed')) }
 }
 
 /** 为已完成记录生成不含内部数据库 ID 或用户标识的导出字段。 */
@@ -673,16 +676,11 @@ function roundRect(context: CanvasRenderingContext2D, x: number, y: number, widt
   context.fill()
 }
 
-/** 触发 PNG 下载后释放临时 Blob 地址。 */
+/** PNG 经平台适配层导出；原生面板取消不作为失败，失败反馈由统一入口处理。 */
 function downloadCanvas(canvas: HTMLCanvasElement, filename: string): void {
   canvas.toBlob(blob => {
     if (!blob) { ElMessage.error(t('export.failed')); return }
-    const url = URL.createObjectURL(blob)
-    const anchor = document.createElement('a')
-    anchor.href = url
-    anchor.download = filename
-    anchor.click()
-    window.setTimeout(() => URL.revokeObjectURL(url), 0)
+    void exportFile(blob, filename).catch(() => {})
   }, 'image/png')
 }
 
