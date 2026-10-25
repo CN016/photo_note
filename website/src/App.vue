@@ -16,7 +16,7 @@ import {
   Collection,
   Link,
 } from "@element-plus/icons-vue";
-import { releaseUrl, siteConfig } from "./config";
+import { releaseUrl, siteConfig, androidDownload } from "./config";
 
 const { t, locale } = useI18n();
 const isDownload = /\/download\/?(?:index\.html)?$/.test(
@@ -25,6 +25,9 @@ const isDownload = /\/download\/?(?:index\.html)?$/.test(
 const menuOpen = ref(false);
 const homeLink = computed(() => (isDownload ? "/" : "#top"));
 const features = [Picture, Document, Calendar, List, Wallet, Bell];
+const releases = siteConfig.releases.filter(release => release.platform !== 'android' || !androidDownload.variants.length);
+/** 安装包大小按当前语言格式化；摘要来自构建时对真实文件的校验。 */
+function packageSize(bytes: number) { return `${new Intl.NumberFormat(locale.value, { maximumFractionDigits: 1 }).format(bytes / 1024 / 1024)} MiB` }
 const scenes = ["mountain", "light", "sea", "city"];
 const year = new Intl.DateTimeFormat("en", { year: "numeric" }).format(
   new Date(),
@@ -289,13 +292,27 @@ if (siteConfig.siteUrl) {
             <div class="scene sea"></div>
           </div>
         </article>
+        <article v-if="androidDownload.variants.length" id="android" class="android-download">
+          <div class="android-heading"><Iphone class="platform-icon" /><div><span class="status">{{ t('download.androidTest') }}</span><h2>{{ t('download.androidHeading') }}</h2></div></div>
+          <p>{{ t('download.androidBody') }}</p>
+          <p class="android-version">{{ t('download.version') }} {{ androidDownload.version }} · {{ t('download.androidMinimum') }}</p>
+          <div class="android-packages">
+            <section v-for="item in androidDownload.variants" :key="item.abi" class="android-package">
+              <h3>{{ item.abi }} <span v-if="item.abi === 'arm64-v8a'" class="status">{{ t('download.recommended') }}</span></h3>
+              <p>{{ t(`download.abi.${item.abi}`) }} · {{ packageSize(item.bytes) }}</p>
+              <a class="button small" :href="item.url" :download="item.filename">{{ t('download.downloadApk') }}<ArrowRight /></a>
+              <details class="checksum"><summary>{{ t('download.checksum') }}</summary><code>{{ item.sha256 }}</code><a class="text-link" :href="item.checksumUrl" download>{{ t('download.checksumFile') }}</a></details>
+            </section>
+          </div>
+          <p class="android-install">{{ t('download.androidInstall') }}</p>
+        </article>
         <div class="platform-heading">
           <h2>{{ t("download.platforms") }}</h2>
           <p>{{ t("download.platformNote") }}</p>
         </div>
         <div class="platform-grid">
           <article
-            v-for="release in siteConfig.releases"
+            v-for="release in releases"
             :key="release.platform"
           >
             <component

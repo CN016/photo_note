@@ -8,8 +8,9 @@ const source = readFileSync(
   "utf8",
 );
 async function config(env) {
+  // 虚拟模块的真实 APK 在构建阶段另行校验；此处注入空元数据，保留真实地址校验逻辑。
   const compiled = ts.transpileModule(
-    source.replaceAll("import.meta.env", JSON.stringify(env)),
+    source.replace("import androidDownload from 'virtual:android-downloads';", "const androidDownload = { version: '', variants: [] };").replaceAll("import.meta.env", JSON.stringify(env)),
     {
       compilerOptions: {
         module: ts.ModuleKind.ESNext,

@@ -1,0 +1,16 @@
+# 合并到现有官网 HTTPS server 块；root 指向 website/dist 的部署位置。
+# 不要将安装包路径回退到首页，否则下载得到的将是 HTML 而非 APK。
+index index.html;
+location ^~ /releases/android/ {
+    types {
+        application/vnd.android.package-archive apk;
+        text/plain sha256;
+        application/json json;
+    }
+    default_type application/octet-stream;
+    add_header X-Content-Type-Options nosniff;
+    try_files $uri =404;
+}
+location / {
+    try_files $uri $uri/ =404;
+}

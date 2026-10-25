@@ -1165,3 +1165,22 @@ nav > a,
 .faq summary {
   min-height: 44px;
 }
+
+/* 安卓包独立呈现架构、大小与校验信息，手机上单列排列，长摘要不撑破页面。 */
+.android-download { margin-top: 28px; padding: 30px; border: 1px solid var(--line); border-radius: 12px; background: white; }
+.android-heading { display: flex; align-items: center; gap: 16px; margin-bottom: 16px; }
+.android-heading h2 { margin: 10px 0 0; font-size: 25px; }
+.android-download > p { color: var(--muted); font-size: 14px; }
+.android-version { margin-top: 10px; }
+.android-packages { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 18px; margin-top: 24px; }
+.android-package { min-width: 0; padding: 22px; background: #f3f7fe; border-radius: 9px; }
+.android-package h3 { font-size: 17px; }
+.android-package .status { font-size: 11px; margin-left: 4px; }
+.android-package p { font-size: 12px; margin: 12px 0 20px; color: var(--muted); }
+.checksum { margin-top: 18px; font-size: 12px; }
+.checksum summary { cursor: pointer; min-height: 44px; display: flex; align-items: center; text-decoration: underline; }
+.checksum code { display: block; overflow-wrap: anywhere; margin: 6px 0 12px; font-size: 11px; }
+.checksum .text-link { display: inline-flex; min-height: 44px; align-items: center; }
+.android-install { margin-top: 24px; }
+.platform-grid { grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); }
+@media (max-width: 800px) { .android-packages { grid-template-columns: 1fr; } .android-download { padding: 23px; } }

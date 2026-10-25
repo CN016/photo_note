@@ -3,12 +3,12 @@
   "description": "查看取景台 Web 入口及 Windows、macOS、Android、iOS 客户端发布状态。",
   "eyebrow": "你的创作日常，随时接续",
   "heading": "选择适合你的打开方式。",
-  "intro": "从浏览器开始。更多设备上的独立客户端，正在等待与你见面。",
+  "intro": "在线使用，或选择适合设备的客户端。",
   "web": "取景台 Web 版",
   "webBody": "无需安装客户端，通过浏览器进入你的灵感与日常工作台。",
   "webTag": "浏览器访问",
   "platforms": "独立客户端",
-  "platformNote": "以下平台尚未发布安装包，实际开放时间以此页面更新为准。",
+  "platformNote": "各平台分别展示当前版本与下载状态。",
   "windows": "Windows",
   "macos": "macOS",
   "android": "Android",
@@ -19,7 +19,21 @@
   "planned": "规划中",
   "miniBody": "小程序的承载方式与能力仍需单独验证，当前暂无访问入口。",
   "notice": "关于版本与下载",
-  "noticeBody": "正式发布后，这里会提供对应平台的版本号、架构和安装包或官方商店入口。当前没有可下载的客户端安装包。",
+  "noticeBody": "下载前请核对版本、CPU 架构与 SHA-256 校验值，并使用本页提供的入口。测试版与正式版状态以各下载项标识为准。",
   "version": "版本",
-  "architecture": "架构"
+  "architecture": "架构",
+  "androidTest": "安卓测试版",
+  "androidHeading": "在安卓上继续你的创作日常。",
+  "androidBody": "安装包内置 GeckoView 浏览器内核，无需另外升级系统 WebView。普通手机优先选择 ARM64。",
+  "androidMinimum": "Android 9 及以上",
+  "recommended": "推荐",
+  "downloadApk": "下载 APK",
+  "checksum": "查看 SHA-256",
+  "checksumFile": "下载校验文件",
+  "androidInstall": "下载后打开 APK，按系统提示允许当前来源安装。安装完成后可关闭该来源的安装授权。当前为调试签名测试版，正式版的升级安排另行说明。",
+  "abi": {
+    "arm64-v8a": "普通安卓手机",
+    "armeabi-v7a": "旧款 32 位安卓手机",
+    "x86_64": "x86_64 模拟器"
+  }
 }

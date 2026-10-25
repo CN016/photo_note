@@ -9,7 +9,8 @@
     "check:i18n": "node scripts/check-i18n.mjs",
     "check:config": "node scripts/check-config.mjs",
     "build": "pnpm typecheck && pnpm check:i18n && pnpm check:config && vite build",
-    "preview": "vite preview --host 127.0.0.1"
+    "preview": "vite preview --host 127.0.0.1",
+    "check:downloads": "node scripts/check-downloads.mjs"
   },
   "dependencies": {
     "@element-plus/icons-vue": "2.3.2",

@@ -3,12 +3,12 @@
   "description": "Find web access and release status for Windows, macOS, Android and iOS.",
   "eyebrow": "Keep your creative day moving",
   "heading": "A way in that works for you.",
-  "intro": "Start in your browser. Standalone apps for more devices are yet to come.",
+  "intro": "Use the web app, or choose a client for your device.",
   "web": "Qujingtai for the web",
   "webBody": "Open your inspiration and everyday workspace in a browser, without installing an app.",
   "webTag": "Browser access",
   "platforms": "Standalone apps",
-  "platformNote": "Apps for these platforms have not been released. This page will be updated when releases are available.",
+  "platformNote": "Version and download availability are listed separately for each platform.",
   "windows": "Windows",
   "macos": "macOS",
   "android": "Android",
@@ -19,7 +19,21 @@
   "planned": "Planned",
   "miniBody": "The container approach and platform capabilities still need separate validation. No access link is available yet.",
   "notice": "Versions & downloads",
-  "noticeBody": "After release, this page will provide versions, architectures and installers or official store links. No standalone installers are currently available.",
+  "noticeBody": "Check the version, CPU architecture and SHA-256 before installing, and use the links provided on this page. Each download identifies whether it is a test or production release.",
   "version": "Version",
-  "architecture": "Architecture"
+  "architecture": "Architecture",
+  "androidTest": "Android test build",
+  "androidHeading": "Keep creating on Android.",
+  "androidBody": "Includes the GeckoView browser engine, so no separate system WebView upgrade is needed. Choose ARM64 for most phones.",
+  "androidMinimum": "Android 9 or later",
+  "recommended": "Recommended",
+  "downloadApk": "Download APK",
+  "checksum": "View SHA-256",
+  "checksumFile": "Download checksum",
+  "androidInstall": "Open the downloaded APK and follow Android’s prompt to allow installation from the current source. You can revoke that permission afterwards. These are debug-signed test builds; upgrade details for a production release will be provided separately.",
+  "abi": {
+    "arm64-v8a": "Most Android phones",
+    "armeabi-v7a": "Older 32-bit Android phones",
+    "x86_64": "x86_64 emulators"
+  }
 }

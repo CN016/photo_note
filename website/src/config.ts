@@ -1,3 +1,6 @@
+import androidDownload from 'virtual:android-downloads';
+/** 同源安装包由构建插件核验并打包，页面统一从配置模块取得发布数据。 */
+export { androidDownload };
 /** 官网公开发布信息；只填写已核验的公共地址，禁止写入凭据。 */
 export interface PlatformRelease {
   platform: "windows" | "macos" | "android" | "ios";
