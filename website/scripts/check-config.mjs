@@ -57,3 +57,20 @@ assert.equal(
   undefined,
 );
 console.log("配置校验通过：空入口、安全地址、已发布入口与不完整发布信息。");
+for (const platform of ["windows", "macos", "android", "ios"]) {
+  const prefix = `VITE_${platform.toUpperCase()}`;
+  const env = {
+    [`${prefix}_STATUS`]: "available",
+    [`${prefix}_VERSION`]: "1.2.3",
+    [`${prefix}_ARCHITECTURE`]: "arm64",
+    [`${prefix}_DOWNLOAD_URL`]: "https://example.com/download",
+  };
+  const loaded = await config(env);
+  const item = loaded.siteConfig.releases.find(item => item.platform === platform);
+  assert.equal(item.version, "1.2.3");
+  assert.equal(item.architecture, "arm64");
+  assert.equal(loaded.releaseUrl(item), env[`${prefix}_DOWNLOAD_URL`]);
+  const pending = await config({ ...env, [`${prefix}_STATUS`]: "comingSoon" });
+  assert.equal(pending.releaseUrl(pending.siteConfig.releases.find(item => item.platform === platform)), undefined);
+}
+console.log("四个平台环境变量映射与发布开关检查通过。");

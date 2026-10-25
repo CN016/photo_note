@@ -20,15 +20,28 @@ export function publicHttpsUrl(value?: string): string | undefined {
   }
 }
 
+/** 各平台发布信息均读取公开构建变量；只有显式 available 才启用发布。 */
+function platformRelease(platform: PlatformRelease["platform"]): PlatformRelease {
+  const prefix = `VITE_${platform.toUpperCase()}`;
+  const env = import.meta.env;
+  return {
+    platform,
+    status: env[`${prefix}_STATUS`] === "available" ? "available" : "comingSoon",
+    version: env[`${prefix}_VERSION`]?.trim(),
+    architecture: env[`${prefix}_ARCHITECTURE`]?.trim(),
+    url: publicHttpsUrl(env[`${prefix}_DOWNLOAD_URL`]),
+  };
+}
+
 export const siteConfig = {
   webUrl: publicHttpsUrl(import.meta.env.VITE_WEB_APP_URL),
   siteUrl: publicHttpsUrl(import.meta.env.VITE_SITE_URL),
   releases: [
-    { platform: "windows", status: "comingSoon" },
-    { platform: "macos", status: "comingSoon" },
-    { platform: "android", status: "comingSoon" },
-    { platform: "ios", status: "comingSoon" },
-  ] satisfies PlatformRelease[] as PlatformRelease[],
+    platformRelease("windows"),
+    platformRelease("macos"),
+    platformRelease("android"),
+    platformRelease("ios"),
+  ],
 };
 
 /** 发布必须同时具备版本、架构和安全地址，避免配置不完整产生假下载。 */
