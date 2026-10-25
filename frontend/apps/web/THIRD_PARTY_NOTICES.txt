@@ -7,3 +7,9 @@
 
 拍摄统计图表使用 Apache ECharts 6.1.0（Apache-2.0）：https://echarts.apache.org/ 。
 Copyright 2017-2026 The Apache Software Foundation。
+
+
+拍摄策划文档编辑器：
+- tiptap-vue-pro-element-plus 0.2.6、tiptap-vue-pro-core 0.2.6：MIT。来源：https://github.com/twoer/tiptap-vue-pro 。保留上游组件的工具栏与基础排版，业务资源通过自有适配层接入；许可副本位于 public/licenses/tiptap-vue-pro-LICENSE.txt。
+- @tiptap/extension-drag-handle-vue-3 3.32.0 及其 Tiptap 拖动依赖：MIT。来源：https://github.com/ueberdosis/tiptap 。
+- 上游编辑器组件使用 lucide-vue-next 图标，来源：https://lucide.dev/license （ISC）；本项目自行添加的操作图标继续使用 @element-plus/icons-vue。

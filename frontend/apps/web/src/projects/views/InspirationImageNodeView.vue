@@ -1,13 +1,15 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { NodeViewWrapper, type NodeViewProps } from '@tiptap/vue-3'
-import { Delete, Edit, Rank } from '@element-plus/icons-vue'
+import { ArrowLeft, ArrowRight, Delete, Edit, Rank } from '@element-plus/icons-vue'
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
+import { useResourceMovement } from '../resourceMovement'
 import { api } from '../../api/client'
 import type { InspirationRecord } from '../../api/types'
 
 const props = defineProps<NodeViewProps>()
+const { canMoveBefore, canMoveAfter, move } = useResourceMovement(props)
 const router = useRouter()
 const { t, locale } = useI18n({ useScope: 'global' })
 const url = ref('')
@@ -96,11 +98,6 @@ function commitWidth() {
 }
 
 function remove() { props.deleteNode() }
-/** 先显式选择灵感图节点，再从卡片拖动，便于跨媒体插入并显示节点选中反馈。 */
-function selectForMove() {
-  const position = props.getPos()
-  if (typeof position === 'number') props.editor.commands.setNodeSelection(position)
-}
 
 watch(width, value => {
   lastCommittedWidth = value
@@ -124,6 +121,7 @@ onBeforeUnmount(() => { requestVersion += 1; if (url.value) URL.revokeObjectURL(
     class="project-resource-node inspiration-node"
     :class="{ 'is-selected': selected }"
     :style="{ width: `calc(${width}% - 12px)` }"
+    draggable="true"
     @dblclick.prevent.stop="openDetails"
   >
     <figure
@@ -139,8 +137,10 @@ onBeforeUnmount(() => { requestVersion += 1; if (url.value) URL.revokeObjectURL(
     </figure>
     <div v-if="selected" class="resource-controls" contenteditable="false" draggable="false" role="toolbar" :aria-label="t('projects.resourceActions')" @dblclick.stop>
       <el-tooltip :content="t('projects.moveBlock')" placement="top">
-        <button class="resource-drag-handle" type="button" :aria-label="t('projects.moveBlock')" @click.stop="selectForMove"><el-icon><Rank /></el-icon></button>
+        <span class="resource-drag-handle" data-drag-handle draggable="true" :aria-label="t('projects.moveBlock')"><el-icon><Rank /></el-icon></span>
       </el-tooltip>
+      <el-tooltip :content="t('projects.moveBefore')"><el-button text :disabled="!canMoveBefore" :aria-label="t('projects.moveBefore')" @pointerdown.prevent @click.stop="move(-1)"><el-icon><ArrowLeft /></el-icon></el-button></el-tooltip>
+      <el-tooltip :content="t('projects.moveAfter')"><el-button text :disabled="!canMoveAfter" :aria-label="t('projects.moveAfter')" @pointerdown.prevent @click.stop="move(1)"><el-icon><ArrowRight /></el-icon></el-button></el-tooltip>
       <el-tooltip :content="t('projects.width')" placement="top">
       <label class="resource-width">
         <input

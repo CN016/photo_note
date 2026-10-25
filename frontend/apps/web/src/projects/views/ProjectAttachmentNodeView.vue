@@ -1,13 +1,15 @@
 <script setup lang="ts">
 import { computed, defineAsyncComponent, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { NodeViewWrapper, type NodeViewProps } from '@tiptap/vue-3'
-import { Delete, Rank } from '@element-plus/icons-vue'
+import { ArrowLeft, ArrowRight, Delete, Rank } from '@element-plus/icons-vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute } from 'vue-router'
+import { useResourceMovement } from '../resourceMovement'
 import { api } from '../../api/client'
 
 const ProjectAttachmentPreview = defineAsyncComponent(() => import('../../components/ProjectAttachmentPreview.vue'))
 const props = defineProps<NodeViewProps>()
+const { canMoveBefore, canMoveAfter, move } = useResourceMovement(props)
 const route = useRoute()
 const { t } = useI18n({ useScope: 'global' })
 const url = ref('')
@@ -60,11 +62,7 @@ function commitWidth() {
 
 function remove() { props.deleteNode() }
 function openPreview() { previewOpen.value = true }
-/** 先显式选择附件节点，再从卡片拖动，便于跨媒体插入并显示节点选中反馈。 */
-function selectForMove() {
-  const position = props.getPos()
-  if (typeof position === 'number') props.editor.commands.setNodeSelection(position)
-}
+
 
 /** Video.js 和样式只在项目正文实际包含视频时加载，避免普通编辑页付出播放器开销。 */
 async function mountVideoPlayer(source: string) {
@@ -99,6 +97,7 @@ onBeforeUnmount(() => { requestVersion += 1; disposePlayer(); if (url.value) URL
     class="project-resource-node attachment-node"
     :class="{ 'is-selected': selected }"
     :style="{ width: `calc(${width}% - 12px)` }"
+    draggable="true"
     @dblclick.prevent.stop="openPreview"
   >
     <div
@@ -118,8 +117,10 @@ onBeforeUnmount(() => { requestVersion += 1; disposePlayer(); if (url.value) URL
     </div>
     <div v-if="selected" class="resource-controls" contenteditable="false" draggable="false" role="toolbar" :aria-label="t('projects.resourceActions')" @dblclick.stop>
       <el-tooltip :content="t('projects.moveBlock')" placement="top">
-        <button class="resource-drag-handle" type="button" :aria-label="t('projects.moveBlock')" @click.stop="selectForMove"><el-icon><Rank /></el-icon></button>
+        <span class="resource-drag-handle" data-drag-handle draggable="true" :aria-label="t('projects.moveBlock')"><el-icon><Rank /></el-icon></span>
       </el-tooltip>
+      <el-tooltip :content="t('projects.moveBefore')"><el-button text :disabled="!canMoveBefore" :aria-label="t('projects.moveBefore')" @pointerdown.prevent @click.stop="move(-1)"><el-icon><ArrowLeft /></el-icon></el-button></el-tooltip>
+      <el-tooltip :content="t('projects.moveAfter')"><el-button text :disabled="!canMoveAfter" :aria-label="t('projects.moveAfter')" @pointerdown.prevent @click.stop="move(1)"><el-icon><ArrowRight /></el-icon></el-button></el-tooltip>
       <el-tooltip :content="t('projects.width')" placement="top">
       <label class="resource-width">
         <input
@@ -149,7 +150,6 @@ onBeforeUnmount(() => { requestVersion += 1; disposePlayer(); if (url.value) URL
 <style scoped>
 /* 界面表面与控件使用全局主题令牌；图片、文档和用户自选封面颜色保持原数据。 */
 .project-resource-node { position: relative; box-sizing: border-box; display: inline-block; max-width: calc(100% - 12px); margin: 6px; vertical-align: top; outline: none; transition: width 150ms ease; }
-.project-editor-paper :deep(.ProseMirror) { min-height: 55vh; outline: none; color: var(--ink); font-size: 16px; line-height: 1.8; overflow-wrap: anywhere; }
 .project-resource-node.is-selected .attachment-frame { outline: 2px solid var(--accent); outline-offset: 2px; }
 .attachment-frame { display: grid; min-height: 64px; overflow: hidden; place-items: center; border: 1px solid var(--line); border-radius: var(--radius-control); background: var(--surface-muted); cursor: inherit; }
 .attachment-inline-image { display: block; width: 100%; height: auto; max-height: 70vh; object-fit: contain; }
