@@ -96,6 +96,11 @@ function commitWidth() {
 }
 
 function remove() { props.deleteNode() }
+/** 先显式选择灵感图节点，再从卡片拖动，便于跨媒体插入并显示节点选中反馈。 */
+function selectForMove() {
+  const position = props.getPos()
+  if (typeof position === 'number') props.editor.commands.setNodeSelection(position)
+}
 
 watch(width, value => {
   lastCommittedWidth = value
@@ -119,8 +124,6 @@ onBeforeUnmount(() => { requestVersion += 1; if (url.value) URL.revokeObjectURL(
     class="project-resource-node inspiration-node"
     :class="{ 'is-selected': selected }"
     :style="{ width: `calc(${width}% - 12px)` }"
-    draggable="true"
-    :title="t('projects.dragHint')"
     @dblclick.prevent.stop="openDetails"
   >
     <figure
@@ -135,8 +138,11 @@ onBeforeUnmount(() => { requestVersion += 1; if (url.value) URL.revokeObjectURL(
       <span v-else class="resource-placeholder">{{ loading ? t('common.loading') : failed ? t('projects.inspirationLoadFailed') : t('projects.toolbar.insertInspiration') }}</span>
     </figure>
     <div v-if="selected" class="resource-controls" contenteditable="false" draggable="false" role="toolbar" :aria-label="t('projects.resourceActions')" @dblclick.stop>
-      <span class="resource-drag-handle" draggable="true" :title="t('projects.dragHint')" aria-hidden="true"><el-icon><Rank /></el-icon></span>
-      <label class="resource-width" :title="t('projects.width')">
+      <el-tooltip :content="t('projects.moveBlock')" placement="top">
+        <button class="resource-drag-handle" type="button" :aria-label="t('projects.moveBlock')" @click.stop="selectForMove"><el-icon><Rank /></el-icon></button>
+      </el-tooltip>
+      <el-tooltip :content="t('projects.width')" placement="top">
+      <label class="resource-width">
         <input
           type="range"
           min="30"
@@ -154,7 +160,8 @@ onBeforeUnmount(() => { requestVersion += 1; if (url.value) URL.revokeObjectURL(
         />
         <span>{{ draftWidth }}%</span>
       </label>
-      <el-button size="small" circle text type="danger" :title="t('projects.removeBlock')" :aria-label="t('projects.removeBlock')" @pointerdown.prevent @click.stop="remove"><el-icon><Delete /></el-icon></el-button>
+      </el-tooltip>
+      <el-tooltip :content="t('projects.removeBlock')" placement="top"><el-button size="small" circle text type="danger" :aria-label="t('projects.removeBlock')" @pointerdown.prevent @click.stop="remove"><el-icon><Delete /></el-icon></el-button></el-tooltip>
     </div>
 
     <el-dialog v-model="detailsOpen" :title="t('editor.detailTitle')" width="min(800px, 92vw)" append-to-body destroy-on-close>
@@ -187,7 +194,7 @@ onBeforeUnmount(() => { requestVersion += 1; if (url.value) URL.revokeObjectURL(
 .resource-placeholder { align-self: center; padding: 18px; color: var(--muted); font-size: 12px; text-align: center; }
 .resource-controls { position: absolute; top: -40px; right: 0; z-index: 5; display: flex; min-height: 34px; align-items: center; gap: 6px; padding: 3px 6px; border: 1px solid var(--line); border-radius: var(--radius-control); background: var(--surface-overlay); box-shadow: var(--shadow); cursor: default; }
 .resource-controls .el-button { width: 28px; height: 28px; margin: 0; padding: 4px; }
-.resource-drag-handle { display: grid; width: 28px; height: 28px; flex: 0 0 28px; place-items: center; color: var(--muted); cursor: grab; }
+.resource-drag-handle { display: grid; width: 28px; height: 28px; flex: 0 0 28px; place-items: center; border: 0; border-radius: var(--radius-control); background: transparent; color: var(--muted); cursor: grab; }
 .resource-width { display: flex; align-items: center; gap: 7px; color: var(--muted); font-size: 11px; }
 .resource-width input { width: 110px; margin: 0; accent-color: var(--accent); cursor: ew-resize; touch-action: pan-y; }
 .resource-width > span { min-width: 34px; text-align: right; }

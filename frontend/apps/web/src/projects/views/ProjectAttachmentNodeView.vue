@@ -60,6 +60,11 @@ function commitWidth() {
 
 function remove() { props.deleteNode() }
 function openPreview() { previewOpen.value = true }
+/** 先显式选择附件节点，再从卡片拖动，便于跨媒体插入并显示节点选中反馈。 */
+function selectForMove() {
+  const position = props.getPos()
+  if (typeof position === 'number') props.editor.commands.setNodeSelection(position)
+}
 
 /** Video.js 和样式只在项目正文实际包含视频时加载，避免普通编辑页付出播放器开销。 */
 async function mountVideoPlayer(source: string) {
@@ -94,8 +99,6 @@ onBeforeUnmount(() => { requestVersion += 1; disposePlayer(); if (url.value) URL
     class="project-resource-node attachment-node"
     :class="{ 'is-selected': selected }"
     :style="{ width: `calc(${width}% - 12px)` }"
-    draggable="true"
-    :title="t('projects.dragHint')"
     @dblclick.prevent.stop="openPreview"
   >
     <div
@@ -114,8 +117,11 @@ onBeforeUnmount(() => { requestVersion += 1; disposePlayer(); if (url.value) URL
       </div>
     </div>
     <div v-if="selected" class="resource-controls" contenteditable="false" draggable="false" role="toolbar" :aria-label="t('projects.resourceActions')" @dblclick.stop>
-      <span class="resource-drag-handle" draggable="true" :title="t('projects.dragHint')" aria-hidden="true"><el-icon><Rank /></el-icon></span>
-      <label class="resource-width" :title="t('projects.width')">
+      <el-tooltip :content="t('projects.moveBlock')" placement="top">
+        <button class="resource-drag-handle" type="button" :aria-label="t('projects.moveBlock')" @click.stop="selectForMove"><el-icon><Rank /></el-icon></button>
+      </el-tooltip>
+      <el-tooltip :content="t('projects.width')" placement="top">
+      <label class="resource-width">
         <input
           type="range"
           min="30"
@@ -133,7 +139,8 @@ onBeforeUnmount(() => { requestVersion += 1; disposePlayer(); if (url.value) URL
         />
         <span>{{ draftWidth }}%</span>
       </label>
-      <el-button size="small" circle text type="danger" :title="t('projects.removeBlock')" :aria-label="t('projects.removeBlock')" @pointerdown.prevent @click.stop="remove"><el-icon><Delete /></el-icon></el-button>
+      </el-tooltip>
+      <el-tooltip :content="t('projects.removeBlock')" placement="top"><el-button size="small" circle text type="danger" :aria-label="t('projects.removeBlock')" @pointerdown.prevent @click.stop="remove"><el-icon><Delete /></el-icon></el-button></el-tooltip>
     </div>
     <ProjectAttachmentPreview v-if="previewOpen" v-model="previewOpen" :project-id="projectID" :storekey="storekey" :file-name="fileName" :content-type="mediaType" />
   </NodeViewWrapper>
@@ -141,8 +148,8 @@ onBeforeUnmount(() => { requestVersion += 1; disposePlayer(); if (url.value) URL
 
 <style scoped>
 /* 界面表面与控件使用全局主题令牌；图片、文档和用户自选封面颜色保持原数据。 */
-.project-resource-node { position: relative; box-sizing: border-box; display: inline-block; max-width: calc(100% - 12px); margin: 6px; vertical-align: top; outline: none; cursor: grab; transition: width 150ms ease; }
-.project-resource-node:active { cursor: grabbing; }
+.project-resource-node { position: relative; box-sizing: border-box; display: inline-block; max-width: calc(100% - 12px); margin: 6px; vertical-align: top; outline: none; transition: width 150ms ease; }
+.project-editor-paper :deep(.ProseMirror) { min-height: 55vh; outline: none; color: var(--ink); font-size: 16px; line-height: 1.8; overflow-wrap: anywhere; }
 .project-resource-node.is-selected .attachment-frame { outline: 2px solid var(--accent); outline-offset: 2px; }
 .attachment-frame { display: grid; min-height: 64px; overflow: hidden; place-items: center; border: 1px solid var(--line); border-radius: var(--radius-control); background: var(--surface-muted); cursor: inherit; }
 .attachment-inline-image { display: block; width: 100%; height: auto; max-height: 70vh; object-fit: contain; }
@@ -154,7 +161,7 @@ onBeforeUnmount(() => { requestVersion += 1; disposePlayer(); if (url.value) URL
 .attachment-file small { color: var(--muted); font-size: 10px; }
 .resource-controls { position: absolute; top: -40px; right: 0; z-index: 5; display: flex; min-height: 34px; align-items: center; gap: 6px; padding: 3px 6px; border: 1px solid var(--line); border-radius: var(--radius-control); background: var(--surface-overlay); box-shadow: var(--shadow); cursor: default; }
 .resource-controls .el-button { width: 28px; height: 28px; margin: 0; padding: 4px; }
-.resource-drag-handle { display: grid; width: 28px; height: 28px; flex: 0 0 28px; place-items: center; color: var(--muted); cursor: grab; }
+.resource-drag-handle { display: grid; width: 28px; height: 28px; flex: 0 0 28px; place-items: center; border: 0; border-radius: var(--radius-control); background: transparent; color: var(--muted); cursor: grab; }
 .resource-width { display: flex; align-items: center; gap: 7px; color: var(--muted); font-size: 11px; }
 .resource-width input { width: 110px; margin: 0; accent-color: var(--accent); cursor: ew-resize; touch-action: pan-y; }
 .resource-width > span { min-width: 34px; text-align: right; }

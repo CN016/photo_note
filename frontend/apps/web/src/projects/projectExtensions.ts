@@ -23,7 +23,7 @@ export const FontSize = Extension.create({
 /** 文档只保存 inspiration://业务 UUID；客户端通过 API 异步读取图片，不嵌入文件地址。 */
 export const InspirationImage = Node.create({
   name: 'inspirationImage',
-  group: 'block',
+  group: 'block mediaBlock',
   atom: true,
   draggable: true,
   selectable: true,
@@ -38,7 +38,7 @@ export const InspirationImage = Node.create({
 /** 非灵感图资源作为受控附件节点保存 storekey，下载和预览仍需项目接口授权。 */
 export const ProjectAttachment = Node.create({
   name: 'projectAttachment',
-  group: 'block',
+  group: 'block mediaBlock',
   atom: true,
   draggable: true,
   selectable: true,

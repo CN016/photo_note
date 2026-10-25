@@ -64,6 +64,7 @@
   "closePreview": "Close preview",
   "unsupportedPreview": "This file can't be previewed here.",
   "dragHint": "Drag to move. Click to resize. Double-click for details.",
+  "moveBlock": "Drag this media to move it",
   "resourceActions": "Resource actions",
   "openAttachmentDetails": "Double-click to view attachment details: {name}",
   "inspirationLoadFailed": "Couldn't load image details from your inspiration library. Try again later.",

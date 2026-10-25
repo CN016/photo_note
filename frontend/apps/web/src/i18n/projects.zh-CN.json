@@ -64,6 +64,7 @@
   "closePreview": "关闭预览",
   "unsupportedPreview": "当前无法预览此文件。",
   "dragHint": "拖动资源块可移动位置；单击后可调整宽度；双击查看详情",
+  "moveBlock": "按住拖动以移动此媒体",
   "resourceActions": "资源操作",
   "openAttachmentDetails": "双击查看附件详情：{name}",
   "inspirationLoadFailed": "无法加载灵感库图片详情，请稍后重试。",

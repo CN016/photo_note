@@ -240,38 +240,38 @@ onBeforeRouteLeave(async () => {
 
       <div class="project-toolbar" role="toolbar" :aria-label="t('projects.title')">
         <el-button-group>
-          <el-button size="small" :title="t('projects.toolbar.undo')" :aria-label="t('projects.toolbar.undo')" :disabled="!editor?.can().undo()" @click="editor?.chain().focus().undo().run()"><el-icon><RefreshLeft /></el-icon></el-button>
-          <el-button size="small" :title="t('projects.toolbar.redo')" :aria-label="t('projects.toolbar.redo')" :disabled="!editor?.can().redo()" @click="editor?.chain().focus().redo().run()"><el-icon><RefreshRight /></el-icon></el-button>
+          <el-tooltip :content="t('projects.toolbar.undo')" placement="bottom"><el-button size="small" :aria-label="t('projects.toolbar.undo')" :disabled="!editor?.can().undo()" @click="editor?.chain().focus().undo().run()"><el-icon><RefreshLeft /></el-icon></el-button></el-tooltip>
+          <el-tooltip :content="t('projects.toolbar.redo')" placement="bottom"><el-button size="small" :aria-label="t('projects.toolbar.redo')" :disabled="!editor?.can().redo()" @click="editor?.chain().focus().redo().run()"><el-icon><RefreshRight /></el-icon></el-button></el-tooltip>
         </el-button-group>
         <el-select v-model="fontSize" class="toolbar-font-size" size="small" :aria-label="t('projects.toolbar.fontSize')" @change="setTextSize">
           <el-option v-for="size in ['12px','14px','16px','18px','20px','24px','30px','36px','48px']" :key="size" :label="size" :value="size" />
         </el-select>
         <el-button-group>
-          <el-button size="small" :class="{ 'is-active': editor?.isActive('bold') }" :title="t('projects.toolbar.bold')" :aria-label="t('projects.toolbar.bold')" @click="editor?.chain().focus().toggleBold().run()"><strong>B</strong></el-button>
-          <el-button size="small" :class="{ 'is-active': editor?.isActive('italic') }" :title="t('projects.toolbar.italic')" :aria-label="t('projects.toolbar.italic')" @click="editor?.chain().focus().toggleItalic().run()"><i>I</i></el-button>
-          <el-button size="small" :class="{ 'is-active': editor?.isActive('underline') }" :title="t('projects.toolbar.underline')" :aria-label="t('projects.toolbar.underline')" @click="editor?.chain().focus().toggleUnderline().run()"><u>U</u></el-button>
-          <el-button size="small" :class="{ 'is-active': editor?.isActive('strike') }" :title="t('projects.toolbar.strike')" :aria-label="t('projects.toolbar.strike')" @click="editor?.chain().focus().toggleStrike().run()"><s>S</s></el-button>
+          <el-tooltip :content="t('projects.toolbar.bold')" placement="bottom"><el-button size="small" :class="{ 'is-active': editor?.isActive('bold') }" :aria-label="t('projects.toolbar.bold')" @click="editor?.chain().focus().toggleBold().run()"><strong>B</strong></el-button></el-tooltip>
+          <el-tooltip :content="t('projects.toolbar.italic')" placement="bottom"><el-button size="small" :class="{ 'is-active': editor?.isActive('italic') }" :aria-label="t('projects.toolbar.italic')" @click="editor?.chain().focus().toggleItalic().run()"><i>I</i></el-button></el-tooltip>
+          <el-tooltip :content="t('projects.toolbar.underline')" placement="bottom"><el-button size="small" :class="{ 'is-active': editor?.isActive('underline') }" :aria-label="t('projects.toolbar.underline')" @click="editor?.chain().focus().toggleUnderline().run()"><u>U</u></el-button></el-tooltip>
+          <el-tooltip :content="t('projects.toolbar.strike')" placement="bottom"><el-button size="small" :class="{ 'is-active': editor?.isActive('strike') }" :aria-label="t('projects.toolbar.strike')" @click="editor?.chain().focus().toggleStrike().run()"><s>S</s></el-button></el-tooltip>
         </el-button-group>
-        <label class="toolbar-color" :title="t('projects.toolbar.textColor')"><el-icon aria-hidden="true"><Brush /></el-icon><input type="color" :value="textColor" :aria-label="t('projects.toolbar.textColor')" @input="setTextColor" /></label>
-        <label class="toolbar-color toolbar-background-color" :title="t('projects.toolbar.backgroundColor')"><el-icon aria-hidden="true"><BrushFilled /></el-icon><input type="color" :value="backgroundColor" :aria-label="t('projects.toolbar.backgroundColor')" @input="setBackgroundColor" /></label>
-        <el-button size="small" :class="{ 'is-active': editor?.isActive('highlight') }" :title="t('projects.toolbar.highlight')" :aria-label="t('projects.toolbar.highlight')" @click="editor?.chain().focus().toggleHighlight({ color: '#fde68a' }).run()"><el-icon><BrushFilled /></el-icon></el-button>
-        <el-button size="small" :class="{ 'is-active': editor?.isActive('link') }" :title="t('projects.toolbar.link')" :aria-label="t('projects.toolbar.link')" @click="addLink"><el-icon><Link /></el-icon></el-button>
-        <el-button size="small" :class="{ 'is-active': editor?.isActive('paragraph') }" :title="t('projects.toolbar.paragraph')" :aria-label="t('projects.toolbar.paragraph')" @click="toggleBlock('paragraph')"><el-icon><Document /></el-icon></el-button>
-        <el-button size="small" :class="{ 'is-active': editor?.isActive('heading') }" :title="t('projects.toolbar.heading')" :aria-label="t('projects.toolbar.heading')" @click="toggleBlock('heading')"><el-icon><Memo /></el-icon></el-button>
-        <el-button size="small" :class="{ 'is-active': editor?.isActive('bulletList') }" :title="t('projects.toolbar.bulletList')" :aria-label="t('projects.toolbar.bulletList')" @click="toggleBlock('bulletList')"><el-icon><List /></el-icon></el-button>
-        <el-button size="small" :class="{ 'is-active': editor?.isActive('orderedList') }" :title="t('projects.toolbar.orderedList')" :aria-label="t('projects.toolbar.orderedList')" @click="toggleBlock('orderedList')"><el-icon><Sort /></el-icon></el-button>
-        <el-button size="small" :class="{ 'is-active': editor?.isActive('taskList') }" :title="t('projects.toolbar.taskList')" :aria-label="t('projects.toolbar.taskList')" @click="toggleBlock('taskList')"><el-icon><Finished /></el-icon></el-button>
-        <el-button size="small" :class="{ 'is-active': editor?.isActive('blockquote') }" :title="t('projects.toolbar.blockquote')" :aria-label="t('projects.toolbar.blockquote')" @click="toggleBlock('blockquote')"><el-icon><ChatLineSquare /></el-icon></el-button>
-        <el-button size="small" :class="{ 'is-active': editor?.isActive('codeBlock') }" :title="t('projects.toolbar.codeBlock')" :aria-label="t('projects.toolbar.codeBlock')" @click="toggleBlock('codeBlock')"><el-icon><Monitor /></el-icon></el-button>
-        <el-button size="small" :title="t('projects.toolbar.divider')" :aria-label="t('projects.toolbar.divider')" @click="editor?.chain().focus().setHorizontalRule().run()"><el-icon><Minus /></el-icon></el-button>
-        <el-button size="small" :title="t('projects.toolbar.table')" :aria-label="t('projects.toolbar.table')" @click="editor?.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run()"><el-icon><Grid /></el-icon></el-button>
+        <el-tooltip :content="t('projects.toolbar.textColor')" placement="bottom"><label class="toolbar-color"><el-icon aria-hidden="true"><Brush /></el-icon><input type="color" :value="textColor" :aria-label="t('projects.toolbar.textColor')" @input="setTextColor" /></label></el-tooltip>
+        <el-tooltip :content="t('projects.toolbar.backgroundColor')" placement="bottom"><label class="toolbar-color toolbar-background-color"><el-icon aria-hidden="true"><BrushFilled /></el-icon><input type="color" :value="backgroundColor" :aria-label="t('projects.toolbar.backgroundColor')" @input="setBackgroundColor" /></label></el-tooltip>
+        <el-tooltip :content="t('projects.toolbar.highlight')" placement="bottom"><el-button size="small" :class="{ 'is-active': editor?.isActive('highlight') }" :aria-label="t('projects.toolbar.highlight')" @click="editor?.chain().focus().toggleHighlight({ color: '#fde68a' }).run()"><el-icon><BrushFilled /></el-icon></el-button></el-tooltip>
+        <el-tooltip :content="t('projects.toolbar.link')" placement="bottom"><el-button size="small" :class="{ 'is-active': editor?.isActive('link') }" :aria-label="t('projects.toolbar.link')" @click="addLink"><el-icon><Link /></el-icon></el-button></el-tooltip>
+        <el-tooltip :content="t('projects.toolbar.paragraph')" placement="bottom"><el-button size="small" :class="{ 'is-active': editor?.isActive('paragraph') }" :aria-label="t('projects.toolbar.paragraph')" @click="toggleBlock('paragraph')"><el-icon><Document /></el-icon></el-button></el-tooltip>
+        <el-tooltip :content="t('projects.toolbar.heading')" placement="bottom"><el-button size="small" :class="{ 'is-active': editor?.isActive('heading') }" :aria-label="t('projects.toolbar.heading')" @click="toggleBlock('heading')"><el-icon><Memo /></el-icon></el-button></el-tooltip>
+        <el-tooltip :content="t('projects.toolbar.bulletList')" placement="bottom"><el-button size="small" :class="{ 'is-active': editor?.isActive('bulletList') }" :aria-label="t('projects.toolbar.bulletList')" @click="toggleBlock('bulletList')"><el-icon><List /></el-icon></el-button></el-tooltip>
+        <el-tooltip :content="t('projects.toolbar.orderedList')" placement="bottom"><el-button size="small" :class="{ 'is-active': editor?.isActive('orderedList') }" :aria-label="t('projects.toolbar.orderedList')" @click="toggleBlock('orderedList')"><el-icon><Sort /></el-icon></el-button></el-tooltip>
+        <el-tooltip :content="t('projects.toolbar.taskList')" placement="bottom"><el-button size="small" :class="{ 'is-active': editor?.isActive('taskList') }" :aria-label="t('projects.toolbar.taskList')" @click="toggleBlock('taskList')"><el-icon><Finished /></el-icon></el-button></el-tooltip>
+        <el-tooltip :content="t('projects.toolbar.blockquote')" placement="bottom"><el-button size="small" :class="{ 'is-active': editor?.isActive('blockquote') }" :aria-label="t('projects.toolbar.blockquote')" @click="toggleBlock('blockquote')"><el-icon><ChatLineSquare /></el-icon></el-button></el-tooltip>
+        <el-tooltip :content="t('projects.toolbar.codeBlock')" placement="bottom"><el-button size="small" :class="{ 'is-active': editor?.isActive('codeBlock') }" :aria-label="t('projects.toolbar.codeBlock')" @click="toggleBlock('codeBlock')"><el-icon><Monitor /></el-icon></el-button></el-tooltip>
+        <el-tooltip :content="t('projects.toolbar.divider')" placement="bottom"><el-button size="small" :aria-label="t('projects.toolbar.divider')" @click="editor?.chain().focus().setHorizontalRule().run()"><el-icon><Minus /></el-icon></el-button></el-tooltip>
+        <el-tooltip :content="t('projects.toolbar.table')" placement="bottom"><el-button size="small" :aria-label="t('projects.toolbar.table')" @click="editor?.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run()"><el-icon><Grid /></el-icon></el-button></el-tooltip>
         <el-button-group>
-          <el-button size="small" :class="{ 'is-active': editor?.isActive({ textAlign: 'left' }) }" :title="t('projects.toolbar.alignLeft')" :aria-label="t('projects.toolbar.alignLeft')" @click="editor?.chain().focus().setTextAlign('left').run()"><el-icon><Menu /></el-icon></el-button>
-          <el-button size="small" :class="{ 'is-active': editor?.isActive({ textAlign: 'center' }) }" :title="t('projects.toolbar.alignCenter')" :aria-label="t('projects.toolbar.alignCenter')" @click="editor?.chain().focus().setTextAlign('center').run()"><el-icon><Operation /></el-icon></el-button>
-          <el-button size="small" :class="{ 'is-active': editor?.isActive({ textAlign: 'right' }) }" :title="t('projects.toolbar.alignRight')" :aria-label="t('projects.toolbar.alignRight')" @click="editor?.chain().focus().setTextAlign('right').run()"><el-icon><Right /></el-icon></el-button>
+          <el-tooltip :content="t('projects.toolbar.alignLeft')" placement="bottom"><el-button size="small" :class="{ 'is-active': editor?.isActive({ textAlign: 'left' }) }" :aria-label="t('projects.toolbar.alignLeft')" @click="editor?.chain().focus().setTextAlign('left').run()"><el-icon><Menu /></el-icon></el-button></el-tooltip>
+          <el-tooltip :content="t('projects.toolbar.alignCenter')" placement="bottom"><el-button size="small" :class="{ 'is-active': editor?.isActive({ textAlign: 'center' }) }" :aria-label="t('projects.toolbar.alignCenter')" @click="editor?.chain().focus().setTextAlign('center').run()"><el-icon><Operation /></el-icon></el-button></el-tooltip>
+          <el-tooltip :content="t('projects.toolbar.alignRight')" placement="bottom"><el-button size="small" :class="{ 'is-active': editor?.isActive({ textAlign: 'right' }) }" :aria-label="t('projects.toolbar.alignRight')" @click="editor?.chain().focus().setTextAlign('right').run()"><el-icon><Right /></el-icon></el-button></el-tooltip>
         </el-button-group>
-        <el-button size="small" :title="t('projects.toolbar.insertInspiration')" :aria-label="t('projects.toolbar.insertInspiration')" @click="pickerOpen = true"><el-icon><Picture /></el-icon></el-button>
-        <el-button size="small" :title="t('projects.toolbar.uploadAttachment')" :aria-label="t('projects.toolbar.uploadAttachment')" @click="attachmentInput?.click()"><el-icon><Paperclip /></el-icon></el-button>
+        <el-tooltip :content="t('projects.toolbar.insertInspiration')" placement="bottom"><el-button size="small" :aria-label="t('projects.toolbar.insertInspiration')" @click="pickerOpen = true"><el-icon><Picture /></el-icon></el-button></el-tooltip>
+        <el-tooltip :content="t('projects.toolbar.uploadAttachment')" placement="bottom"><el-button size="small" :aria-label="t('projects.toolbar.uploadAttachment')" @click="attachmentInput?.click()"><el-icon><Paperclip /></el-icon></el-button></el-tooltip>
         <input ref="attachmentInput" class="hidden-file-input" type="file" multiple accept="image/*,.gif,.mp4,.webm,.ogv,.pdf,.doc,.docx,.xls,.xlsx" @change="uploadFiles" />
       </div>
 
@@ -309,6 +309,11 @@ onBeforeRouteLeave(async () => {
 .hidden-file-input { display: none; }
 .project-editor-paper { min-height: 65vh; margin-top: 18px; padding: 36px clamp(20px, 5vw, 72px) 70px; border: 1px solid var(--line); border-radius: var(--radius-card); background: var(--surface); box-shadow: var(--soft-shadow); }
 .project-editor-paper :deep(.ProseMirror) { min-height: 55vh; outline: none; color: var(--ink); font-size: 16px; line-height: 1.8; overflow-wrap: anywhere; }
+.project-editor-paper :deep(.ProseMirror em) { font-style: italic; }
+.project-editor-paper :deep(.ProseMirror em:lang(zh)) { display: inline-block; transform: skewX(-12deg); }
+.project-editor-paper :deep(.ProseMirror .project-resource-node) { display: block; }
+.project-editor-paper :deep(.ProseMirror .ProseMirror-selectednode) { outline: 2px solid var(--accent); outline-offset: 3px; }
+.project-editor-paper :deep(.ProseMirror .ProseMirror-dropcursor) { border-color: var(--accent); border-width: 3px; }
 .project-editor-paper :deep(.ProseMirror > * + *) { margin-top: .7em; }
 .project-editor-paper :deep(.ProseMirror h1) { font-size: 2em; line-height: 1.25; }
 .project-editor-paper :deep(.ProseMirror h2) { font-size: 1.55em; line-height: 1.3; }
@@ -320,7 +325,10 @@ onBeforeRouteLeave(async () => {
 .project-editor-paper :deep(.ProseMirror th) { background: var(--surface-muted); text-align: left; }
 .project-editor-paper :deep(.ProseMirror ul[data-type=taskList]) { padding-left: 0; list-style: none; }
 .project-editor-paper :deep(.ProseMirror li[data-type=taskItem]) { display: flex; align-items: flex-start; gap: 8px; }
-.project-editor-paper :deep(.ProseMirror li[data-type=taskItem] input) { margin-top: 8px; accent-color: var(--accent); }
+.project-editor-paper :deep(.ProseMirror li[data-type=taskItem] > label) { flex: 0 0 auto; margin: 0; padding-top: 5px; }
+.project-editor-paper :deep(.ProseMirror li[data-type=taskItem] > div) { min-width: 0; flex: 1 1 auto; }
+.project-editor-paper :deep(.ProseMirror li[data-type=taskItem] p) { margin: 0; }
+.project-editor-paper :deep(.ProseMirror li[data-type=taskItem] input) { margin: 0; accent-color: var(--accent); }
 .project-editor-paper :deep(.ProseMirror a) { color: var(--accent-hover); text-decoration: underline; }
 .project-editor-paper :deep(.ProseMirror p.is-editor-empty:first-child::before) { float: left; height: 0; color: var(--muted); content: attr(data-placeholder); pointer-events: none; }
 .project-editor-state { display: grid; min-height: 60vh; justify-items: center; align-content: center; gap: 12px; color: var(--muted); text-align: center; }
