@@ -16,3 +16,17 @@ export function moveResourceTransaction(state: EditorState, pos: number, directi
   transaction.setSelection(NodeSelection.create(transaction.doc, nextPosition)).scrollIntoView()
   return transaction
 }
+
+/** 长按拖动只接受同父级块边界，整体搬移媒体并保留撤销和节点选择。 */
+export function moveResourceToPositionTransaction(state: EditorState, source: number, target: number): Transaction | null {
+  if (source < 0 || target < 0 || source >= state.doc.content.size || target > state.doc.content.size) return null
+  const origin = state.doc.resolve(source)
+  const destination = state.doc.resolve(target)
+  const node = origin.nodeAfter
+  if (!node || !['inspirationImage', 'projectAttachment'].includes(node.type.name)
+    || origin.parent !== destination.parent || destination.textOffset !== 0
+    || (target >= source && target <= source + node.nodeSize)) return null
+  const tr = state.tr.delete(source, source + node.nodeSize)
+  const insertAt = tr.mapping.map(target)
+  return tr.insert(insertAt, node).setSelection(NodeSelection.create(tr.doc, insertAt))
+}

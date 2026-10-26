@@ -28,6 +28,7 @@
   "saving": "正在保存…",
   "unsaved": "有未保存的更改",
   "toolbar": {
+    "uploadMedia": "上传图片或视频",
     "paragraph": "正文",
     "heading": "标题",
     "bold": "加粗",

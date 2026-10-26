@@ -28,6 +28,7 @@ const loadFailed = ref(false)
 const savingState = ref<'saved' | 'unsaved' | 'saving' | 'error'>('saved')
 const pickerOpen = ref(false)
 const documentIncompatible = ref(false)
+const mediaInput = ref<HTMLInputElement | null>(null)
 const attachmentInput = ref<HTMLInputElement | null>(null)
 const maxUploadBytes = ref(fallbackProjectUploadLimit)
 let saveTimer: number | undefined
@@ -175,7 +176,7 @@ onBeforeRouteLeave(async () => {
 </script>
 
 <template>
-  <AppHeader />
+  <div class="project-app-header"><AppHeader /></div>
   <main class="project-editor-main" :class="{ 'is-loading': loading }">
     <div v-if="loading" class="project-editor-state">{{ t('common.loading') }}</div>
     <div v-else-if="loadFailed || !project" class="project-editor-state project-editor-error"><p>{{ t('projects.loadError') }}</p><el-button @click="loadProject">{{ t('common.retry') }}</el-button></div>
@@ -197,8 +198,10 @@ onBeforeRouteLeave(async () => {
         @change="scheduleSave"
         @insert-inspiration="pickerOpen = true"
         @upload-attachment="attachmentInput?.click()"
+        @upload-media="mediaInput?.click()"
       />
-      <input ref="attachmentInput" class="hidden-file-input" type="file" multiple accept="image/*,.gif,.mp4,.webm,.ogv,.pdf,.doc,.docx,.xls,.xlsx" @change="uploadFiles" />
+      <input ref="mediaInput" class="hidden-file-input" type="file" multiple accept="image/*,video/*" @change="uploadFiles" />
+      <input ref="attachmentInput" class="hidden-file-input" type="file" multiple accept=".pdf,.doc,.docx,.xls,.xlsx" @change="uploadFiles" />
     </template>
   </main>
   <ProjectInspirationPicker v-model="pickerOpen" @select="insertInspiration" />
@@ -221,6 +224,7 @@ onBeforeRouteLeave(async () => {
 .project-editor-state { display: grid; min-height: 60vh; justify-items: center; align-content: center; gap: 12px; color: var(--muted); text-align: center; }
 .project-editor-error { color: var(--danger); }
 @media (max-width: 768px) {
+  .project-app-header { display: none; }
   .project-editor-main { width: 100%; margin: 0; padding: 16px 12px calc(94px + env(safe-area-inset-bottom)); }
   .project-editor-header { flex-wrap: wrap; gap: 5px 10px; margin-bottom: 11px; }
   .project-back { order: 0; width: 100%; justify-content: flex-start; font-size: 11px; }

@@ -2,6 +2,11 @@ package love.imcn016.photo;
 
 import android.content.Intent;
 import android.net.Uri;
+import android.provider.OpenableColumns;
+import androidx.activity.result.PickVisualMediaRequest;
+import java.io.File;
+import java.io.InputStream;
+import java.io.FileOutputStream;
 import android.os.Bundle;
 import android.view.View;
 import android.widget.FrameLayout;
@@ -54,6 +59,7 @@ public class MainActivity extends AppCompatActivity {
         super.onCreate(state);
         EdgeToEdge.enable(this);
         shell = new NativeShellService(this);
+        clearExpiredPickedFiles();
         fileLauncher = registerForActivityResult(new ActivityResultContracts.StartActivityForResult(), result -> {
             if (filePrompt == null || fileResult == null) return;
             var prompt = filePrompt;
@@ -65,7 +71,17 @@ public class MainActivity extends AppCompatActivity {
                 ArrayList<Uri> uris = new ArrayList<>();
                 if (data.getClipData() != null) for (int i = 0; i < data.getClipData().getItemCount(); i++) uris.add(data.getClipData().getItemAt(i).getUri());
                 else if (data.getData() != null) uris.add(data.getData());
-                response.complete(uris.isEmpty() ? prompt.dismiss() : prompt.confirm(this, uris.toArray(new Uri[0])));
+                // Gecko 文件提示需要可直接读取的本地文件；不能把相册供应商的 content URI 当文件路径。
+                // 在后台复制到本应用缓存，保持原文件名和扩展名，网页后续仍执行类型与大小校验。
+                new Thread(() -> {
+                    try {
+                        ArrayList<Uri> local = new ArrayList<>();
+                        for (Uri uri : uris) local.add(copyPickedFile(uri));
+                        runOnUiThread(() -> response.complete(local.isEmpty() ? prompt.dismiss()
+                            : prompt.type == GeckoSession.PromptDelegate.FilePrompt.Type.MULTIPLE
+                                ? prompt.confirm(this, local.toArray(new Uri[0])) : prompt.confirm(this, local.get(0))));
+                    } catch (Exception error) { runOnUiThread(() -> response.complete(prompt.dismiss())); }
+                }, "picked-file-copy").start();
             } catch (Exception error) { response.complete(prompt.dismiss()); }
         });
         FrameLayout content = new FrameLayout(this);
@@ -130,6 +146,27 @@ public class MainActivity extends AppCompatActivity {
                     if (types.length == 1) intent.setType(types[0]);
                     else if (types.length > 1) intent.putExtra(Intent.EXTRA_MIME_TYPES, types);
                 }
+                // 图片和视频输入采用 AndroidX 照片选择器：优先使用 Photo Picker，旧系统使用相册的 ACTION_PICK。
+                // 混合附件输入仍保留文件管理器，避免 PDF 和 Office 被过滤。
+                if (prompt.mimeTypes != null && prompt.mimeTypes.length > 0
+                    && java.util.Arrays.stream(prompt.mimeTypes).allMatch(type -> type.startsWith("image/") || type.startsWith("video/"))) {
+                    PickVisualMediaRequest request = new PickVisualMediaRequest.Builder()
+                        .setMediaType(java.util.Arrays.stream(prompt.mimeTypes).allMatch(type -> type.startsWith("image/"))
+                            ? ActivityResultContracts.PickVisualMedia.ImageOnly.INSTANCE
+                            : ActivityResultContracts.PickVisualMedia.ImageAndVideo.INSTANCE).build();
+                    intent = prompt.type == FilePrompt.Type.MULTIPLE
+                        ? new ActivityResultContracts.PickMultipleVisualMedia().createIntent(MainActivity.this, request)
+                        : new ActivityResultContracts.PickVisualMedia().createIntent(MainActivity.this, request);
+                    // 未安装系统/回移照片选择器的 Android 9+ 使用相册 Intent，避免降级到文档管理器。
+                    // 旧相册可能仅返回单个媒体，回调同时兼容单选和多选结果。
+                    if (!ActivityResultContracts.PickVisualMedia.isPhotoPickerAvailable(MainActivity.this)) {
+                        boolean imageOnly = java.util.Arrays.stream(prompt.mimeTypes).allMatch(type -> type.startsWith("image/"));
+                        intent = new Intent(Intent.ACTION_PICK)
+                            .setDataAndType(android.provider.MediaStore.Images.Media.EXTERNAL_CONTENT_URI, imageOnly ? "image/*" : "*/*")
+                            .putExtra(Intent.EXTRA_MIME_TYPES, imageOnly ? new String[] { "image/*" } : new String[] { "image/*", "video/*" })
+                            .putExtra(Intent.EXTRA_ALLOW_MULTIPLE, prompt.type == FilePrompt.Type.MULTIPLE);
+                    }
+                }
                 try { fileLauncher.launch(intent); }
                 catch (Exception error) { filePrompt = null; fileResult = null; result.complete(prompt.dismiss()); }
                 return result;
@@ -163,6 +200,41 @@ public class MainActivity extends AppCompatActivity {
             session.getWebExtensionController().setMessageDelegate(extension, delegate, "photo_nini");
             session.loadUri(extensionBase + "index.html");
         }, error -> { status.setVisibility(View.VISIBLE); status.setText(R.string.engine_failed); });
+    }
+
+    /** 仅清理本选择器一天前的随机缓存目录，避免图片长期滞留；不触碰其他缓存。 */
+    private void clearExpiredPickedFiles() {
+        File[] directories = getCacheDir().listFiles(file -> file.isDirectory() && file.getName().startsWith("picked-")
+            && file.lastModified() < System.currentTimeMillis() - 86400000L);
+        if (directories == null) return;
+        for (File directory : directories) {
+            File[] files = directory.listFiles();
+            if (files != null) for (File file : files) if (file.isFile()) file.delete();
+            directory.delete();
+        }
+    }
+
+    /** 把本次获授权的供应商内容复制到随机私有目录；不接收网页指定的路径。 */
+    private Uri copyPickedFile(Uri uri) throws Exception {
+        String name = "selected-file";
+        try (android.database.Cursor cursor = getContentResolver().query(uri,
+                new String[] { OpenableColumns.DISPLAY_NAME }, null, null, null)) {
+            if (cursor != null && cursor.moveToFirst()) name = cursor.getString(0);
+        }
+        if (name == null || name.isEmpty()) name = "selected-file";
+        name = name.replaceAll("[\\\\/\\p{Cntrl}]", "_");
+        if (".".equals(name) || "..".equals(name)) name = "selected-file";
+        File directory = new File(getCacheDir(), "picked-" + java.util.UUID.randomUUID());
+        if (!directory.mkdir()) throw new java.io.IOException("picker_cache_failed");
+        File target = new File(directory, name);
+        try (InputStream input = getContentResolver().openInputStream(uri);
+             FileOutputStream output = new FileOutputStream(target)) {
+            if (input == null) throw new java.io.IOException("picker_read_failed");
+            byte[] buffer = new byte[64 * 1024];
+            int length;
+            while ((length = input.read(buffer)) != -1) output.write(buffer, 0, length);
+        } catch (Exception error) { target.delete(); directory.delete(); throw error; }
+        return Uri.fromFile(target);
     }
 
     /** 只信任当前会话的顶层内置扩展页；不授权后台、子框架或其他扩展。 */

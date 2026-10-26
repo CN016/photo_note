@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, markRaw, shallowRef, watch } from 'vue'
+import { computed, markRaw, shallowRef, watch, onMounted, onBeforeUnmount } from 'vue'
 import { Extension, getSchema, type Editor } from '@tiptap/core'
 import StarterKit from '@tiptap/starter-kit'
 import { BackgroundColor, TextStyle } from '@tiptap/extension-text-style'
@@ -16,7 +16,7 @@ import Placeholder from '@tiptap/extension-placeholder'
 import { DragHandle } from '@tiptap/extension-drag-handle-vue-3'
 import { ProEditorElementPlus, type ToolbarConfig } from 'tiptap-vue-pro-element-plus'
 import 'tiptap-vue-pro-element-plus/style.css'
-import { Paperclip, Picture, Rank } from '@element-plus/icons-vue'
+import { Paperclip, Picture, Rank, UploadFilled } from '@element-plus/icons-vue'
 import { useI18n } from 'vue-i18n'
 import { isDocumentCompatible } from '../documentCompatibility'
 import { FontSize, InspirationImage, ProjectAttachment } from '../projectExtensions'
@@ -24,7 +24,7 @@ import { useColorTheme } from '../../theme'
 
 /** 项目正文适配层：开源组件负责编辑交互，资源上传和持久化始终交回业务页面。 */
 const props = defineProps<{ document: Record<string, unknown> }>()
-const emit = defineEmits<{ ready: [editor: Editor]; incompatible: []; change: []; insertInspiration: []; uploadAttachment: [] }>()
+const emit = defineEmits<{ ready: [editor: Editor]; incompatible: []; change: []; insertInspiration: []; uploadAttachment: []; uploadMedia: [] }>()
 const { t, locale } = useI18n({ useScope: 'global' })
 const theme = useColorTheme()
 const editor = shallowRef<Editor>()
@@ -54,6 +54,41 @@ const extensions = markRaw([
 const schema = getSchema(extensions)
 const compatible = computed(() => isDocumentCompatible(props.document, schema))
 watch(compatible, valid => { if (!valid) emit('incompatible') }, { immediate: true })
+/** 可视视口收缩时让底部工具栏跟随键盘，并把正在输入的光标滚到工具栏上方。 */
+let viewportFrame = 0
+function updateViewport() {
+  cancelAnimationFrame(viewportFrame)
+  viewportFrame = requestAnimationFrame(() => {
+    const viewport = window.visualViewport
+    const bottom = viewport ? Math.max(0, window.innerHeight - viewport.height - viewport.offsetTop) : 0
+    document.documentElement.style.setProperty('--project-keyboard-bottom', `${bottom}px`)
+    if (!editor.value?.isFocused || !window.matchMedia('(max-width: 768px)').matches) return
+    const rect = editor.value.view.coordsAtPos(editor.value.state.selection.head)
+    const top = (viewport?.offsetTop ?? 0) + 20
+    const limit = (viewport?.offsetTop ?? 0) + (viewport?.height ?? window.innerHeight) - 90
+    if (rect.bottom > limit) window.scrollBy(0, rect.bottom - limit)
+    else if (rect.top < top) window.scrollBy(0, rect.top - top)
+  })
+}
+onMounted(() => {
+  window.visualViewport?.addEventListener('resize', updateViewport)
+  window.visualViewport?.addEventListener('scroll', updateViewport)
+  window.addEventListener('resize', updateViewport)
+})
+watch(editor, (value, previous) => {
+  previous?.off('selectionUpdate', updateViewport)
+  value?.on('selectionUpdate', updateViewport)
+  value?.on('focus', updateViewport)
+})
+onBeforeUnmount(() => {
+  cancelAnimationFrame(viewportFrame)
+  window.visualViewport?.removeEventListener('resize', updateViewport)
+  window.visualViewport?.removeEventListener('scroll', updateViewport)
+  window.removeEventListener('resize', updateViewport)
+  editor.value?.off('selectionUpdate', updateViewport)
+  editor.value?.off('focus', updateViewport)
+  document.documentElement.style.removeProperty('--project-keyboard-bottom')
+})
 </script>
 
 <template>
@@ -64,7 +99,8 @@ watch(compatible, valid => { if (!valid) emit('incompatible') }, { immediate: tr
       :editor-behavior-options="{ image: { allowUrl: false } }"
       :locale="language" :dark="theme === 'dark'" :autosave="false" :draft="false" :show-word-count="false"
       @update:model-value="emit('change')">
-      <template #toolbar-after>
+      <template #toolbar-before>
+        <el-tooltip :content="t('projects.toolbar.uploadMedia')"><el-button :aria-label="t('projects.toolbar.uploadMedia')" text @click="emit('uploadMedia')"><el-icon><UploadFilled /></el-icon></el-button></el-tooltip>
         <el-tooltip :content="t('projects.toolbar.insertInspiration')"><el-button :aria-label="t('projects.toolbar.insertInspiration')" text @click="emit('insertInspiration')"><el-icon><Picture /></el-icon></el-button></el-tooltip>
         <el-tooltip :content="t('projects.toolbar.uploadAttachment')"><el-button :aria-label="t('projects.toolbar.uploadAttachment')" text @click="emit('uploadAttachment')"><el-icon><Paperclip /></el-icon></el-button></el-tooltip>
       </template>
@@ -97,7 +133,11 @@ watch(compatible, valid => { if (!valid) emit('incompatible') }, { immediate: tr
 @media (pointer: coarse) { .project-document-editor :deep(.resource-resize-handle) { width: 44px; height: 44px; right: -12px; bottom: -12px; } }
 .project-block-drag-handle { z-index: 12; display: grid; width: 28px; height: 32px; place-items: center; border-radius: var(--radius-control); background: var(--surface); color: var(--muted); cursor: grab; }
 @media (max-width: 768px) {
-  .project-document-editor :deep(.tvp-content) { padding: 20px 22px 90px; }
+  .project-document-editor :deep(.tvp-content) { padding: 20px 16px 180px; }
+  /* 横向滚动保留全部格式按钮，插图与附件入口优先显示；固定层随可视视口避让键盘。 */
+  .project-document-editor :deep(.tvp-toolbar) { position: fixed; inset: auto 0 var(--project-keyboard-bottom, 0px); z-index: 30; display: flex; flex-wrap: nowrap; overflow-x: auto; max-width: 100vw; border-radius: 12px 12px 0 0; padding-bottom: env(safe-area-inset-bottom); }
+  .project-document-editor :deep(.tvp-toolbar > *) { flex-shrink: 0; }
+  .project-block-drag-handle { display: none; }
   .project-document-editor :deep(.tvp-toolbar .el-button) { min-width: 44px; min-height: 44px; }
 }
 </style>

@@ -10,7 +10,7 @@ import { api } from '../../api/client'
 import type { InspirationRecord } from '../../api/types'
 
 const props = defineProps<NodeViewProps>()
-const { canMoveBefore, canMoveAfter, move } = useResourceMovement(props)
+const { canMoveBefore, canMoveAfter, move, touchDragging, startBlockTouch, moveBlockTouch, finishBlockTouch, selectResource, startTouchDrag, finishTouchDrag, cancelTouchDrag } = useResourceMovement(props)
 const router = useRouter()
 const { t, locale } = useI18n({ useScope: 'global' })
 const url = ref('')
@@ -99,9 +99,12 @@ onBeforeUnmount(() => { requestVersion += 1; if (url.value) URL.revokeObjectURL(
 <template>
   <NodeViewWrapper
     class="project-resource-node inspiration-node"
-    :class="{ 'is-selected': selected, 'is-corner-resizing': cornerResizing }"
+    :class="{ 'is-selected': selected, 'is-corner-resizing': cornerResizing, 'is-touch-dragging': touchDragging }"
     :style="{ width: `calc(${displayWidth}% - 12px)` }"
     draggable="true"
+    contenteditable="false"
+    @pointerdown="selectResource"
+    @touchstart="startBlockTouch" @touchmove="moveBlockTouch" @touchend="finishBlockTouch" @touchcancel="cancelTouchDrag"
     @dblclick.prevent.stop="openDetails"
   >
     <figure
@@ -130,7 +133,7 @@ onBeforeUnmount(() => { requestVersion += 1; if (url.value) URL.revokeObjectURL(
         <el-tooltip :content="t('projects.originalMediaHint')"><el-button size="small" :type="originalMode ? 'primary' : 'default'" :aria-pressed="originalMode" @pointerdown.prevent @click.stop="setSizePreset(false)">{{ t('projects.originalMedia') }}</el-button></el-tooltip>
       </div>
       <el-tooltip :content="t('projects.moveBlock')" placement="top">
-        <span class="resource-drag-handle" data-drag-handle draggable="true" :aria-label="t('projects.moveBlock')"><el-icon><Rank /></el-icon></span>
+        <span class="resource-drag-handle" @pointerdown.stop="startTouchDrag" @pointerup.stop="finishTouchDrag" @pointercancel="cancelTouchDrag" data-drag-handle draggable="true" :aria-label="t('projects.moveBlock')"><el-icon><Rank /></el-icon></span>
       </el-tooltip>
       <el-tooltip :content="t('projects.moveBefore')"><el-button text :disabled="!canMoveBefore" :aria-label="t('projects.moveBefore')" @pointerdown.prevent @click.stop="move(-1)"><el-icon><ArrowLeft /></el-icon></el-button></el-tooltip>
       <el-tooltip :content="t('projects.moveAfter')"><el-button text :disabled="!canMoveAfter" :aria-label="t('projects.moveAfter')" @pointerdown.prevent @click.stop="move(1)"><el-icon><ArrowRight /></el-icon></el-button></el-tooltip>
@@ -206,7 +209,7 @@ onBeforeUnmount(() => { requestVersion += 1; if (url.value) URL.revokeObjectURL(
 .inspiration-detail-state.is-error { color: var(--danger); }
 @media (max-width: 768px) {
   /* 资源条与底部编辑工具栏错层，44px 操作区域无需挤入图片自身宽度。 */
-  .resource-controls { position: fixed; width: auto; transform: none; inset: auto 12px calc(72px + env(safe-area-inset-bottom)); min-height: 54px; justify-content: center; gap: 6px; padding: 4px; }
+  .resource-controls { position: fixed; width: auto; transform: none; inset: auto 12px calc(var(--project-keyboard-bottom, 0px) + 64px + env(safe-area-inset-bottom)); min-height: 54px; justify-content: center; gap: 6px; padding: 4px; }
   .resource-controls .el-button, .resource-drag-handle { width: 44px; height: 44px; min-height: 44px; flex: 0 0 44px; }
   .resource-size-presets .el-button { width: auto; flex: 0 0 auto; padding: 0 12px; }
   .resource-width { min-height: 44px; }
@@ -214,4 +217,6 @@ onBeforeUnmount(() => { requestVersion += 1; if (url.value) URL.revokeObjectURL(
   .inspiration-details { grid-template-columns: 1fr; gap: 14px; }
   .inspiration-detail-image { min-height: 150px; }
 }
+.resource-drag-handle { touch-action: none; }
+.is-touch-dragging { outline: 3px dashed var(--accent); opacity: .7; }
 </style>

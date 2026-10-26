@@ -10,7 +10,7 @@ import { api } from '../../api/client'
 
 const ProjectAttachmentPreview = defineAsyncComponent(() => import('../../components/ProjectAttachmentPreview.vue'))
 const props = defineProps<NodeViewProps>()
-const { canMoveBefore, canMoveAfter, move } = useResourceMovement(props)
+const { canMoveBefore, canMoveAfter, move, touchDragging, startBlockTouch, moveBlockTouch, finishBlockTouch, selectResource, startTouchDrag, finishTouchDrag, cancelTouchDrag } = useResourceMovement(props)
 const route = useRoute()
 const { t } = useI18n({ useScope: 'global' })
 const url = ref('')
@@ -75,9 +75,12 @@ onBeforeUnmount(() => { requestVersion += 1; disposePlayer(); if (url.value) URL
 <template>
   <NodeViewWrapper
     class="project-resource-node attachment-node"
-    :class="{ 'is-selected': selected, 'is-corner-resizing': cornerResizing }"
+    :class="{ 'is-selected': selected, 'is-corner-resizing': cornerResizing, 'is-touch-dragging': touchDragging }"
     :style="{ width: `calc(${displayWidth}% - 12px)` }"
     draggable="true"
+    contenteditable="false"
+    @pointerdown="selectResource"
+    @touchstart="startBlockTouch" @touchmove="moveBlockTouch" @touchend="finishBlockTouch" @touchcancel="cancelTouchDrag"
     @dblclick.prevent.stop="openPreview"
   >
     <div
@@ -110,7 +113,7 @@ onBeforeUnmount(() => { requestVersion += 1; disposePlayer(); if (url.value) URL
         <el-tooltip :content="t('projects.originalMediaHint')"><el-button size="small" :type="originalMode ? 'primary' : 'default'" :aria-pressed="originalMode" @pointerdown.prevent @click.stop="setSizePreset(false)">{{ t('projects.originalMedia') }}</el-button></el-tooltip>
       </div>
       <el-tooltip :content="t('projects.moveBlock')" placement="top">
-        <span class="resource-drag-handle" data-drag-handle draggable="true" :aria-label="t('projects.moveBlock')"><el-icon><Rank /></el-icon></span>
+        <span class="resource-drag-handle" @pointerdown.stop="startTouchDrag" @pointerup.stop="finishTouchDrag" @pointercancel="cancelTouchDrag" data-drag-handle draggable="true" :aria-label="t('projects.moveBlock')"><el-icon><Rank /></el-icon></span>
       </el-tooltip>
       <el-tooltip :content="t('projects.moveBefore')"><el-button text :disabled="!canMoveBefore" :aria-label="t('projects.moveBefore')" @pointerdown.prevent @click.stop="move(-1)"><el-icon><ArrowLeft /></el-icon></el-button></el-tooltip>
       <el-tooltip :content="t('projects.moveAfter')"><el-button text :disabled="!canMoveAfter" :aria-label="t('projects.moveAfter')" @pointerdown.prevent @click.stop="move(1)"><el-icon><ArrowRight /></el-icon></el-button></el-tooltip>
@@ -162,10 +165,12 @@ onBeforeUnmount(() => { requestVersion += 1; disposePlayer(); if (url.value) URL
 .resource-width > span { min-width: 34px; text-align: right; }
 /* 手机上将资源操作固定在编辑工具栏上方，避免窄图片的浮动按钮超出屏幕。 */
 @media (max-width: 768px) {
-  .resource-controls { position: fixed; width: auto; transform: none; inset: auto 12px calc(72px + env(safe-area-inset-bottom)); min-height: 54px; justify-content: center; gap: 6px; padding: 4px; }
+  .resource-controls { position: fixed; width: auto; transform: none; inset: auto 12px calc(var(--project-keyboard-bottom, 0px) + 64px + env(safe-area-inset-bottom)); min-height: 54px; justify-content: center; gap: 6px; padding: 4px; }
   .resource-controls .el-button, .resource-drag-handle { width: 44px; height: 44px; min-height: 44px; flex: 0 0 44px; }
   .resource-size-presets .el-button { width: auto; flex: 0 0 auto; padding: 0 12px; }
   .resource-width { min-height: 44px; }
   .resource-width input { width: 88px; height: 44px; }
 }
+.resource-drag-handle { touch-action: none; }
+.is-touch-dragging { outline: 3px dashed var(--accent); opacity: .7; }
 </style>

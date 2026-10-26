@@ -28,6 +28,7 @@
   "saving": "Saving…",
   "unsaved": "Unsaved changes",
   "toolbar": {
+    "uploadMedia": "Upload photos or videos",
     "paragraph": "Paragraph",
     "heading": "Heading",
     "bold": "Bold",
