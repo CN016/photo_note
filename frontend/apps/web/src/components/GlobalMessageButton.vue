@@ -17,7 +17,7 @@ const unreadCount = computed(() => appShell.unreadCount)
 </script>
 
 <template>
-  <div v-if="auth.user && !route.meta.public" class="global-message-bar">
+  <div v-if="auth.user && !route.meta.public && route.name !== 'project-editor'" class="global-message-bar">
     <RouterLink class="global-message-brand" to="/workbench" :aria-label="t('common.workbench')">
       <BrandMark size="small" /><strong>{{ t('common.brand') }}</strong>
     </RouterLink>

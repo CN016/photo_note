@@ -1,10 +1,13 @@
 import { computed, onBeforeUnmount, ref } from 'vue'
 import type { NodeViewProps } from '@tiptap/vue-3'
 import { NodeSelection } from '@tiptap/pm/state'
+import { useI18n } from 'vue-i18n'
+import { resourceDropSide, usesTouchResourceDrag } from './resourceTouchInteraction'
 import { moveResourceTransaction, moveResourceToPositionTransaction } from './resourceMovementTransaction'
 
 /** 媒体的键盘与触屏排序：仅在同一父容器内移动完整节点，保留属性与单次撤销事务。 */
 export function useResourceMovement(props: NodeViewProps) {
+  const { t } = useI18n({ useScope: 'global' })
   const revision = ref(0)
   const refresh = () => { revision.value += 1 }
   props.editor.on('transaction', refresh)
@@ -23,73 +26,171 @@ export function useResourceMovement(props: NodeViewProps) {
     const transaction = moveResourceTransaction(props.editor.state, pos, direction)
     if (!transaction) return
     props.editor.view.dispatch(transaction)
-    if (!window.matchMedia('(pointer: coarse)').matches) props.editor.view.focus()
+    if (!touchDevice) props.editor.view.focus()
   }
   let hold: ReturnType<typeof setTimeout> | undefined
   const dragging = ref(false)
+  const touchDevice = usesTouchResourceDrag()
+  let touchID: number | null = null
   let startX = 0
   let startY = 0
-  /** 媒体只改变节点选择；主动收起正文焦点，避免原子节点点击唤起输入法。 */
-  function selectResource(event: PointerEvent) {
+  let lastX = 0
+  let lastY = 0
+  let targetPosition: number | null = null
+  let sourceElement: HTMLElement | null = null
+  let ghost: HTMLElement | null = null
+  let indicator: HTMLElement | null = null
+  let scrollFrame = 0
+
+  /** 同步撤去正文焦点，不调用会异步清空 DOM 选区的 blur 命令，避免节点选择闪退。 */
+  function blurText() { props.editor.view.dom.blur() }
+  function selectResource(event: Event) {
     if ((event.target as HTMLElement).closest('button,input,video,.resource-controls,.resource-resize-handle')) return
+    if (event.cancelable) event.preventDefault()
+    event.stopPropagation()
     const pos = props.getPos()
     if (typeof pos !== 'number') return
-    event.preventDefault()
-    props.editor.commands.blur()
+    blurText()
     props.editor.view.dispatch(props.editor.state.tr.setSelection(NodeSelection.create(props.editor.state.doc, pos)))
   }
-  /** 手柄保留指针捕获，长按后只移动完整节点；取消或离开组件时清理计时器。 */
-  function startTouchDrag(event: PointerEvent) {
-    if (event.pointerType === 'mouse') return
-    event.preventDefault()
-    startX = event.clientX; startY = event.clientY
-    const handle = event.currentTarget as HTMLElement
-    handle.setPointerCapture(event.pointerId)
-    hold = setTimeout(() => { dragging.value = true; props.editor.commands.blur() }, 350)
-  }
-  function finishTouchDrag(event: Pick<PointerEvent, 'clientX' | 'clientY' | 'preventDefault'>) {
-    clearTimeout(hold)
-    if (!dragging.value) return
-    dragging.value = false
-    event.preventDefault()
+
+  /** 每次移动都从当前文档的同层节点几何计算落点，不把光标命中当成文本插入位置。 */
+  function previewDrop(x: number, y: number) {
     const view = props.editor.view
     const source = props.getPos()
-    const hit = view.posAtCoords({ left: event.clientX, top: event.clientY })
-    if (typeof source !== 'number' || !hit || Math.hypot(event.clientX - startX, event.clientY - startY) < 10) return
-    const resolved = view.state.doc.resolve(hit.pos)
-    // 仅在同一父级移动，避免拖入列表或表格时破坏节点结构。
+    if (typeof source !== 'number') return
     const origin = view.state.doc.resolve(source)
-    if (resolved.depth < origin.depth || resolved.node(origin.depth) !== origin.parent) return
-    let target = resolved.depth > origin.depth ? resolved.before(origin.depth + 1) : hit.pos
-    const targetNode = view.state.doc.nodeAt(target)
-    const targetDOM = view.nodeDOM(target)
-    if (targetNode && targetDOM instanceof HTMLElement) {
-      const rect = targetDOM.getBoundingClientRect()
-      if (event.clientY > (rect.top + rect.bottom) / 2) target += targetNode.nodeSize
-    }
-    const tr = moveResourceToPositionTransaction(view.state, source, target)
-    if (tr) view.dispatch(tr)
+    const parentStart = origin.start()
+    let offset = 0
+    let nearest: { position: number; rect: DOMRect; distance: number; nodeSize: number; inline: boolean } | null = null
+    origin.parent.forEach((node) => {
+      const position = parentStart + offset
+      offset += node.nodeSize
+      const element = view.nodeDOM(position)
+      if (!(element instanceof HTMLElement)) return
+      const rect = element.getBoundingClientRect()
+      if (!rect.width || !rect.height) return
+      const dx = Math.max(rect.left - x, 0, x - rect.right)
+      const dy = Math.max(rect.top - y, 0, y - rect.bottom)
+      const distance = dx * dx + dy * dy
+      const inline = element.classList.contains('project-resource-node') && rect.width < view.dom.clientWidth * .7
+      if (!nearest || distance < nearest.distance) nearest = { position, rect, distance, nodeSize: node.nodeSize, inline }
+    })
+    // forEach 的闭包赋值由运行时完成，单独缩窄可视候选的类型。
+    const hit = nearest as { position: number; rect: DOMRect; distance: number; nodeSize: number; inline: boolean } | null
+    targetPosition = null
+    if (!hit || !indicator) return
+    const side = resourceDropSide(hit.rect, x, y, hit.inline)
+    const target = hit.position + (side === 'after' ? hit.nodeSize : 0)
+    if (!moveResourceToPositionTransaction(view.state, source, target)) { indicator.hidden = true; return }
+    targetPosition = target
+    indicator.hidden = false
+    indicator.textContent = t('projects.dropHere')
+    const rect = hit.rect
+    Object.assign(indicator.style, hit.inline ? {
+      left: `${side === 'before' ? rect.left : rect.right}px`, top: `${rect.top}px`, width: '3px', height: `${rect.height}px`,
+    } : {
+      left: `${rect.left}px`, top: `${side === 'before' ? rect.top : rect.bottom}px`, width: `${rect.width}px`, height: '3px',
+    })
   }
-  /** 整个媒体表面也支持长按：短滑动继续滚页，长按成立后才阻止原生滚动。 */
-  function startBlockTouch(event: TouchEvent) {
-    if ((event.target as HTMLElement).closest('button,input,video,.resource-controls,.resource-resize-handle')) return
-    if (event.touches.length !== 1) return
+  function updateDrag() {
+    if (ghost) { ghost.style.left = `${lastX + 12}px`; ghost.style.top = `${lastY + 12}px` }
+    previewDrop(lastX, lastY)
+  }
+  /** 拖到视口边缘时持续滚页，并在滚动后的新几何上刷新落点。 */
+  function autoScroll() {
+    if (!dragging.value) return
+    const viewport = window.visualViewport
+    const top = viewport?.offsetTop ?? 0
+    const bottom = top + (viewport?.height ?? innerHeight) - 80
+    const delta = lastY < top + 60 ? -12 : lastY > bottom - 60 ? 12 : 0
+    if (delta) { window.scrollBy(0, delta); updateDrag() }
+    scrollFrame = requestAnimationFrame(autoScroll)
+  }
+  function activateDrag() {
+    if (!sourceElement || touchID === null) return
+    blurText()
+    dragging.value = true
+    const rect = sourceElement.getBoundingClientRect()
+    ghost = sourceElement.cloneNode(true) as HTMLElement
+    ghost.querySelectorAll('.resource-controls,.resource-resize-handle').forEach(element => element.remove())
+    ghost.querySelectorAll('[id]').forEach(element => element.removeAttribute('id'))
+    ghost.removeAttribute('id')
+    ghost.className = 'project-resource-drag-ghost'
+    ghost.setAttribute('aria-hidden', 'true')
+    Object.assign(ghost.style, { width: `${Math.min(220, rect.width)}px`, maxHeight: '160px', overflow: 'hidden' })
+    document.body.appendChild(ghost)
+    indicator = document.createElement('div')
+    indicator.className = 'project-resource-drop-indicator'
+    indicator.setAttribute('role', 'status')
+    indicator.hidden = true
+    document.body.appendChild(indicator)
+    updateDrag()
+    autoScroll()
+  }
+  /** 文档级触摸监听不依赖图片节点的重绘；手势期间屏蔽原生图片拖放和兼容鼠标聚焦。 */
+  function beginTouch(event: TouchEvent, handle: boolean) {
+    const target = event.target as HTMLElement
+    if (!handle && target.closest('button,input,video,.resource-controls,.resource-resize-handle')) return
+    if (event.touches.length !== 1) { cancelTouchDrag(); return }
+    cancelTouchDrag()
+    event.stopPropagation()
+    if (handle && event.cancelable) event.preventDefault()
     const touch = event.touches[0]!
-    startX = touch.clientX; startY = touch.clientY
-    hold = setTimeout(() => { dragging.value = true; props.editor.commands.blur() }, 350)
+    touchID = touch.identifier
+    startX = lastX = touch.clientX; startY = lastY = touch.clientY
+    sourceElement = target.closest('.project-resource-node')
+    blurText()
+    const pos = props.getPos()
+    if (typeof pos === 'number') props.editor.view.dispatch(props.editor.state.tr.setSelection(NodeSelection.create(props.editor.state.doc, pos)))
+    document.addEventListener('touchmove', moveTouch, { capture: true, passive: false })
+    document.addEventListener('touchend', endTouch, { capture: true, passive: false })
+    document.addEventListener('touchcancel', cancelTouchDrag, true)
+    window.addEventListener('blur', cancelTouchDrag)
+    hold = setTimeout(activateDrag, 350)
   }
-  function moveBlockTouch(event: TouchEvent) {
-    const touch = event.touches[0]
+  function startBlockTouch(event: TouchEvent) { beginTouch(event, false) }
+  function startHandleTouch(event: TouchEvent) { beginTouch(event, true) }
+  function moveTouch(event: TouchEvent) {
+    const touch = Array.from(event.touches).find(item => item.identifier === touchID)
+    if (!touch) { cancelTouchDrag(); return }
+    lastX = touch.clientX; lastY = touch.clientY
+    if (!dragging.value) {
+      if (Math.hypot(lastX - startX, lastY - startY) > 10) cancelTouchDrag()
+      return
+    }
+    if (event.cancelable) event.preventDefault()
+    event.stopPropagation()
+    updateDrag()
+  }
+  function endTouch(event: TouchEvent) {
+    const touch = Array.from(event.changedTouches).find(item => item.identifier === touchID)
     if (!touch) return
-    if (dragging.value) event.preventDefault()
-    else if (Math.hypot(touch.clientX - startX, touch.clientY - startY) > 10) clearTimeout(hold)
+    // 即使没有拖动，也阻止 touchend 合成 mousedown 后再次聚焦编辑器。
+    if (event.cancelable) event.preventDefault()
+    event.stopPropagation()
+    blurText()
+    const source = props.getPos()
+    const target = targetPosition
+    const wasDragging = dragging.value
+    cancelTouchDrag()
+    if (wasDragging && typeof source === 'number' && target !== null) {
+      const tr = moveResourceToPositionTransaction(props.editor.state, source, target)
+      if (tr) props.editor.view.dispatch(tr)
+    }
   }
-  function finishBlockTouch(event: TouchEvent) {
-    const touch = event.changedTouches[0]
-    if (touch) finishTouchDrag({ clientX: touch.clientX, clientY: touch.clientY, preventDefault: () => event.preventDefault() })
-    else cancelTouchDrag()
+  function cancelTouchDrag() {
+    clearTimeout(hold)
+    cancelAnimationFrame(scrollFrame)
+    document.removeEventListener('touchmove', moveTouch, true)
+    document.removeEventListener('touchend', endTouch, true)
+    document.removeEventListener('touchcancel', cancelTouchDrag, true)
+    window.removeEventListener('blur', cancelTouchDrag)
+    ghost?.remove(); indicator?.remove()
+    ghost = null; indicator = null; targetPosition = null; touchID = null; sourceElement = null
+    dragging.value = false
   }
-  function cancelTouchDrag() { clearTimeout(hold); dragging.value = false }
   onBeforeUnmount(cancelTouchDrag)
-  return { touchDragging: dragging, startBlockTouch, moveBlockTouch, finishBlockTouch, selectResource, startTouchDrag, finishTouchDrag, cancelTouchDrag, canMoveBefore: computed(() => !!boundary.value?.before), canMoveAfter: computed(() => !!boundary.value?.after), move }
+  return { touchDevice, touchDragging: dragging, startBlockTouch, startHandleTouch, selectResource,
+    canMoveBefore: computed(() => !!boundary.value?.before), canMoveAfter: computed(() => !!boundary.value?.after), move }
 }

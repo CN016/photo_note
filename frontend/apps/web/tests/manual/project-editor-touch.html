@@ -1,0 +1,29 @@
+<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"><title>Editor regression</title></head><body><div id="app"></div><script type="module">
+// 移动媒体回归夹具：伪造当前页面内的资源读取，不使用令牌，不连接真实账号或保存接口。
+import {createApp,defineComponent,h} from 'vue';
+import {createPinia} from 'pinia';
+import {createRouter,createMemoryHistory} from 'vue-router';
+import ElementPlus from 'element-plus';
+import 'element-plus/dist/index.css';
+import '/src/style.css';
+import Editor from '/src/projects/views/ProjectDocumentEditor.vue';
+import GlobalMessageButton from '/src/components/GlobalMessageButton.vue';
+import {i18n} from '/src/i18n/index.ts';
+import {api} from '/src/api/client.ts';
+import {useAuthStore} from '/src/stores/auth.ts';
+api.inspiration=async()=>({business_id:'fixture',image_key:'fixture',file_name:'Fixture image'});
+api.download=async()=>new Blob([Uint8Array.from(atob('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII='),c=>c.charCodeAt(0))],{type:'image/png'});
+window.focusEvents=0;
+document.addEventListener('focusin',e=>{if(e.target.classList.contains('ProseMirror'))window.focusEvents++});
+const documentData={type:'doc',content:[{type:'paragraph',content:[{type:'text',text:'Before media'}]},
+{type:'inspirationImage',attrs:{src:'inspiration://fixture',width:33.333,layout:'small'}},
+{type:'projectAttachment',attrs:{storekey:'fixture-file',fileName:'Fixture.pdf',contentType:'application/pdf',width:100,layout:'original'}},
+{type:'paragraph',content:[{type:'text',text:'Drop target paragraph'}]},
+{type:'paragraph',content:[{type:'text',text:'Last paragraph'}]}]};
+const router=createRouter({history:createMemoryHistory(),routes:[{path:'/',name:'project-editor',component:{render:()=>null}}]});
+await router.push('/');
+const app=createApp(defineComponent({setup(){return()=>[h(GlobalMessageButton),h(Editor,{document:documentData,onReady:e=>window.testEditor=e})]}}));
+app.use(createPinia());app.use(router);app.use(i18n);app.use(ElementPlus);
+useAuthStore().user={nickname:'Fixture',business_id:'fixture'};
+app.mount('#app');
+</script></body></html>

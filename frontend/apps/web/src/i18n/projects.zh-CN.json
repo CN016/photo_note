@@ -27,6 +27,7 @@
   "saved": "已保存",
   "saving": "正在保存…",
   "unsaved": "有未保存的更改",
+  "dropHere": "松手放到这里",
   "toolbar": {
     "uploadMedia": "上传图片或视频",
     "paragraph": "正文",

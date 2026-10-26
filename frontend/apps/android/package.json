@@ -3,7 +3,7 @@
     "sharp": "0.35.5"
   },
   "name": "@photo-nini/android",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "private": true,
   "description": "取景台 Android 9+ 内置 GeckoView 平台壳",
   "scripts": {
@@ -14,5 +14,5 @@
     "node": ">=22",
     "npm": ">=10"
   },
-  "androidVersionCode": 2
+  "androidVersionCode": 3
 }

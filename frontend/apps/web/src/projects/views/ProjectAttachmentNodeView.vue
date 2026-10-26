@@ -10,7 +10,7 @@ import { api } from '../../api/client'
 
 const ProjectAttachmentPreview = defineAsyncComponent(() => import('../../components/ProjectAttachmentPreview.vue'))
 const props = defineProps<NodeViewProps>()
-const { canMoveBefore, canMoveAfter, move, touchDragging, startBlockTouch, moveBlockTouch, finishBlockTouch, selectResource, startTouchDrag, finishTouchDrag, cancelTouchDrag } = useResourceMovement(props)
+const { canMoveBefore, canMoveAfter, move, touchDragging, startBlockTouch, startHandleTouch, selectResource, touchDevice } = useResourceMovement(props)
 const route = useRoute()
 const { t } = useI18n({ useScope: 'global' })
 const url = ref('')
@@ -77,10 +77,10 @@ onBeforeUnmount(() => { requestVersion += 1; disposePlayer(); if (url.value) URL
     class="project-resource-node attachment-node"
     :class="{ 'is-selected': selected, 'is-corner-resizing': cornerResizing, 'is-touch-dragging': touchDragging }"
     :style="{ width: `calc(${displayWidth}% - 12px)` }"
-    draggable="true"
+    :draggable="!touchDevice"
     contenteditable="false"
-    @pointerdown="selectResource"
-    @touchstart="startBlockTouch" @touchmove="moveBlockTouch" @touchend="finishBlockTouch" @touchcancel="cancelTouchDrag"
+    @mousedown="selectResource" @click="selectResource" @contextmenu.prevent
+    @touchstart="startBlockTouch"
     @dblclick.prevent.stop="openPreview"
   >
     <div
@@ -113,7 +113,7 @@ onBeforeUnmount(() => { requestVersion += 1; disposePlayer(); if (url.value) URL
         <el-tooltip :content="t('projects.originalMediaHint')"><el-button size="small" :type="originalMode ? 'primary' : 'default'" :aria-pressed="originalMode" @pointerdown.prevent @click.stop="setSizePreset(false)">{{ t('projects.originalMedia') }}</el-button></el-tooltip>
       </div>
       <el-tooltip :content="t('projects.moveBlock')" placement="top">
-        <span class="resource-drag-handle" @pointerdown.stop="startTouchDrag" @pointerup.stop="finishTouchDrag" @pointercancel="cancelTouchDrag" data-drag-handle draggable="true" :aria-label="t('projects.moveBlock')"><el-icon><Rank /></el-icon></span>
+        <span class="resource-drag-handle" @touchstart.stop="startHandleTouch" data-drag-handle :draggable="!touchDevice" :aria-label="t('projects.moveBlock')"><el-icon><Rank /></el-icon></span>
       </el-tooltip>
       <el-tooltip :content="t('projects.moveBefore')"><el-button text :disabled="!canMoveBefore" :aria-label="t('projects.moveBefore')" @pointerdown.prevent @click.stop="move(-1)"><el-icon><ArrowLeft /></el-icon></el-button></el-tooltip>
       <el-tooltip :content="t('projects.moveAfter')"><el-button text :disabled="!canMoveAfter" :aria-label="t('projects.moveAfter')" @pointerdown.prevent @click.stop="move(1)"><el-icon><ArrowRight /></el-icon></el-button></el-tooltip>

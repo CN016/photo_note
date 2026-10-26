@@ -140,4 +140,8 @@ onBeforeUnmount(() => {
   .project-block-drag-handle { display: none; }
   .project-document-editor :deep(.tvp-toolbar .el-button) { min-width: 44px; min-height: 44px; }
 }
+/* 拖动镜像和落点挂到 body，避免编辑器 DOM 重绘/滚动遮挡反馈。 */
+:global(.project-resource-drag-ghost) { position: fixed; z-index: 2000; pointer-events: none; opacity: .7; border: 2px solid var(--accent); border-radius: 8px; background: var(--surface); box-shadow: var(--shadow); }
+:global(.project-resource-drag-ghost img) { display: block; max-width: 100%; max-height: 150px; object-fit: contain; }
+:global(.project-resource-drop-indicator) { position: fixed; z-index: 2001; pointer-events: none; background: var(--accent); color: var(--accent); font-size: 12px; font-weight: 700; white-space: nowrap; text-indent: 8px; line-height: 24px; }
 </style>

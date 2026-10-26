@@ -1,6 +1,7 @@
 import { Node, mergeAttributes } from '@tiptap/core'
 import { FontSize as NativeFontSize } from '@tiptap/extension-text-style'
 import { VueNodeViewRenderer } from '@tiptap/vue-3'
+import { stopResourceEditorEvent, usesTouchResourceDrag } from './resourceTouchInteraction'
 import InspirationImageNodeView from './views/InspirationImageNodeView.vue'
 import ProjectAttachmentNodeView from './views/ProjectAttachmentNodeView.vue'
 
@@ -26,14 +27,15 @@ export const InspirationImage = Node.create({
   name: 'inspirationImage',
   group: 'block',
   atom: true,
-  draggable: true,
+  // 触屏由自定义长按手势接管，禁止 ProseMirror 强制给节点恢复原生 draggable。
+  draggable: !usesTouchResourceDrag(),
   selectable: true,
   addAttributes() { return { src: { default: null }, width: { default: 100 }, layout: { default: 'original' } } },
   parseHTML() { return [{ tag: 'figure[data-inspiration]' }] },
   renderHTML({ HTMLAttributes }) {
     return ['figure', mergeAttributes({ 'data-inspiration': HTMLAttributes.src, 'data-width': HTMLAttributes.width, 'data-layout': HTMLAttributes.layout }, HTMLAttributes)]
   },
-  addNodeView() { return VueNodeViewRenderer(InspirationImageNodeView) },
+  addNodeView() { return VueNodeViewRenderer(InspirationImageNodeView, { stopEvent: stopResourceEditorEvent }) },
 })
 
 /** 非灵感图资源作为受控附件节点保存 storekey，下载和预览仍需项目接口授权。 */
@@ -41,7 +43,8 @@ export const ProjectAttachment = Node.create({
   name: 'projectAttachment',
   group: 'block',
   atom: true,
-  draggable: true,
+  // 触屏由自定义长按手势接管，禁止 ProseMirror 强制给节点恢复原生 draggable。
+  draggable: !usesTouchResourceDrag(),
   selectable: true,
   addAttributes() {
     return {
@@ -57,5 +60,5 @@ export const ProjectAttachment = Node.create({
       'data-width': HTMLAttributes.width, 'data-layout': HTMLAttributes.layout,
     }, HTMLAttributes)]
   },
-  addNodeView() { return VueNodeViewRenderer(ProjectAttachmentNodeView) },
+  addNodeView() { return VueNodeViewRenderer(ProjectAttachmentNodeView, { stopEvent: stopResourceEditorEvent }) },
 })
