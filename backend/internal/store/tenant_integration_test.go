@@ -188,7 +188,8 @@ func TestTenantLegacyMigration(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, file := range files {
-		if strings.HasPrefix(filepath.Base(file), "000021_") {
+		// 此用例只验证从租户迁移之前的版本升级，不提前执行依赖组织字段的后续迁移。
+		if filepath.Base(file) >= "000021_" {
 			continue
 		}
 		body, err := os.ReadFile(file)

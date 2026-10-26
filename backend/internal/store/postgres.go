@@ -18,7 +18,8 @@ import (
 
 // PostgresStore 把所有 GORM 查询集中在 repository 层，service 不直接拼接或执行数据库语句。
 type PostgresStore struct {
-	db *gorm.DB
+	db                   *gorm.DB
+	inspirationAlgorithm string
 }
 
 // NewPostgresStore 创建只封装查询能力的 repository，不会触发 AutoMigrate 或其他 DDL。
@@ -252,20 +253,29 @@ func (store *PostgresStore) ValidateTagOwnership(ctx context.Context, userID uui
 
 // CreateInspiration 保存灵感图及其版本化 JSONB 数据。
 func (store *PostgresStore) CreateInspiration(ctx context.Context, inspiration *model.Inspiration) error {
-	if err := store.db.WithContext(ctx).Create(inspiration).Error; err != nil {
-		return persistenceError(err)
-	}
-	items := []model.Inspiration{*inspiration}
-	if err := populateInspirationTagNames(ctx, store.db, inspiration.UserID, items); err != nil {
-		return err
-	}
-	*inspiration = items[0]
-	return nil
+	return persistenceError(store.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if err := tx.Create(inspiration).Error; err != nil {
+			return err
+		}
+		if err := recordInspirationActivity(tx, inspiration); err != nil {
+			return err
+		}
+		if err := store.enqueueInspirationProcessing(tx, inspiration); err != nil {
+			return err
+		}
+		items := []model.Inspiration{*inspiration}
+		if err := populateInspirationTagNames(ctx, tx, inspiration.UserID, items); err != nil {
+			return err
+		}
+		*inspiration = items[0]
+		return nil
+	}))
 }
 
 // ListInspirations 按用户、标签任一/全部匹配规则和稳定排序执行分页检索。
 func (store *PostgresStore) ListInspirations(ctx context.Context, userID uuid.UUID, tagIDs []uuid.UUID, match, search, sort string, offset, limit int) ([]model.Inspiration, int64, error) {
 	query := store.db.WithContext(ctx).Model(&model.Inspiration{}).Where("user_id = ?", userID)
+	query = applyInspirationFilters(query, ctx, userID)
 	if search != "" {
 		pattern := "%" + strings.NewReplacer("\\", "\\\\", "%", "\\%", "_", "\\_").Replace(search) + "%"
 		query = query.Where("file_name ILIKE ? ESCAPE E'\\\\'", pattern)
@@ -592,22 +602,27 @@ func (store *PostgresStore) UpdateInspiration(ctx context.Context, userID, inspi
 
 // UpdateInspirationWithAsyncVersion 原子更新灵感图并递增异步代次，RETURNING 返回本次请求实际取得的版本。
 func (store *PostgresStore) UpdateInspirationWithAsyncVersion(ctx context.Context, userID, inspirationID uuid.UUID, updates map[string]any) (model.Inspiration, error) {
-	updates["async_version"] = gorm.Expr("async_version + 1")
-	updates["updated_at"] = time.Now().UTC()
-	var inspiration model.Inspiration
-	result := store.db.WithContext(ctx).Model(&inspiration).Clauses(clause.Returning{}).
-		Where("user_id = ? AND business_id = ?", userID, inspirationID).Updates(updates)
-	if result.Error != nil {
-		return model.Inspiration{}, persistenceError(result.Error)
-	}
-	if result.RowsAffected == 0 {
-		return model.Inspiration{}, fault.NotFound()
-	}
-	items := []model.Inspiration{inspiration}
-	if err := populateInspirationTagNames(ctx, store.db, userID, items); err != nil {
-		return model.Inspiration{}, err
-	}
-	return items[0], nil
+	var updated model.Inspiration
+	err := store.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		updates["async_version"] = gorm.Expr("async_version + 1")
+		updates["updated_at"] = time.Now().UTC()
+		var inspiration model.Inspiration
+		result := tx.Model(&inspiration).Clauses(clause.Returning{}).
+			Where("user_id = ? AND business_id = ?", userID, inspirationID).Updates(updates)
+		if result.Error != nil {
+			return persistenceError(result.Error)
+		}
+		if result.RowsAffected == 0 {
+			return fault.NotFound()
+		}
+		items := []model.Inspiration{inspiration}
+		if err := populateInspirationTagNames(ctx, tx, userID, items); err != nil {
+			return err
+		}
+		updated = items[0]
+		return store.enqueueInspirationProcessing(tx, &updated)
+	})
+	return updated, err
 }
 
 // UpdateInspirationWithTagNames 在同一事务中复用或新建用户标签并更新灵感图，确保名称解析与绑定不会部分提交。
@@ -679,6 +694,9 @@ func (store *PostgresStore) UpdateInspirationWithTagNames(ctx context.Context, u
 			return err
 		}
 		inspiration = items[0]
+		if incrementAsyncVersion {
+			return store.enqueueInspirationProcessing(tx, &inspiration)
+		}
 		return nil
 	})
 	if err != nil {
@@ -790,6 +808,11 @@ func (store *PostgresStore) DeleteInspiration(ctx context.Context, userID, inspi
 		}
 		if usages > 0 {
 			return fault.Conflict("该灵感图仍被项目引用，请先从所有项目正文中移除")
+		}
+
+		// 图片锁先于任务锁，与换图和回写保持同序；删除立即取消未结束的任务，历史计数保持不变。
+		if err := tx.Model(&model.InspirationProcessingJob{}).Where("user_id=? AND inspiration_id=? AND stage NOT IN ('succeeded','canceled')", userID, inspirationID).Updates(map[string]any{"stage": "canceled", "lease_token": nil, "lease_until": nil, "updated_at": time.Now().UTC()}).Error; err != nil {
+			return persistenceError(err)
 		}
 		if err := tx.Delete(&inspiration).Error; err != nil {
 			return persistenceError(err)

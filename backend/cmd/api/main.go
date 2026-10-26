@@ -90,6 +90,12 @@ func run() error {
 	consoleService := service.NewConsoleService(repository)
 	consoleService.ConfigureFeedbackReplies(runtimeConfig.FeedbackMaxTextChars, notices)
 	inspirations := service.NewInspirationService(repository, fileService, runtimeConfig.MaxUploadBytes)
+	processingConfig, err := runtimeConfigService.InspirationProcessing(startupContext)
+	if err != nil {
+		return err
+	}
+	repository.SetInspirationProcessingAlgorithm(processingConfig.Algorithm)
+	inspirationLibrary := service.NewInspirationLibraryService(repository, inspirations, runtimeConfigService, notices, errorLogs)
 	inspirations.SetErrorLogService(errorLogs)
 	plans := service.NewPlanService(repository, fileService, runtimeConfig.MaxUploadBytes, notices, runtimeConfigService)
 	plans.SetErrorLogService(errorLogs)
@@ -102,6 +108,7 @@ func run() error {
 		Tags:                  service.NewTagService(repository),
 		Inspirations:          inspirations,
 		InspirationStatistics: service.NewInspirationStatisticsService(repository),
+		InspirationLibrary:    inspirationLibrary,
 		Tokens:                tokens,
 		PostgresPing:          func(ctx context.Context) error { return database.Ping(ctx, databaseConnection) },
 		RedisPing:             func(ctx context.Context) error { return tokens.Client().Ping(ctx).Err() },
@@ -132,6 +139,12 @@ func run() error {
 
 	shutdownContext, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
+	inspirationLibrary.Start(shutdownContext, processingConfig)
+	defer func() {
+		cleanup, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		_ = inspirationLibrary.Wait(cleanup)
+	}()
 	noticeWorkerDone := make(chan struct{})
 	go func() {
 		defer close(noticeWorkerDone)

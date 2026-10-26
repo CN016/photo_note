@@ -85,8 +85,9 @@ func (Tag) TableName() string { return "tags" }
 // Inspiration 映射灵感图表；标签数组保存标签业务 UUID，归属和存在性由 service 校验。
 type Inspiration struct {
 	BaseModel
-	UserID uuid.UUID      `gorm:"column:user_id;type:uuid;not null;index"`
-	TagIDs pq.StringArray `gorm:"column:tag_ids;type:uuid[];not null;default:ARRAY[]::uuid[]"`
+	InspirationAnalysis `gorm:"embedded"`
+	UserID              uuid.UUID      `gorm:"column:user_id;type:uuid;not null;index"`
+	TagIDs              pq.StringArray `gorm:"column:tag_ids;type:uuid[];not null;default:ARRAY[]::uuid[]"`
 	// TagNames 是查询时按当前用户的标签记录填充的展示字段，不持久化到 inspirations 表。
 	TagNames []string `gorm:"-" json:"-"`
 	ImageKey string   `gorm:"column:image_key;type:text;not null"`

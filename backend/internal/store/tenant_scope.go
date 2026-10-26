@@ -15,6 +15,7 @@ import (
 
 // managedTenantTables 覆盖全部自建表；系统表显式固定在 -1 域，其余表没有可信上下文时拒绝访问。
 var managedTenantTables = map[string]bool{
+	"inspiration_goals": false, "inspiration_activities": false, "inspiration_processing_jobs": false,
 	"users": true, "app_configs": true, "feedbacks": true, "feedback_notification_jobs": true,
 	"error_logs": false, "tags": false, "inspirations": false, "ledger_records": false,
 	"schedule_items": false, "schedule_exceptions": false, "schedule_bookings": false, "schedule_shares": false,

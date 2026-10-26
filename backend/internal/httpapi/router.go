@@ -46,6 +46,7 @@ type Dependencies struct {
 	Tags                  *service.TagService
 	Inspirations          *service.InspirationService
 	InspirationStatistics *service.InspirationStatisticsService
+	InspirationLibrary    *service.InspirationLibraryService
 	Tokens                accessTokenValidator
 	PostgresPing          func(context.Context) error
 	RedisPing             func(context.Context) error
@@ -134,6 +135,7 @@ func Router(dependencies Dependencies) *gin.Engine {
 	protected.PATCH("/tags/:business_id", updateTagHandler(dependencies.Tags))
 	protected.DELETE("/tags/:business_id", deleteTagHandler(dependencies.Tags))
 	protected.GET("/inspirations", listInspirationsHandler(dependencies.Inspirations))
+	registerInspirationLibraryRoutes(protected, dependencies.InspirationLibrary)
 	if dependencies.InspirationStatistics != nil {
 		protected.GET("/inspirations/statistics", inspirationStatisticsHandler(dependencies.InspirationStatistics))
 	}
@@ -1151,6 +1153,7 @@ func deleteTagHandler(tags *service.TagService) gin.HandlerFunc {
 
 // inspirationResponse 输出灵感图业务字段，并保留 data 的 JSON 对象结构。
 type inspirationResponse struct {
+	model.InspirationAnalysis
 	BusinessID    uuid.UUID                       `json:"business_id"`
 	TagIDs        []string                        `json:"tag_ids"`
 	TagNames      []string                        `json:"tag_names"`
@@ -1173,7 +1176,8 @@ func inspirationDTO(inspiration model.Inspiration, includeImageMetadata bool) in
 	tagNames := append([]string{}, inspiration.TagNames...)
 	data := json.RawMessage(append([]byte(nil), inspiration.Data...))
 	response := inspirationResponse{BusinessID: inspiration.BusinessID, TagIDs: tagIDs, TagNames: tagNames, ImageKey: inspiration.ImageKey,
-		FileName: inspiration.FileName, FileHash: inspiration.FileHash, FileSize: inspiration.FileSize,
+		InspirationAnalysis: inspiration.InspirationAnalysis,
+		FileName:            inspiration.FileName, FileHash: inspiration.FileHash, FileSize: inspiration.FileSize,
 		Data: data, CreatedAt: inspiration.CreatedAt, UpdatedAt: inspiration.UpdatedAt}
 	if includeImageMetadata {
 		metadata := service.NormalizeImageMetadata(inspiration.ImageMetadata)
@@ -1211,7 +1215,12 @@ func listInspirationsHandler(inspirations *service.InspirationService) gin.Handl
 			writeError(c, err)
 			return
 		}
-		result, err := inspirations.List(c.Request.Context(), claims.UserBusinessID, tagIDs, match, search, sort, page)
+		filters := model.InspirationFilters{DateFrom: c.Query("date_from"), DateTo: c.Query("date_to"), Project: c.Query("project"), People: c.Query("people"), EmptyShot: c.Query("empty_shot"), Color: c.Query("color"), Status: c.Query("status")}
+		if err := service.ValidateInspirationFilters(filters); err != nil {
+			writeError(c, err)
+			return
+		}
+		result, err := inspirations.List(model.WithInspirationFilters(c.Request.Context(), filters), claims.UserBusinessID, tagIDs, match, search, sort, page)
 		if err != nil {
 			writeError(c, err)
 			return

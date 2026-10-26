@@ -1,0 +1,32 @@
+[
+  {
+    "completed": 10,
+    "peak_active_analysis_leases": 10,
+    "round": 1,
+    "seconds_including_db_save": 1.6939818
+  },
+  {
+    "completed": 10,
+    "peak_active_analysis_leases": 10,
+    "round": 2,
+    "seconds_including_db_save": 2.3826749
+  },
+  {
+    "completed": 10,
+    "peak_active_analysis_leases": 10,
+    "round": 3,
+    "seconds_including_db_save": 2.1180081
+  },
+  {
+    "completed": 10,
+    "peak_active_analysis_leases": 10,
+    "round": 4,
+    "seconds_including_db_save": 2.6722161
+  },
+  {
+    "completed": 10,
+    "peak_active_analysis_leases": 10,
+    "round": 5,
+    "seconds_including_db_save": 2.395493
+  }
+]

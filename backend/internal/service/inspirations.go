@@ -61,6 +61,7 @@ type InspirationService struct {
 	compressionCond   *sync.Cond
 	compressionJobs   []inspirationCompressionJob
 	compressionActive int
+	durableProcessing bool
 }
 
 const (
@@ -123,6 +124,10 @@ func NewInspirationService(inspirations InspirationRepository, files Inspiration
 	service := &InspirationService{inspirations: inspirations, files: files, maxImageBytes: maxImageBytes,
 		readImageMetadata: ReadExifToolMetadata}
 	service.compressionCond = sync.NewCond(&service.compressionMutex)
+	if persistent, ok := inspirations.(interface{ DurableInspirationProcessing() bool }); ok && persistent.DurableInspirationProcessing() {
+		service.durableProcessing = true
+		return service
+	}
 	for worker := 0; worker < inspirationCompressionWorkers; worker++ {
 		go service.runCompressionWorker()
 	}
@@ -304,6 +309,12 @@ func (service *InspirationService) Update(ctx context.Context, userID, inspirati
 		// 新图片尚未处理完成时清空旧文件元数据，避免把旧图的哈希或大小返回给前端。
 		updates["file_hash"] = nil
 		updates["file_size"] = nil
+		for _, field := range []string{"people_count", "is_empty_shot", "dominant_color", "dominant_hue", "color_bucket", "color_palette", "analyzed_at"} {
+			updates[field] = nil
+		}
+		updates["analysis_status"] = "pending_compression"
+		updates["analysis_algorithm"] = ""
+		updates["analysis_version"] = 0
 		// 换图时重置旧图属性，再合入该次请求刚从原始文件读取的客户端属性。
 		metadata := model.InspirationImageMetadata{}
 		if imageMetadataSet {
@@ -323,7 +334,7 @@ func (service *InspirationService) Update(ctx context.Context, userID, inspirati
 		}
 	}
 	if tagNamesSet {
-		updated, err := service.inspirations.UpdateInspirationWithTagNames(ctx, userID, inspirationID, tagNames, updates, storeKeyImage)
+		updated, err := service.inspirations.UpdateInspirationWithTagNames(ctx, userID, inspirationID, tagNames, updates, storeKeyImage || (imageKeySet && service.durableProcessing))
 		if err != nil {
 			return model.Inspiration{}, err
 		}
@@ -333,7 +344,7 @@ func (service *InspirationService) Update(ctx context.Context, userID, inspirati
 		}
 		return updated, nil
 	}
-	if storeKeyImage {
+	if storeKeyImage || (imageKeySet && service.durableProcessing) {
 		updated, err := service.inspirations.UpdateInspirationWithAsyncVersion(ctx, userID, inspirationID, updates)
 		if err != nil {
 			return model.Inspiration{}, err
@@ -462,6 +473,9 @@ func (service *InspirationService) enqueueCompression(job inspirationCompression
 
 // enqueueScopedCompression 将组织身份与轻量任务一并保存，避免 HTTP 结束后丢失隔离范围。
 func (service *InspirationService) enqueueScopedCompression(ctx context.Context, job inspirationCompressionJob) {
+	if service.durableProcessing {
+		return
+	}
 	job.scope, job.scoped = tenant.FromContext(ctx)
 	service.enqueueCompression(job)
 }
@@ -498,7 +512,12 @@ func (service *InspirationService) runCompressionWorker() {
 
 // processCompressionJob 在 storekey 锁内压缩文件，核对异步代次后写回元数据并清理不再使用的原图。
 func (service *InspirationService) processCompressionJob(job inspirationCompressionJob) error {
-	ctx, cancel := context.WithTimeout(context.Background(), inspirationCompressionTimeout)
+	return service.processCompressionJobContext(context.Background(), job)
+}
+
+// processCompressionJobContext 将持久化任务的退出信号传入压缩流程，停止时由租约恢复。
+func (service *InspirationService) processCompressionJobContext(parent context.Context, job inspirationCompressionJob) error {
+	ctx, cancel := context.WithTimeout(parent, inspirationCompressionTimeout)
 	defer cancel()
 	if job.scoped {
 		ctx = tenant.WithScope(ctx, job.scope)

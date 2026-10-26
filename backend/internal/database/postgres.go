@@ -71,29 +71,32 @@ func postgresDSN(cfg config.Config) string {
 // checkSchema 只读取数据库目录，不自动建表；缺表或发现外键时让进程启动失败并提示修复 SQL。
 func checkSchema(ctx context.Context, connection *gorm.DB) error {
 	for name, table := range map[string]any{
-		"app_configs":                &model.AppConfig{},
-		"users":                      &model.User{},
-		"tags":                       &model.Tag{},
-		"inspirations":               &model.Inspiration{},
-		"feedbacks":                  &model.Feedback{},
-		"feedback_notification_jobs": &model.FeedbackNotificationJob{},
-		"ledger_records":             &model.LedgerRecord{},
-		"schedule_items":             &model.ScheduleItem{},
-		"schedule_exceptions":        &model.ScheduleException{},
-		"schedule_bookings":          &model.ScheduleBooking{},
-		"schedule_shares":            &model.ScheduleShare{},
-		"notifications":              &model.Notification{},
-		"notice_config":              &model.NoticeConfig{},
-		"notice_deliveries":          &model.NoticeDelivery{},
-		"error_logs":                 &model.ErrorLog{},
-		"projects":                   &model.Project{},
-		"plans":                      &model.Plan{},
-		"plan_reminders":             &model.PlanReminder{},
-		"project_inspiration_usages": &model.ProjectInspirationUsage{},
-		"project_attachments":        &model.ProjectAttachment{},
-		"organizations":              &model.Organization{},
-		"organization_members":       &model.OrganizationMember{},
-		"file_ownerships":            &model.FileOwnership{},
+		"inspiration_goals":           &model.InspirationGoal{},
+		"inspiration_activities":      &model.InspirationActivity{},
+		"inspiration_processing_jobs": &model.InspirationProcessingJob{},
+		"app_configs":                 &model.AppConfig{},
+		"users":                       &model.User{},
+		"tags":                        &model.Tag{},
+		"inspirations":                &model.Inspiration{},
+		"feedbacks":                   &model.Feedback{},
+		"feedback_notification_jobs":  &model.FeedbackNotificationJob{},
+		"ledger_records":              &model.LedgerRecord{},
+		"schedule_items":              &model.ScheduleItem{},
+		"schedule_exceptions":         &model.ScheduleException{},
+		"schedule_bookings":           &model.ScheduleBooking{},
+		"schedule_shares":             &model.ScheduleShare{},
+		"notifications":               &model.Notification{},
+		"notice_config":               &model.NoticeConfig{},
+		"notice_deliveries":           &model.NoticeDelivery{},
+		"error_logs":                  &model.ErrorLog{},
+		"projects":                    &model.Project{},
+		"plans":                       &model.Plan{},
+		"plan_reminders":              &model.PlanReminder{},
+		"project_inspiration_usages":  &model.ProjectInspirationUsage{},
+		"project_attachments":         &model.ProjectAttachment{},
+		"organizations":               &model.Organization{},
+		"organization_members":        &model.OrganizationMember{},
+		"file_ownerships":             &model.FileOwnership{},
 	} {
 		if !connection.WithContext(ctx).Migrator().HasTable(table) {
 			if name == "ledger_records" {
@@ -145,6 +148,13 @@ func checkSchema(ctx context.Context, connection *gorm.DB) error {
 		// 灵感图文件元数据缺失时不能安全创建或更新灵感图，因此启动阶段要求先执行增量迁移。
 		if name == "inspirations" {
 			migrator := connection.WithContext(ctx).Migrator()
+			// 新表存在仍需核对画像列，拒绝未完整应用增量迁移的 schema。
+			for _, column := range []string{"people_count", "is_empty_shot", "dominant_color", "dominant_hue", "color_bucket", "color_palette", "analysis_status", "analysis_version", "analysis_algorithm", "analyzed_at"} {
+				if !migrator.HasColumn(table, column) {
+					return fmt.Errorf("PostgreSQL schema 缺少灵感库画像字段，请先执行 backend/migrations/000023_inspiration_library.sql")
+				}
+			}
+
 			if !migrator.HasColumn(table, "FileName") || !migrator.HasColumn(table, "FileHash") || !migrator.HasColumn(table, "FileSize") {
 				return fmt.Errorf("PostgreSQL schema 缺少灵感图文件元数据列，请按顺序执行 backend/migrations/000005_add_inspiration_file_metadata.sql 和 backend/migrations/000006_add_inspiration_file_size.sql")
 			}
