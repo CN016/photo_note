@@ -9,6 +9,7 @@ import { useAppShellStore } from '../stores/appShell'
 import BrandMark from './BrandMark.vue'
 import LanguageSwitcher from './LanguageSwitcher.vue'
 import ThemeSwitcher from './ThemeSwitcher.vue'
+import InspirationGoalReminder from './InspirationGoalReminder.vue'
 
 const { t } = useI18n()
 const auth = useAuthStore()
@@ -66,6 +67,7 @@ function active(path: string): boolean {
 
 <template>
   <aside class="app-navigation" :aria-label="t('common.navigation')">
+    <InspirationGoalReminder />
     <RouterLink class="brand-lockup" to="/inspirations" :aria-label="t('common.brand')">
       <BrandMark />
       <span class="brand-copy"><strong>{{ t('common.brand') }}</strong><small>{{ t('common.product') }}</small></span>

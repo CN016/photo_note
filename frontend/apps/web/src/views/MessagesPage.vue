@@ -110,6 +110,7 @@ function selectTab(next: 'inbox' | 'channels') {
 }
 
 function messageTitle(item: NoticeMessage): string {
+  if (item.event_type === 'inspiration.goal.unmet') return t('inspirationGoalUnmet')
   if (item.event_type === 'inspiration.compression.succeeded') return t('compressionSucceeded')
   if (item.event_type === 'inspiration.compression.failed') return t('compressionFailed')
   if (item.event_type === 'system.error_log.created') return t('errorLogCreated')
@@ -120,6 +121,7 @@ function messageTitle(item: NoticeMessage): string {
 }
 
 function messageBody(item: NoticeMessage): string {
+  if (item.event_type === 'inspiration.goal.unmet') return t('inspirationGoalBody', { day: item.payload.day || '', count: item.payload.saved_count ?? 0, target: item.payload.target ?? 0 })
   if (item.event_type === 'inspiration.compression.succeeded') {
     return t('version', { version: item.payload.async_version ?? 0 })
   }

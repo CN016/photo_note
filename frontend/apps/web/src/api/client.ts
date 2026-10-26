@@ -1,6 +1,7 @@
 import { ApiError, type ApiEnvelope, type ApiErrorEnvelope, type AuthResponse, type ConsoleConfigRecord, type ConsoleFeedbackRecord, type ConsoleInspirationRecord, type ConsoleUserRecord, type InspirationImageMetadata, type InspirationRecord, type InspirationStatistics, type LedgerFields, type LedgerImportItem, type LedgerImportResult, type LedgerRecord, type NoticeConfig, type NoticeConfigList, type NoticeDelivery, type NotificationPage, type PageResult, type PlanFields, type PlanRecord, type ProjectRecord, type ProjectSaveInput, type ProjectSummary, type ScheduleBooking, type ScheduleBookingReceipt, type ScheduleFields, type ScheduleOccurrence, type SchedulePublicSlot, type ScheduleShare, type TagRecord, type TokenPair, type UserProfile } from './types'
 import { API_REQUEST_ORIGIN } from './config'
 import type { Environment, Organization, OrganizationMember } from './types'
+import type { InspirationLibraryFilters, InspirationGoalStatus, InspirationFacet } from './types'
 
 /** V1 业务路由统一加版本前缀；环境变量只提供服务主机。 */
 const API_BASE = `${API_REQUEST_ORIGIN}/api/v1`
@@ -237,16 +238,24 @@ export const api = {
     return request<void>('/feedback', { method: 'POST', body }, Boolean(accessToken))
   },
   /** 使用服务端分页契约加载灵感图，并把文件名、标签和排序条件交给数据库组合筛选。 */
-  inspirations(page: number, pageSize = 20, options: { q?: string; tagIds?: string[]; tagMatch?: 'any' | 'all'; sort?: 'created_desc' | 'created_asc' | 'updated_desc' } = {}) {
+  inspirations(page: number, pageSize = 20, options: InspirationLibraryFilters & { q?: string; tagIds?: string[]; tagMatch?: 'any' | 'all'; sort?: 'created_desc' | 'created_asc' | 'updated_desc' } = {}) {
     const params = new URLSearchParams({ page: String(page), page_size: String(pageSize) })
     if (options.q?.trim()) params.set('q', options.q.trim())
     options.tagIds?.forEach(id => params.append('tag_ids', id))
     if (options.tagMatch) params.set('tag_match', options.tagMatch)
     if (options.sort) params.set('sort', options.sort)
+    for (const key of ['date_from','date_to','project','people','empty_shot','color','status'] as const) { if (options[key]) params.set(key, options[key]!) }
     return request<PageResult<InspirationRecord>>(`/inspirations?${params.toString()}`)
   },
   /** 查询当前账号的拍摄参数分布；后台仅返回分类计数，不传输图片记录明细。 */
   inspirationStatistics() { return request<InspirationStatistics>('/inspirations/statistics') },
+  /** 目标、活动、分类均由后端按当前空间与创建者查询；确认提醒采用原子领取。 */
+  inspirationGoal() { return request<InspirationGoalStatus>('/inspirations/daily-goal') },
+  saveInspirationGoal(goal: InspirationGoalStatus['goal']) { return request<InspirationGoalStatus>('/inspirations/daily-goal', { method:'PUT',body:JSON.stringify(goal) }) },
+  inspirationActivity(year: number) { return request<InspirationGoalStatus>(`/inspirations/activity?year=${year}`) },
+  inspirationBrowseSummary(from: string,to: string) { return request<Record<string,InspirationFacet[]>>(`/inspirations/browse-summary?${new URLSearchParams({date_from:from,date_to:to})}`) },
+  acknowledgeInspirationReminder(day: string) { return request<{acknowledged:boolean}>('/inspirations/daily-goal/reminder/ack',{method:'POST',body:JSON.stringify({day})}) },
+  retryInspirationProcessing(id: string) { return request<{queued:boolean}>(`/inspirations/${encodeURIComponent(id)}/processing/retry`,{method:'POST'}) },
   /** 按当前用户和可选名称搜索分页标签；page_size 最大为服务端允许的 100 条。 */
   tags(page = 1, pageSize = 20, query = '') {
     const params = new URLSearchParams({ page: String(page), page_size: String(pageSize) })

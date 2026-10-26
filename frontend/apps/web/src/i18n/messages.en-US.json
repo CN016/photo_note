@@ -98,5 +98,7 @@
     "providerHelp": "Supports WeCom, DingTalk, and Feishu custom bots.",
     "signatureHelp": "WeCom does not use this signing field.",
     "noSecret": "No signing secret"
-  }
+  },
+  "inspirationGoalUnmet": "Daily collection reminder",
+  "inspirationGoalBody": "{day}: {count} images saved. Goal: {target}."
 }

@@ -75,6 +75,13 @@ export interface AuthResponse {
 }
 
 export interface InspirationRecord {
+  people_count?: number | null
+  is_empty_shot?: boolean | null
+  dominant_color?: string | null
+  dominant_hue?: number | null
+  color_bucket?: string | null
+  analysis_status?: string
+  analyzed_at?: string | null
   business_id: string
   tag_ids: string[]
   /** 对应 tag_ids 的展示名称；旧服务端响应可能暂时不包含该字段。 */
@@ -90,6 +97,13 @@ export interface InspirationRecord {
   created_at: string
   updated_at: string
 }
+
+/** 图库扩展筛选不包含资源归属；空间身份统一由请求客户端附加。 */
+export interface InspirationLibraryFilters { date_from?: string; date_to?: string; project?: string; people?: string; empty_shot?: string; color?: string; status?: string }
+/** 每日数量是成功创建的历史计数，不能以当前列表条数替代。 */
+export interface InspirationDay { day: string; saved_count: number; target: number | null }
+export interface InspirationGoalStatus { goal: { enabled: boolean; target: number; reminder_time: string }; today: InspirationDay; days?: InspirationDay[]; reminder_pending: boolean }
+export interface InspirationFacet { key: string; name?: string; count: number; previews?: { business_id: string; image_key: string; file_name: string }[] }
 
 /** 从原图读取的标准属性；extra 保留带命名空间且通过大小限制的其他标签。 */
 export interface InspirationImageMetadata {
@@ -326,6 +340,9 @@ export interface NoticeMessage {
   resource_type: string
   resource_business_id: string | null
   payload: {
+    day?: string
+    saved_count?: number
+    target?: number
     result?: string
     async_version?: number
     message?: string

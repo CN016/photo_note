@@ -64,5 +64,11 @@
     "busy": "Finish the current export first",
     "failed": "Could not export the file. Please try again.",
     "tooLarge": "The file exceeds the Android export limit of 32 MB. Reduce the image dimensions and try again."
+  },
+  "inspirationGoal": {
+    "title": "Your daily collection goal is not met",
+    "body": "You saved {count} images today. Your goal is {target}. Keep collecting inspiration.",
+    "go": "Add images",
+    "later": "Later"
   }
 }

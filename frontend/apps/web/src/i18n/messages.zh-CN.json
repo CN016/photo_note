@@ -98,5 +98,7 @@
     "providerHelp": "支持企业微信、钉钉和飞书自定义机器人。",
     "signatureHelp": "企业微信不使用此签名字段。",
     "noSecret": "未设置签名密钥"
-  }
+  },
+  "inspirationGoalUnmet": "灵感库存图提醒",
+  "inspirationGoalBody": "{day} 已存 {count} 张，目标 {target} 张。"
 }

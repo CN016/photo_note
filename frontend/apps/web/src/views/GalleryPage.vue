@@ -4,6 +4,10 @@ import { useI18n } from 'vue-i18n'
 import { ArrowRight, PictureFilled, Plus, Search } from '@element-plus/icons-vue'
 import AppHeader from '../components/AppHeader.vue'
 import InspirationThumbnail from '../components/InspirationThumbnail.vue'
+import InspirationLibraryTools from '../components/InspirationLibraryTools.vue'
+import { useAuthStore } from '../stores/auth'
+import type { InspirationLibraryFilters } from '../api/types'
+import { ElMessage } from 'element-plus'
 import { api } from '../api/client'
 import { ApiError, type InspirationRecord, type TagRecord } from '../api/types'
 
@@ -19,10 +23,15 @@ const total = ref(0)
 const pageSize = 20
 const loading = ref(false)
 const error = ref('')
+const auth = useAuthStore()
+const libraryFilters = ref<InspirationLibraryFilters>({})
+const libraryRevision = ref(0)
+const retrying = ref<string[]>([])
 const hasMore = computed(() => items.value.length < total.value)
-const filtersActive = computed(() => Boolean(searchQuery.value.trim() || selectedTagIDs.value.length))
+const filtersActive = computed(() => Boolean(searchQuery.value.trim() || selectedTagIDs.value.length || Object.values(libraryFilters.value).some(Boolean)))
 let requestVersion = 0
 let searchTimer: number | undefined
+let tagsVersion = 0
 
 /** 将网络错误与列表读取错误映射为当前语言的页面提示。 */
 function errorText(cause: unknown): string {
@@ -41,6 +50,7 @@ async function loadPage(nextPage = 1) {
       tagIds: selectedTagIDs.value,
       tagMatch: tagMatch.value,
       sort: sort.value,
+      ...libraryFilters.value,
     })
     if (version !== requestVersion) return
     items.value = nextPage === 1 ? result.items : [...items.value, ...result.items]
@@ -52,23 +62,38 @@ async function loadPage(nextPage = 1) {
 
 /** 标签获取失败不影响图库浏览；筛选请求始终由后端分页执行。 */
 async function loadTags() {
-  try { tags.value = (await api.tags()).items }
-  catch { tags.value = [] }
+  const version = ++tagsVersion
+  try { const result = await api.tags(); if(version === tagsVersion) tags.value = result.items }
+  catch { if(version === tagsVersion) tags.value = [] }
 }
 
 /** 筛选条件变化后短暂合并连续输入，并从第一页重新查询。 */
-watch([searchQuery, selectedTagIDs, tagMatch, sort], () => {
+watch([searchQuery, selectedTagIDs, tagMatch, sort, libraryFilters], () => {
   if (searchTimer !== undefined) window.clearTimeout(searchTimer)
   searchTimer = window.setTimeout(() => { void loadPage(1) }, 220)
 })
 
 /** 清空检索条件后恢复默认的收藏时间倒序。 */
 function resetFilters() {
+  libraryFilters.value = {}
   searchQuery.value = ''
   selectedTagIDs.value = []
   tagMatch.value = 'any'
   sort.value = 'created_desc'
 }
+
+/** 重试只提交当前图片任务，等待后端确认后刷新列表，防止重复点击。 */
+async function retryAnalysis(id: string) {
+  if (retrying.value.includes(id)) return
+  retrying.value.push(id)
+  try { await api.retryInspirationProcessing(id); ElMessage.success(t('gallery.library.retryAccepted')); await loadPage(); libraryRevision.value += 1 }
+  catch { ElMessage.error(t('gallery.library.retryFailed')) }
+  finally { retrying.value = retrying.value.filter(item => item !== id) }
+}
+watch(() => [auth.orgid, auth.user?.business_id, auth.sessionVersion], () => {
+  requestVersion += 1; items.value = []; total.value = 0; libraryFilters.value = {}; selectedTagIDs.value = []; tags.value = []
+  void loadPage(); void loadTags()
+})
 
 /** 使用当前界面语言格式化灵感图创建日期。 */
 function displayDate(value: string): string {
@@ -88,8 +113,10 @@ function displayFileSize(bytes: number | null | undefined): string {
   return `${new Intl.NumberFormat(locale.value, { maximumFractionDigits: 1 }).format(value)} ${units[unitIndex]}`
 }
 
+/** 只在当前页有未完成任务且页面可见时刷新，异步结果不依赖用户手动切换筛选。 */
+const processingTimer = window.setInterval(() => { if (document.visibilityState === 'visible' && page.value === 1 && !loading.value && items.value.some(item => ['pending_compression','compressing','pending_analysis','analyzing'].includes(item.analysis_status || ''))) void loadPage() }, 30_000)
 onMounted(() => { void loadPage(); void loadTags() })
-onBeforeUnmount(() => { if (searchTimer !== undefined) window.clearTimeout(searchTimer); requestVersion += 1 })
+onBeforeUnmount(() => { tagsVersion += 1; window.clearInterval(processingTimer); if (searchTimer !== undefined) window.clearTimeout(searchTimer); requestVersion += 1 })
 </script>
 
 <template>
@@ -105,6 +132,8 @@ onBeforeUnmount(() => { if (searchTimer !== undefined) window.clearTimeout(searc
         <RouterLink class="gallery-subnav-link is-current" to="/inspirations" aria-current="page">{{ t('gallery.listSection') }}</RouterLink>
         <RouterLink class="gallery-subnav-link" to="/inspirations/statistics">{{ t('gallery.statisticsSection') }}</RouterLink>
       </nav>
+
+      <InspirationLibraryTools v-model:filters="libraryFilters" :revision="libraryRevision" :selected-tags="selectedTagIDs" @tag="id => selectedTagIDs = selectedTagIDs.includes(id) ? selectedTagIDs.filter(tag => tag !== id) : [...selectedTagIDs, id]" />
 
       <section class="gallery-tools" :aria-label="t('gallery.filters')">
         <el-input v-model="searchQuery" class="gallery-search" :aria-label="t('gallery.searchPlaceholder')" :placeholder="t('gallery.searchPlaceholder')" clearable>
@@ -155,6 +184,11 @@ onBeforeUnmount(() => { if (searchTimer !== undefined) window.clearTimeout(searc
               </div>
             </div>
           </RouterLink>
+          <div v-if="item.analysis_status" class="gallery-analysis">
+            <span v-if="item.analysis_status === 'succeeded'">{{ item.people_count === 0 ? t('gallery.library.emptyOnly') : t('gallery.library.personCount', { count: item.people_count }) }}<i v-if="item.dominant_color" :style="{ background: item.dominant_color }" :title="item.color_bucket ? t(`gallery.library.colorNames.${item.color_bucket}`) : ''" /></span>
+            <span v-else role="status">{{ t(`gallery.library.states.${item.analysis_status}`) }}</span>
+            <el-button v-if="item.analysis_status === 'failed' || item.analysis_status === 'unsupported'" text size="small" :loading="retrying.includes(item.business_id)" @click="retryAnalysis(item.business_id)">{{ t('gallery.library.retryProcessing') }}</el-button>
+          </div>
         </article>
       </section>
 
@@ -176,3 +210,6 @@ onBeforeUnmount(() => { if (searchTimer !== undefined) window.clearTimeout(searc
     <footer class="workspace-footer"><span>{{ t('common.brand') }}</span><span>{{ t('common.footer') }}</span></footer>
   </div>
 </template>
+<style scoped>
+.gallery-analysis{display:flex;justify-content:space-between;align-items:center;gap:6px;padding:0 12px 10px;color:var(--muted);font-size:11px}.gallery-analysis>span{display:flex;align-items:center;gap:7px}.gallery-analysis i{width:12px;height:12px;border-radius:50%;border:1px solid var(--line)}
+</style>
