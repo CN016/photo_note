@@ -1,0 +1,1680 @@
+{
+  "date": "2026-10-27",
+  "concurrency": 10,
+  "batch_deadline_seconds": 10,
+  "timing_scope": "local file read + decode + resize + inference + person filtering/NMS; excludes API, compression, DB",
+  "manifest": [
+    {
+      "file": "yolox_nano.onnx",
+      "url": "https://github.com/Megvii-BaseDetection/YOLOX/releases/download/0.1.1rc0/yolox_nano.onnx",
+      "bytes": 3659407,
+      "sha256": "c789161ed43c8269fcd4e67c67eeeb4e80c622da2eb296a20bc6007bd18a0b7d"
+    },
+    {
+      "file": "yolox_tiny.onnx",
+      "url": "https://github.com/Megvii-BaseDetection/YOLOX/releases/download/0.1.1rc0/yolox_tiny.onnx",
+      "bytes": 20219662,
+      "sha256": "427cc366d34e27ff7a03e2899b5e3671425c262ea2291f88bb942bc1cc70b0f7"
+    },
+    {
+      "file": "000000000139.jpg",
+      "url": "https://s3.amazonaws.com/images.cocodataset.org/val2017/000000000139.jpg",
+      "bytes": 161811,
+      "sha256": "ffe0f0cec3b2e27aab1967229cdf0a0d7751dcdd5800322f0b8ac0dffb3b8a8d"
+    },
+    {
+      "file": "000000000285.jpg",
+      "url": "https://s3.amazonaws.com/images.cocodataset.org/val2017/000000000285.jpg",
+      "bytes": 335861,
+      "sha256": "f3a2974ce3686332609124c70e3e6a2e3aca43fccf1cd1bd7c5c03820977f57d"
+    },
+    {
+      "file": "000000000632.jpg",
+      "url": "https://s3.amazonaws.com/images.cocodataset.org/val2017/000000000632.jpg",
+      "bytes": 155667,
+      "sha256": "a4cd7f45ac1ce27eaafb254b23af7c0b18a064be08870ceaaf03b2147f2ce550"
+    },
+    {
+      "file": "000000000724.jpg",
+      "url": "https://s3.amazonaws.com/images.cocodataset.org/val2017/000000000724.jpg",
+      "bytes": 130107,
+      "sha256": "5c0e559c75d3969c8e3e297b61f61063f78045c9d4802b526ba616361f3823fd"
+    },
+    {
+      "file": "000000000776.jpg",
+      "url": "https://s3.amazonaws.com/images.cocodataset.org/val2017/000000000776.jpg",
+      "bytes": 176410,
+      "sha256": "1dd31e9059c491992be2f562624eb4093e17aee08b4f7baf5ff9ea24543b0a33"
+    },
+    {
+      "file": "000000000785.jpg",
+      "url": "https://s3.amazonaws.com/images.cocodataset.org/val2017/000000000785.jpg",
+      "bytes": 133674,
+      "sha256": "83981537a7baeafbeb9c8cb67b3484dc26433f574b3685d021fa537e277e4726"
+    },
+    {
+      "file": "000000000802.jpg",
+      "url": "https://s3.amazonaws.com/images.cocodataset.org/val2017/000000000802.jpg",
+      "bytes": 62406,
+      "sha256": "d5b79e7fa716f85ca86f46e5f518da9b6c5e26414925624d76e6476861aec495"
+    },
+    {
+      "file": "000000000872.jpg",
+      "url": "https://s3.amazonaws.com/images.cocodataset.org/val2017/000000000872.jpg",
+      "bytes": 317669,
+      "sha256": "c2aa138ee3a59b057a7ba6fc5a6a18e62af531aa7dab78a7bfd33c1cd7e55eb6"
+    },
+    {
+      "file": "000000000885.jpg",
+      "url": "https://s3.amazonaws.com/images.cocodataset.org/val2017/000000000885.jpg",
+      "bytes": 111441,
+      "sha256": "1c67b783f78b18ddb5dd20aaba4d4aacaf98e5277051688a96da096afa9cdf1f"
+    },
+    {
+      "file": "000000001000.jpg",
+      "url": "https://s3.amazonaws.com/images.cocodataset.org/val2017/000000001000.jpg",
+      "bytes": 321136,
+      "sha256": "24bb77a31928404e45a0454b06f6a0bd54a8db103590c9d7917288a1e0269f05"
+    }
+  ],
+  "scenarios": [
+    {
+      "model": "nano",
+      "session_mode": "shared",
+      "model_bytes": 3659407,
+      "model_sha256": "c789161ed43c8269fcd4e67c67eeeb4e80c622da2eb296a20bc6007bd18a0b7d",
+      "runtime": "1.23.2",
+      "opencv": "4.11.0",
+      "numpy": "2.2.4",
+      "platform": "Linux-5.10.16.3-microsoft-standard-WSL2-x86_64-with",
+      "cpu_model": "Intel(R) Xeon(R) CPU E5-2680 v2 @ 2.80GHz",
+      "cpu_limit": "200000",
+      "cpu_period": "100000",
+      "cpuset": "0-1",
+      "memory_limit": "2147483648",
+      "memory_swap_limit": "2147483648",
+      "input_size": 416,
+      "session_load_seconds": 0.053735499999675085,
+      "resources": {
+        "memory_peak": "257380352",
+        "memory_current": "224874496",
+        "memory_events": "0",
+        "cpu_stats": "nr_periods 78\nnr_throttled 8\nthrottled_time 14389700"
+      },
+      "process_peak_rss_kib": 281916,
+      "image_set": "standard",
+      "raw_report_sha256": "97dd1a8b40b2840ef1aaeb5d81b8a8921f8700e3396436ad9a4fda59005d57f9",
+      "batch_count": 11,
+      "completed_images": 110,
+      "batch_min_seconds": 0.52962320000006,
+      "batch_max_seconds": 0.6379316000002291,
+      "batch_p95_nearest_rank_seconds": 0.6379316000002291,
+      "single_image_max_seconds": 0.6375147999988258,
+      "initialization_plus_first_batch_seconds": 0.6258864999999787,
+      "all_batches_under_10_seconds": true,
+      "all_batches_task_overlap_10": true,
+      "max_inference_overlap": 10,
+      "batch_results": [
+        {
+          "round": 0,
+          "cold": true,
+          "batch_seconds": 0.5721510000003036,
+          "max_task_overlap": 10,
+          "max_inference_overlap": 10
+        },
+        {
+          "round": 1,
+          "cold": false,
+          "batch_seconds": 0.5510950000007142,
+          "max_task_overlap": 10,
+          "max_inference_overlap": 10
+        },
+        {
+          "round": 2,
+          "cold": false,
+          "batch_seconds": 0.6379316000002291,
+          "max_task_overlap": 10,
+          "max_inference_overlap": 10
+        },
+        {
+          "round": 3,
+          "cold": false,
+          "batch_seconds": 0.5810830000009446,
+          "max_task_overlap": 10,
+          "max_inference_overlap": 10
+        },
+        {
+          "round": 4,
+          "cold": false,
+          "batch_seconds": 0.5529244000008475,
+          "max_task_overlap": 10,
+          "max_inference_overlap": 10
+        },
+        {
+          "round": 5,
+          "cold": false,
+          "batch_seconds": 0.5406806000009965,
+          "max_task_overlap": 10,
+          "max_inference_overlap": 10
+        },
+        {
+          "round": 6,
+          "cold": false,
+          "batch_seconds": 0.5359527000000526,
+          "max_task_overlap": 10,
+          "max_inference_overlap": 10
+        },
+        {
+          "round": 7,
+          "cold": false,
+          "batch_seconds": 0.52962320000006,
+          "max_task_overlap": 10,
+          "max_inference_overlap": 10
+        },
+        {
+          "round": 8,
+          "cold": false,
+          "batch_seconds": 0.5483153999994101,
+          "max_task_overlap": 10,
+          "max_inference_overlap": 10
+        },
+        {
+          "round": 9,
+          "cold": false,
+          "batch_seconds": 0.540494499999113,
+          "max_task_overlap": 10,
+          "max_inference_overlap": 10
+        },
+        {
+          "round": 10,
+          "cold": false,
+          "batch_seconds": 0.5448919999998907,
+          "max_task_overlap": 10,
+          "max_inference_overlap": 10
+        }
+      ],
+      "first_batch_detections": [
+        {
+          "file": "000000000139.jpg",
+          "dimensions": [
+            640,
+            426
+          ],
+          "people": 2
+        },
+        {
+          "file": "000000000285.jpg",
+          "dimensions": [
+            586,
+            640
+          ],
+          "people": 0
+        },
+        {
+          "file": "000000000632.jpg",
+          "dimensions": [
+            640,
+            483
+          ],
+          "people": 0
+        },
+        {
+          "file": "000000000724.jpg",
+          "dimensions": [
+            375,
+            500
+          ],
+          "people": 0
+        },
+        {
+          "file": "000000000776.jpg",
+          "dimensions": [
+            428,
+            640
+          ],
+          "people": 0
+        },
+        {
+          "file": "000000000785.jpg",
+          "dimensions": [
+            640,
+            425
+          ],
+          "people": 1
+        },
+        {
+          "file": "000000000802.jpg",
+          "dimensions": [
+            424,
+            640
+          ],
+          "people": 0
+        },
+        {
+          "file": "000000000872.jpg",
+          "dimensions": [
+            621,
+            640
+          ],
+          "people": 2
+        },
+        {
+          "file": "000000000885.jpg",
+          "dimensions": [
+            640,
+            427
+          ],
+          "people": 4
+        },
+        {
+          "file": "000000001000.jpg",
+          "dimensions": [
+            640,
+            480
+          ],
+          "people": 12
+        }
+      ],
+      "counts_stable_across_rounds": true
+    },
+    {
+      "model": "nano",
+      "session_mode": "shared",
+      "model_bytes": 3659407,
+      "model_sha256": "c789161ed43c8269fcd4e67c67eeeb4e80c622da2eb296a20bc6007bd18a0b7d",
+      "runtime": "1.23.2",
+      "opencv": "4.11.0",
+      "numpy": "2.2.4",
+      "platform": "Linux-5.10.16.3-microsoft-standard-WSL2-x86_64-with",
+      "cpu_model": "Intel(R) Xeon(R) CPU E5-2680 v2 @ 2.80GHz",
+      "cpu_limit": "200000",
+      "cpu_period": "100000",
+      "cpuset": "0-1",
+      "memory_limit": "2147483648",
+      "memory_swap_limit": "2147483648",
+      "input_size": 416,
+      "session_load_seconds": 0.05135560000053374,
+      "resources": {
+        "memory_peak": "662249472",
+        "memory_current": "223629312",
+        "memory_events": "0",
+        "cpu_stats": "nr_periods 153\nnr_throttled 12\nthrottled_time 19510300"
+      },
+      "process_peak_rss_kib": 661072,
+      "image_set": "large",
+      "raw_report_sha256": "80d1095a110e33d95fc2a2245c1614b0ede53a2cd00e4b9f44b94e10bde49c4c",
+      "batch_count": 11,
+      "completed_images": 110,
+      "batch_min_seconds": 1.107758100000865,
+      "batch_max_seconds": 1.405949200001487,
+      "batch_p95_nearest_rank_seconds": 1.405949200001487,
+      "single_image_max_seconds": 1.4052584000000934,
+      "initialization_plus_first_batch_seconds": 1.2805347000012262,
+      "all_batches_under_10_seconds": true,
+      "all_batches_task_overlap_10": true,
+      "max_inference_overlap": 10,
+      "batch_results": [
+        {
+          "round": 0,
+          "cold": true,
+          "batch_seconds": 1.2291791000006924,
+          "max_task_overlap": 10,
+          "max_inference_overlap": 10
+        },
+        {
+          "round": 1,
+          "cold": false,
+          "batch_seconds": 1.2749794999999722,
+          "max_task_overlap": 10,
+          "max_inference_overlap": 9
+        },
+        {
+          "round": 2,
+          "cold": false,
+          "batch_seconds": 1.178311899999244,
+          "max_task_overlap": 10,
+          "max_inference_overlap": 10
+        },
+        {
+          "round": 3,
+          "cold": false,
+          "batch_seconds": 1.1788930999991862,
+          "max_task_overlap": 10,
+          "max_inference_overlap": 10
+        },
+        {
+          "round": 4,
+          "cold": false,
+          "batch_seconds": 1.2321701000000758,
+          "max_task_overlap": 10,
+          "max_inference_overlap": 10
+        },
+        {
+          "round": 5,
+          "cold": false,
+          "batch_seconds": 1.405949200001487,
+          "max_task_overlap": 10,
+          "max_inference_overlap": 10
+        },
+        {
+          "round": 6,
+          "cold": false,
+          "batch_seconds": 1.3319370999997773,
+          "max_task_overlap": 10,
+          "max_inference_overlap": 10
+        },
+        {
+          "round": 7,
+          "cold": false,
+          "batch_seconds": 1.193881600000168,
+          "max_task_overlap": 10,
+          "max_inference_overlap": 10
+        },
+        {
+          "round": 8,
+          "cold": false,
+          "batch_seconds": 1.2339817000010953,
+          "max_task_overlap": 10,
+          "max_inference_overlap": 10
+        },
+        {
+          "round": 9,
+          "cold": false,
+          "batch_seconds": 1.107758100000865,
+          "max_task_overlap": 10,
+          "max_inference_overlap": 9
+        },
+        {
+          "round": 10,
+          "cold": false,
+          "batch_seconds": 1.2637374000005366,
+          "max_task_overlap": 10,
+          "max_inference_overlap": 10
+        }
+      ],
+      "first_batch_detections": [
+        {
+          "file": "000000000139.jpg",
+          "dimensions": [
+            4000,
+            3000
+          ],
+          "people": 1
+        },
+        {
+          "file": "000000000285.jpg",
+          "dimensions": [
+            4000,
+            3000
+          ],
+          "people": 0
+        },
+        {
+          "file": "000000000632.jpg",
+          "dimensions": [
+            4000,
+            3000
+          ],
+          "people": 0
+        },
+        {
+          "file": "000000000724.jpg",
+          "dimensions": [
+            4000,
+            3000
+          ],
+          "people": 0
+        },
+        {
+          "file": "000000000776.jpg",
+          "dimensions": [
+            4000,
+            3000
+          ],
+          "people": 0
+        },
+        {
+          "file": "000000000785.jpg",
+          "dimensions": [
+            4000,
+            3000
+          ],
+          "people": 1
+        },
+        {
+          "file": "000000000802.jpg",
+          "dimensions": [
+            4000,
+            3000
+          ],
+          "people": 0
+        },
+        {
+          "file": "000000000872.jpg",
+          "dimensions": [
+            4000,
+            3000
+          ],
+          "people": 2
+        },
+        {
+          "file": "000000000885.jpg",
+          "dimensions": [
+            4000,
+            3000
+          ],
+          "people": 5
+        },
+        {
+          "file": "000000001000.jpg",
+          "dimensions": [
+            4000,
+            3000
+          ],
+          "people": 12
+        }
+      ],
+      "counts_stable_across_rounds": true
+    },
+    {
+      "model": "nano",
+      "session_mode": "per-worker",
+      "model_bytes": 3659407,
+      "model_sha256": "c789161ed43c8269fcd4e67c67eeeb4e80c622da2eb296a20bc6007bd18a0b7d",
+      "runtime": "1.23.2",
+      "opencv": "4.11.0",
+      "numpy": "2.2.4",
+      "platform": "Linux-5.10.16.3-microsoft-standard-WSL2-x86_64-with",
+      "cpu_model": "Intel(R) Xeon(R) CPU E5-2680 v2 @ 2.80GHz",
+      "cpu_limit": "200000",
+      "cpu_period": "100000",
+      "cpuset": "0-1",
+      "memory_limit": "2147483648",
+      "memory_swap_limit": "2147483648",
+      "input_size": 416,
+      "session_load_seconds": 0.5209082000001217,
+      "resources": {
+        "memory_peak": "378318848",
+        "memory_current": "350203904",
+        "memory_events": "0",
+        "cpu_stats": "nr_periods 81\nnr_throttled 4\nthrottled_time 7107000"
+      },
+      "process_peak_rss_kib": 396504,
+      "image_set": "standard",
+      "raw_report_sha256": "064b4ad3fd88538ed4b3b6a7aea63a33d33fb6b90449c921376d715f7c0d2854",
+      "batch_count": 11,
+      "completed_images": 110,
+      "batch_min_seconds": 0.5198407999996562,
+      "batch_max_seconds": 0.6302302999993117,
+      "batch_p95_nearest_rank_seconds": 0.6302302999993117,
+      "single_image_max_seconds": 0.6293019000004278,
+      "initialization_plus_first_batch_seconds": 1.106934999999794,
+      "all_batches_under_10_seconds": true,
+      "all_batches_task_overlap_10": true,
+      "max_inference_overlap": 10,
+      "batch_results": [
+        {
+          "round": 0,
+          "cold": true,
+          "batch_seconds": 0.5860267999996722,
+          "max_task_overlap": 10,
+          "max_inference_overlap": 10
+        },
+        {
+          "round": 1,
+          "cold": false,
+          "batch_seconds": 0.5537156000009418,
+          "max_task_overlap": 10,
+          "max_inference_overlap": 10
+        },
+        {
+          "round": 2,
+          "cold": false,
+          "batch_seconds": 0.5271253000009892,
+          "max_task_overlap": 10,
+          "max_inference_overlap": 10
+        },
+        {
+          "round": 3,
+          "cold": false,
+          "batch_seconds": 0.562179799999285,
+          "max_task_overlap": 10,
+          "max_inference_overlap": 10
+        },
+        {
+          "round": 4,
+          "cold": false,
+          "batch_seconds": 0.5198407999996562,
+          "max_task_overlap": 10,
+          "max_inference_overlap": 10
+        },
+        {
+          "round": 5,
+          "cold": false,
+          "batch_seconds": 0.5484388999993826,
+          "max_task_overlap": 10,
+          "max_inference_overlap": 10
+        },
+        {
+          "round": 6,
+          "cold": false,
+          "batch_seconds": 0.5282912999991822,
+          "max_task_overlap": 10,
+          "max_inference_overlap": 10
+        },
+        {
+          "round": 7,
+          "cold": false,
+          "batch_seconds": 0.5434459999996761,
+          "max_task_overlap": 10,
+          "max_inference_overlap": 10
+        },
+        {
+          "round": 8,
+          "cold": false,
+          "batch_seconds": 0.5326072000007116,
+          "max_task_overlap": 10,
+          "max_inference_overlap": 10
+        },
+        {
+          "round": 9,
+          "cold": false,
+          "batch_seconds": 0.6302302999993117,
+          "max_task_overlap": 10,
+          "max_inference_overlap": 10
+        },
+        {
+          "round": 10,
+          "cold": false,
+          "batch_seconds": 0.526672600000893,
+          "max_task_overlap": 10,
+          "max_inference_overlap": 10
+        }
+      ],
+      "first_batch_detections": [
+        {
+          "file": "000000000139.jpg",
+          "dimensions": [
+            640,
+            426
+          ],
+          "people": 2
+        },
+        {
+          "file": "000000000285.jpg",
+          "dimensions": [
+            586,
+            640
+          ],
+          "people": 0
+        },
+        {
+          "file": "000000000632.jpg",
+          "dimensions": [
+            640,
+            483
+          ],
+          "people": 0
+        },
+        {
+          "file": "000000000724.jpg",
+          "dimensions": [
+            375,
+            500
+          ],
+          "people": 0
+        },
+        {
+          "file": "000000000776.jpg",
+          "dimensions": [
+            428,
+            640
+          ],
+          "people": 0
+        },
+        {
+          "file": "000000000785.jpg",
+          "dimensions": [
+            640,
+            425
+          ],
+          "people": 1
+        },
+        {
+          "file": "000000000802.jpg",
+          "dimensions": [
+            424,
+            640
+          ],
+          "people": 0
+        },
+        {
+          "file": "000000000872.jpg",
+          "dimensions": [
+            621,
+            640
+          ],
+          "people": 2
+        },
+        {
+          "file": "000000000885.jpg",
+          "dimensions": [
+            640,
+            427
+          ],
+          "people": 4
+        },
+        {
+          "file": "000000001000.jpg",
+          "dimensions": [
+            640,
+            480
+          ],
+          "people": 12
+        }
+      ],
+      "counts_stable_across_rounds": true
+    },
+    {
+      "model": "nano",
+      "session_mode": "per-worker",
+      "model_bytes": 3659407,
+      "model_sha256": "c789161ed43c8269fcd4e67c67eeeb4e80c622da2eb296a20bc6007bd18a0b7d",
+      "runtime": "1.23.2",
+      "opencv": "4.11.0",
+      "numpy": "2.2.4",
+      "platform": "Linux-5.10.16.3-microsoft-standard-WSL2-x86_64-with",
+      "cpu_model": "Intel(R) Xeon(R) CPU E5-2680 v2 @ 2.80GHz",
+      "cpu_limit": "200000",
+      "cpu_period": "100000",
+      "cpuset": "0-1",
+      "memory_limit": "2147483648",
+      "memory_swap_limit": "2147483648",
+      "input_size": 416,
+      "session_load_seconds": 0.5727162000002863,
+      "resources": {
+        "memory_peak": "778268672",
+        "memory_current": "346882048",
+        "memory_events": "0",
+        "cpu_stats": "nr_periods 149\nnr_throttled 12\nthrottled_time 27522300"
+      },
+      "process_peak_rss_kib": 789096,
+      "image_set": "large",
+      "raw_report_sha256": "428517e97c8584b69de4bee16aa3f3b13eab146f52f0b9dbe452a7556cc68800",
+      "batch_count": 11,
+      "completed_images": 110,
+      "batch_min_seconds": 1.1050140999996074,
+      "batch_max_seconds": 1.2785091000005195,
+      "batch_p95_nearest_rank_seconds": 1.2785091000005195,
+      "single_image_max_seconds": 1.277893700000277,
+      "initialization_plus_first_batch_seconds": 1.811255299999175,
+      "all_batches_under_10_seconds": true,
+      "all_batches_task_overlap_10": true,
+      "max_inference_overlap": 10,
+      "batch_results": [
+        {
+          "round": 0,
+          "cold": true,
+          "batch_seconds": 1.2385390999988886,
+          "max_task_overlap": 10,
+          "max_inference_overlap": 10
+        },
+        {
+          "round": 1,
+          "cold": false,
+          "batch_seconds": 1.1820382999994763,
+          "max_task_overlap": 10,
+          "max_inference_overlap": 10
+        },
+        {
+          "round": 2,
+          "cold": false,
+          "batch_seconds": 1.1050140999996074,
+          "max_task_overlap": 10,
+          "max_inference_overlap": 10
+        },
+        {
+          "round": 3,
+          "cold": false,
+          "batch_seconds": 1.151274799998646,
+          "max_task_overlap": 10,
+          "max_inference_overlap": 10
+        },
+        {
+          "round": 4,
+          "cold": false,
+          "batch_seconds": 1.2785091000005195,
+          "max_task_overlap": 10,
+          "max_inference_overlap": 10
+        },
+        {
+          "round": 5,
+          "cold": false,
+          "batch_seconds": 1.1589096000006975,
+          "max_task_overlap": 10,
+          "max_inference_overlap": 10
+        },
+        {
+          "round": 6,
+          "cold": false,
+          "batch_seconds": 1.1444998000006308,
+          "max_task_overlap": 10,
+          "max_inference_overlap": 10
+        },
+        {
+          "round": 7,
+          "cold": false,
+          "batch_seconds": 1.1401264000014635,
+          "max_task_overlap": 10,
+          "max_inference_overlap": 10
+        },
+        {
+          "round": 8,
+          "cold": false,
+          "batch_seconds": 1.1536601000007067,
+          "max_task_overlap": 10,
+          "max_inference_overlap": 10
+        },
+        {
+          "round": 9,
+          "cold": false,
+          "batch_seconds": 1.2278174999992189,
+          "max_task_overlap": 10,
+          "max_inference_overlap": 10
+        },
+        {
+          "round": 10,
+          "cold": false,
+          "batch_seconds": 1.136011000000508,
+          "max_task_overlap": 10,
+          "max_inference_overlap": 9
+        }
+      ],
+      "first_batch_detections": [
+        {
+          "file": "000000000139.jpg",
+          "dimensions": [
+            4000,
+            3000
+          ],
+          "people": 1
+        },
+        {
+          "file": "000000000285.jpg",
+          "dimensions": [
+            4000,
+            3000
+          ],
+          "people": 0
+        },
+        {
+          "file": "000000000632.jpg",
+          "dimensions": [
+            4000,
+            3000
+          ],
+          "people": 0
+        },
+        {
+          "file": "000000000724.jpg",
+          "dimensions": [
+            4000,
+            3000
+          ],
+          "people": 0
+        },
+        {
+          "file": "000000000776.jpg",
+          "dimensions": [
+            4000,
+            3000
+          ],
+          "people": 0
+        },
+        {
+          "file": "000000000785.jpg",
+          "dimensions": [
+            4000,
+            3000
+          ],
+          "people": 1
+        },
+        {
+          "file": "000000000802.jpg",
+          "dimensions": [
+            4000,
+            3000
+          ],
+          "people": 0
+        },
+        {
+          "file": "000000000872.jpg",
+          "dimensions": [
+            4000,
+            3000
+          ],
+          "people": 2
+        },
+        {
+          "file": "000000000885.jpg",
+          "dimensions": [
+            4000,
+            3000
+          ],
+          "people": 5
+        },
+        {
+          "file": "000000001000.jpg",
+          "dimensions": [
+            4000,
+            3000
+          ],
+          "people": 12
+        }
+      ],
+      "counts_stable_across_rounds": true
+    },
+    {
+      "model": "tiny",
+      "session_mode": "shared",
+      "model_bytes": 20219662,
+      "model_sha256": "427cc366d34e27ff7a03e2899b5e3671425c262ea2291f88bb942bc1cc70b0f7",
+      "runtime": "1.23.2",
+      "opencv": "4.11.0",
+      "numpy": "2.2.4",
+      "platform": "Linux-5.10.16.3-microsoft-standard-WSL2-x86_64-with",
+      "cpu_model": "Intel(R) Xeon(R) CPU E5-2680 v2 @ 2.80GHz",
+      "cpu_limit": "200000",
+      "cpu_period": "100000",
+      "cpuset": "0-1",
+      "memory_limit": "2147483648",
+      "memory_swap_limit": "2147483648",
+      "input_size": 416,
+      "session_load_seconds": 0.08659850000003644,
+      "resources": {
+        "memory_peak": "345419776",
+        "memory_current": "316952576",
+        "memory_events": "0",
+        "cpu_stats": "nr_periods 185\nnr_throttled 10\nthrottled_time 25933900"
+      },
+      "process_peak_rss_kib": 366808,
+      "image_set": "standard",
+      "raw_report_sha256": "ed8b9dae5467494effccc211469814c582e34a9153262736fcb4dc3ad0413438",
+      "batch_count": 11,
+      "completed_images": 110,
+      "batch_min_seconds": 1.4528088999995816,
+      "batch_max_seconds": 1.7321214000003238,
+      "batch_p95_nearest_rank_seconds": 1.7321214000003238,
+      "single_image_max_seconds": 1.7314096000009158,
+      "initialization_plus_first_batch_seconds": 1.6216563999987557,
+      "all_batches_under_10_seconds": true,
+      "all_batches_task_overlap_10": true,
+      "max_inference_overlap": 10,
+      "batch_results": [
+        {
+          "round": 0,
+          "cold": true,
+          "batch_seconds": 1.5350578999987192,
+          "max_task_overlap": 10,
+          "max_inference_overlap": 10
+        },
+        {
+          "round": 1,
+          "cold": false,
+          "batch_seconds": 1.4729948999993212,
+          "max_task_overlap": 10,
+          "max_inference_overlap": 10
+        },
+        {
+          "round": 2,
+          "cold": false,
+          "batch_seconds": 1.5068714000008185,
+          "max_task_overlap": 10,
+          "max_inference_overlap": 10
+        },
+        {
+          "round": 3,
+          "cold": false,
+          "batch_seconds": 1.500909700000193,
+          "max_task_overlap": 10,
+          "max_inference_overlap": 10
+        },
+        {
+          "round": 4,
+          "cold": false,
+          "batch_seconds": 1.4528088999995816,
+          "max_task_overlap": 10,
+          "max_inference_overlap": 10
+        },
+        {
+          "round": 5,
+          "cold": false,
+          "batch_seconds": 1.4596225999994203,
+          "max_task_overlap": 10,
+          "max_inference_overlap": 10
+        },
+        {
+          "round": 6,
+          "cold": false,
+          "batch_seconds": 1.571082500000557,
+          "max_task_overlap": 10,
+          "max_inference_overlap": 10
+        },
+        {
+          "round": 7,
+          "cold": false,
+          "batch_seconds": 1.4588342999995803,
+          "max_task_overlap": 10,
+          "max_inference_overlap": 10
+        },
+        {
+          "round": 8,
+          "cold": false,
+          "batch_seconds": 1.4750093999991805,
+          "max_task_overlap": 10,
+          "max_inference_overlap": 10
+        },
+        {
+          "round": 9,
+          "cold": false,
+          "batch_seconds": 1.536002599999847,
+          "max_task_overlap": 10,
+          "max_inference_overlap": 10
+        },
+        {
+          "round": 10,
+          "cold": false,
+          "batch_seconds": 1.7321214000003238,
+          "max_task_overlap": 10,
+          "max_inference_overlap": 10
+        }
+      ],
+      "first_batch_detections": [
+        {
+          "file": "000000000139.jpg",
+          "dimensions": [
+            640,
+            426
+          ],
+          "people": 2
+        },
+        {
+          "file": "000000000285.jpg",
+          "dimensions": [
+            586,
+            640
+          ],
+          "people": 0
+        },
+        {
+          "file": "000000000632.jpg",
+          "dimensions": [
+            640,
+            483
+          ],
+          "people": 0
+        },
+        {
+          "file": "000000000724.jpg",
+          "dimensions": [
+            375,
+            500
+          ],
+          "people": 0
+        },
+        {
+          "file": "000000000776.jpg",
+          "dimensions": [
+            428,
+            640
+          ],
+          "people": 0
+        },
+        {
+          "file": "000000000785.jpg",
+          "dimensions": [
+            640,
+            425
+          ],
+          "people": 1
+        },
+        {
+          "file": "000000000802.jpg",
+          "dimensions": [
+            424,
+            640
+          ],
+          "people": 0
+        },
+        {
+          "file": "000000000872.jpg",
+          "dimensions": [
+            621,
+            640
+          ],
+          "people": 1
+        },
+        {
+          "file": "000000000885.jpg",
+          "dimensions": [
+            640,
+            427
+          ],
+          "people": 8
+        },
+        {
+          "file": "000000001000.jpg",
+          "dimensions": [
+            640,
+            480
+          ],
+          "people": 12
+        }
+      ],
+      "counts_stable_across_rounds": true
+    },
+    {
+      "model": "tiny",
+      "session_mode": "shared",
+      "model_bytes": 20219662,
+      "model_sha256": "427cc366d34e27ff7a03e2899b5e3671425c262ea2291f88bb942bc1cc70b0f7",
+      "runtime": "1.23.2",
+      "opencv": "4.11.0",
+      "numpy": "2.2.4",
+      "platform": "Linux-5.10.16.3-microsoft-standard-WSL2-x86_64-with",
+      "cpu_model": "Intel(R) Xeon(R) CPU E5-2680 v2 @ 2.80GHz",
+      "cpu_limit": "200000",
+      "cpu_period": "100000",
+      "cpuset": "0-1",
+      "memory_limit": "2147483648",
+      "memory_swap_limit": "2147483648",
+      "input_size": 416,
+      "session_load_seconds": 0.08813679999911983,
+      "resources": {
+        "memory_peak": "793489408",
+        "memory_current": "316940288",
+        "memory_events": "0",
+        "cpu_stats": "nr_periods 260\nnr_throttled 14\nthrottled_time 24852400"
+      },
+      "process_peak_rss_kib": 781856,
+      "image_set": "large",
+      "raw_report_sha256": "6590b151199f7447b31ae1e503a1be41e0aaa7495da290221b5e217916cc9d48",
+      "batch_count": 11,
+      "completed_images": 110,
+      "batch_min_seconds": 2.0986788000009255,
+      "batch_max_seconds": 2.3539924999986397,
+      "batch_p95_nearest_rank_seconds": 2.3539924999986397,
+      "single_image_max_seconds": 2.3533705999998347,
+      "initialization_plus_first_batch_seconds": 2.260122199999387,
+      "all_batches_under_10_seconds": true,
+      "all_batches_task_overlap_10": true,
+      "max_inference_overlap": 10,
+      "batch_results": [
+        {
+          "round": 0,
+          "cold": true,
+          "batch_seconds": 2.171985400000267,
+          "max_task_overlap": 10,
+          "max_inference_overlap": 10
+        },
+        {
+          "round": 1,
+          "cold": false,
+          "batch_seconds": 2.284464799999114,
+          "max_task_overlap": 10,
+          "max_inference_overlap": 10
+        },
+        {
+          "round": 2,
+          "cold": false,
+          "batch_seconds": 2.211703099999795,
+          "max_task_overlap": 10,
+          "max_inference_overlap": 10
+        },
+        {
+          "round": 3,
+          "cold": false,
+          "batch_seconds": 2.0986788000009255,
+          "max_task_overlap": 10,
+          "max_inference_overlap": 10
+        },
+        {
+          "round": 4,
+          "cold": false,
+          "batch_seconds": 2.3539924999986397,
+          "max_task_overlap": 10,
+          "max_inference_overlap": 10
+        },
+        {
+          "round": 5,
+          "cold": false,
+          "batch_seconds": 2.1662070999991556,
+          "max_task_overlap": 10,
+          "max_inference_overlap": 10
+        },
+        {
+          "round": 6,
+          "cold": false,
+          "batch_seconds": 2.1838935000014317,
+          "max_task_overlap": 10,
+          "max_inference_overlap": 10
+        },
+        {
+          "round": 7,
+          "cold": false,
+          "batch_seconds": 2.225335199998881,
+          "max_task_overlap": 10,
+          "max_inference_overlap": 10
+        },
+        {
+          "round": 8,
+          "cold": false,
+          "batch_seconds": 2.1181625999997777,
+          "max_task_overlap": 10,
+          "max_inference_overlap": 10
+        },
+        {
+          "round": 9,
+          "cold": false,
+          "batch_seconds": 2.302868699998726,
+          "max_task_overlap": 10,
+          "max_inference_overlap": 10
+        },
+        {
+          "round": 10,
+          "cold": false,
+          "batch_seconds": 2.1760835999994015,
+          "max_task_overlap": 10,
+          "max_inference_overlap": 10
+        }
+      ],
+      "first_batch_detections": [
+        {
+          "file": "000000000139.jpg",
+          "dimensions": [
+            4000,
+            3000
+          ],
+          "people": 2
+        },
+        {
+          "file": "000000000285.jpg",
+          "dimensions": [
+            4000,
+            3000
+          ],
+          "people": 0
+        },
+        {
+          "file": "000000000632.jpg",
+          "dimensions": [
+            4000,
+            3000
+          ],
+          "people": 0
+        },
+        {
+          "file": "000000000724.jpg",
+          "dimensions": [
+            4000,
+            3000
+          ],
+          "people": 0
+        },
+        {
+          "file": "000000000776.jpg",
+          "dimensions": [
+            4000,
+            3000
+          ],
+          "people": 0
+        },
+        {
+          "file": "000000000785.jpg",
+          "dimensions": [
+            4000,
+            3000
+          ],
+          "people": 1
+        },
+        {
+          "file": "000000000802.jpg",
+          "dimensions": [
+            4000,
+            3000
+          ],
+          "people": 0
+        },
+        {
+          "file": "000000000872.jpg",
+          "dimensions": [
+            4000,
+            3000
+          ],
+          "people": 2
+        },
+        {
+          "file": "000000000885.jpg",
+          "dimensions": [
+            4000,
+            3000
+          ],
+          "people": 10
+        },
+        {
+          "file": "000000001000.jpg",
+          "dimensions": [
+            4000,
+            3000
+          ],
+          "people": 12
+        }
+      ],
+      "counts_stable_across_rounds": true
+    },
+    {
+      "model": "tiny",
+      "session_mode": "per-worker",
+      "model_bytes": 20219662,
+      "model_sha256": "427cc366d34e27ff7a03e2899b5e3671425c262ea2291f88bb942bc1cc70b0f7",
+      "runtime": "1.23.2",
+      "opencv": "4.11.0",
+      "numpy": "2.2.4",
+      "platform": "Linux-5.10.16.3-microsoft-standard-WSL2-x86_64-with",
+      "cpu_model": "Intel(R) Xeon(R) CPU E5-2680 v2 @ 2.80GHz",
+      "cpu_limit": "200000",
+      "cpu_period": "100000",
+      "cpuset": "0-1",
+      "memory_limit": "2147483648",
+      "memory_swap_limit": "2147483648",
+      "input_size": 416,
+      "session_load_seconds": 0.8469989000004716,
+      "resources": {
+        "memory_peak": "692092928",
+        "memory_current": "665055232",
+        "memory_events": "0",
+        "cpu_stats": "nr_periods 191\nnr_throttled 8\nthrottled_time 27002000"
+      },
+      "process_peak_rss_kib": 706320,
+      "image_set": "standard",
+      "raw_report_sha256": "d7109742509654cec1834e279a55ec90ad5ca1583549760ff4746c24d7a6afd6",
+      "batch_count": 11,
+      "completed_images": 110,
+      "batch_min_seconds": 1.450616899999659,
+      "batch_max_seconds": 1.623030499999004,
+      "batch_p95_nearest_rank_seconds": 1.623030499999004,
+      "single_image_max_seconds": 1.6223269999991317,
+      "initialization_plus_first_batch_seconds": 2.394120400000247,
+      "all_batches_under_10_seconds": true,
+      "all_batches_task_overlap_10": true,
+      "max_inference_overlap": 10,
+      "batch_results": [
+        {
+          "round": 0,
+          "cold": true,
+          "batch_seconds": 1.5471214999997756,
+          "max_task_overlap": 10,
+          "max_inference_overlap": 10
+        },
+        {
+          "round": 1,
+          "cold": false,
+          "batch_seconds": 1.623030499999004,
+          "max_task_overlap": 10,
+          "max_inference_overlap": 10
+        },
+        {
+          "round": 2,
+          "cold": false,
+          "batch_seconds": 1.450616899999659,
+          "max_task_overlap": 10,
+          "max_inference_overlap": 10
+        },
+        {
+          "round": 3,
+          "cold": false,
+          "batch_seconds": 1.5190302999999403,
+          "max_task_overlap": 10,
+          "max_inference_overlap": 10
+        },
+        {
+          "round": 4,
+          "cold": false,
+          "batch_seconds": 1.572792599999957,
+          "max_task_overlap": 10,
+          "max_inference_overlap": 10
+        },
+        {
+          "round": 5,
+          "cold": false,
+          "batch_seconds": 1.5077218000005814,
+          "max_task_overlap": 10,
+          "max_inference_overlap": 10
+        },
+        {
+          "round": 6,
+          "cold": false,
+          "batch_seconds": 1.4784502999991673,
+          "max_task_overlap": 10,
+          "max_inference_overlap": 10
+        },
+        {
+          "round": 7,
+          "cold": false,
+          "batch_seconds": 1.4858215000003838,
+          "max_task_overlap": 10,
+          "max_inference_overlap": 10
+        },
+        {
+          "round": 8,
+          "cold": false,
+          "batch_seconds": 1.606950900000811,
+          "max_task_overlap": 10,
+          "max_inference_overlap": 10
+        },
+        {
+          "round": 9,
+          "cold": false,
+          "batch_seconds": 1.4824110999998084,
+          "max_task_overlap": 10,
+          "max_inference_overlap": 10
+        },
+        {
+          "round": 10,
+          "cold": false,
+          "batch_seconds": 1.4809904000012466,
+          "max_task_overlap": 10,
+          "max_inference_overlap": 10
+        }
+      ],
+      "first_batch_detections": [
+        {
+          "file": "000000000139.jpg",
+          "dimensions": [
+            640,
+            426
+          ],
+          "people": 2
+        },
+        {
+          "file": "000000000285.jpg",
+          "dimensions": [
+            586,
+            640
+          ],
+          "people": 0
+        },
+        {
+          "file": "000000000632.jpg",
+          "dimensions": [
+            640,
+            483
+          ],
+          "people": 0
+        },
+        {
+          "file": "000000000724.jpg",
+          "dimensions": [
+            375,
+            500
+          ],
+          "people": 0
+        },
+        {
+          "file": "000000000776.jpg",
+          "dimensions": [
+            428,
+            640
+          ],
+          "people": 0
+        },
+        {
+          "file": "000000000785.jpg",
+          "dimensions": [
+            640,
+            425
+          ],
+          "people": 1
+        },
+        {
+          "file": "000000000802.jpg",
+          "dimensions": [
+            424,
+            640
+          ],
+          "people": 0
+        },
+        {
+          "file": "000000000872.jpg",
+          "dimensions": [
+            621,
+            640
+          ],
+          "people": 1
+        },
+        {
+          "file": "000000000885.jpg",
+          "dimensions": [
+            640,
+            427
+          ],
+          "people": 8
+        },
+        {
+          "file": "000000001000.jpg",
+          "dimensions": [
+            640,
+            480
+          ],
+          "people": 12
+        }
+      ],
+      "counts_stable_across_rounds": true
+    },
+    {
+      "model": "tiny",
+      "session_mode": "per-worker",
+      "model_bytes": 20219662,
+      "model_sha256": "427cc366d34e27ff7a03e2899b5e3671425c262ea2291f88bb942bc1cc70b0f7",
+      "runtime": "1.23.2",
+      "opencv": "4.11.0",
+      "numpy": "2.2.4",
+      "platform": "Linux-5.10.16.3-microsoft-standard-WSL2-x86_64-with",
+      "cpu_model": "Intel(R) Xeon(R) CPU E5-2680 v2 @ 2.80GHz",
+      "cpu_limit": "200000",
+      "cpu_period": "100000",
+      "cpuset": "0-1",
+      "memory_limit": "2147483648",
+      "memory_swap_limit": "2147483648",
+      "input_size": 416,
+      "session_load_seconds": 0.8514601000006223,
+      "resources": {
+        "memory_peak": "1104187392",
+        "memory_current": "664735744",
+        "memory_events": "0",
+        "cpu_stats": "nr_periods 268\nnr_throttled 18\nthrottled_time 25113800"
+      },
+      "process_peak_rss_kib": 1106636,
+      "image_set": "large",
+      "raw_report_sha256": "2a80bb305547685cdbb5bc1844b6784e10547eaca4ca216203db6ef6e78126fc",
+      "batch_count": 11,
+      "completed_images": 110,
+      "batch_min_seconds": 2.109011599999576,
+      "batch_max_seconds": 2.38912160000109,
+      "batch_p95_nearest_rank_seconds": 2.38912160000109,
+      "single_image_max_seconds": 2.3879971000005753,
+      "initialization_plus_first_batch_seconds": 3.2405817000017123,
+      "all_batches_under_10_seconds": true,
+      "all_batches_task_overlap_10": true,
+      "max_inference_overlap": 10,
+      "batch_results": [
+        {
+          "round": 0,
+          "cold": true,
+          "batch_seconds": 2.38912160000109,
+          "max_task_overlap": 10,
+          "max_inference_overlap": 10
+        },
+        {
+          "round": 1,
+          "cold": false,
+          "batch_seconds": 2.1813263000003644,
+          "max_task_overlap": 10,
+          "max_inference_overlap": 10
+        },
+        {
+          "round": 2,
+          "cold": false,
+          "batch_seconds": 2.164737900000546,
+          "max_task_overlap": 10,
+          "max_inference_overlap": 10
+        },
+        {
+          "round": 3,
+          "cold": false,
+          "batch_seconds": 2.243931499999235,
+          "max_task_overlap": 10,
+          "max_inference_overlap": 10
+        },
+        {
+          "round": 4,
+          "cold": false,
+          "batch_seconds": 2.130764599998656,
+          "max_task_overlap": 10,
+          "max_inference_overlap": 10
+        },
+        {
+          "round": 5,
+          "cold": false,
+          "batch_seconds": 2.285098799999105,
+          "max_task_overlap": 10,
+          "max_inference_overlap": 10
+        },
+        {
+          "round": 6,
+          "cold": false,
+          "batch_seconds": 2.2368709000002127,
+          "max_task_overlap": 10,
+          "max_inference_overlap": 10
+        },
+        {
+          "round": 7,
+          "cold": false,
+          "batch_seconds": 2.109011599999576,
+          "max_task_overlap": 10,
+          "max_inference_overlap": 10
+        },
+        {
+          "round": 8,
+          "cold": false,
+          "batch_seconds": 2.235386300000755,
+          "max_task_overlap": 10,
+          "max_inference_overlap": 10
+        },
+        {
+          "round": 9,
+          "cold": false,
+          "batch_seconds": 2.130196399999477,
+          "max_task_overlap": 10,
+          "max_inference_overlap": 10
+        },
+        {
+          "round": 10,
+          "cold": false,
+          "batch_seconds": 2.201016900000468,
+          "max_task_overlap": 10,
+          "max_inference_overlap": 10
+        }
+      ],
+      "first_batch_detections": [
+        {
+          "file": "000000000139.jpg",
+          "dimensions": [
+            4000,
+            3000
+          ],
+          "people": 2
+        },
+        {
+          "file": "000000000285.jpg",
+          "dimensions": [
+            4000,
+            3000
+          ],
+          "people": 0
+        },
+        {
+          "file": "000000000632.jpg",
+          "dimensions": [
+            4000,
+            3000
+          ],
+          "people": 0
+        },
+        {
+          "file": "000000000724.jpg",
+          "dimensions": [
+            4000,
+            3000
+          ],
+          "people": 0
+        },
+        {
+          "file": "000000000776.jpg",
+          "dimensions": [
+            4000,
+            3000
+          ],
+          "people": 0
+        },
+        {
+          "file": "000000000785.jpg",
+          "dimensions": [
+            4000,
+            3000
+          ],
+          "people": 1
+        },
+        {
+          "file": "000000000802.jpg",
+          "dimensions": [
+            4000,
+            3000
+          ],
+          "people": 0
+        },
+        {
+          "file": "000000000872.jpg",
+          "dimensions": [
+            4000,
+            3000
+          ],
+          "people": 2
+        },
+        {
+          "file": "000000000885.jpg",
+          "dimensions": [
+            4000,
+            3000
+          ],
+          "people": 10
+        },
+        {
+          "file": "000000001000.jpg",
+          "dimensions": [
+            4000,
+            3000
+          ],
+          "people": 12
+        }
+      ],
+      "counts_stable_across_rounds": true
+    }
+  ],
+  "api_health": {
+    "requests": 1215,
+    "failures": 0,
+    "max_seconds": 0.26849640000000363
+  },
+  "scope": "Alpine runtime baseline with API 4.1.0; feature API 4.2.0 queue validation is recorded separately."
+}

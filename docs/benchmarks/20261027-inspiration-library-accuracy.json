@@ -1,0 +1,102 @@
+{
+  "source": "https://s3.amazonaws.com/images.cocodataset.org/annotations/annotations_trainval2017.zip",
+  "annotation_file": "annotations/instances_val2017.json",
+  "annotation_sha256": "e8c7f7908f1d7278341fae127d0da654f102f11bd7b21d8aeefa635b8c810b6f",
+  "sample_size": 10,
+  "exact_count_matches": 9,
+  "presence_matches": 10,
+  "group_matches": 10,
+  "samples": [
+    {
+      "image_id": 139,
+      "person_annotations_excluding_crowd": 2,
+      "crowd_annotations": 0,
+      "predicted_people": 2,
+      "exact_count": true,
+      "presence_matches": true,
+      "group_matches": true
+    },
+    {
+      "image_id": 285,
+      "person_annotations_excluding_crowd": 0,
+      "crowd_annotations": 0,
+      "predicted_people": 0,
+      "exact_count": true,
+      "presence_matches": true,
+      "group_matches": true
+    },
+    {
+      "image_id": 632,
+      "person_annotations_excluding_crowd": 0,
+      "crowd_annotations": 0,
+      "predicted_people": 0,
+      "exact_count": true,
+      "presence_matches": true,
+      "group_matches": true
+    },
+    {
+      "image_id": 724,
+      "person_annotations_excluding_crowd": 0,
+      "crowd_annotations": 0,
+      "predicted_people": 0,
+      "exact_count": true,
+      "presence_matches": true,
+      "group_matches": true
+    },
+    {
+      "image_id": 776,
+      "person_annotations_excluding_crowd": 0,
+      "crowd_annotations": 0,
+      "predicted_people": 0,
+      "exact_count": true,
+      "presence_matches": true,
+      "group_matches": true
+    },
+    {
+      "image_id": 785,
+      "person_annotations_excluding_crowd": 1,
+      "crowd_annotations": 0,
+      "predicted_people": 1,
+      "exact_count": true,
+      "presence_matches": true,
+      "group_matches": true
+    },
+    {
+      "image_id": 802,
+      "person_annotations_excluding_crowd": 0,
+      "crowd_annotations": 0,
+      "predicted_people": 0,
+      "exact_count": true,
+      "presence_matches": true,
+      "group_matches": true
+    },
+    {
+      "image_id": 872,
+      "person_annotations_excluding_crowd": 2,
+      "crowd_annotations": 0,
+      "predicted_people": 2,
+      "exact_count": true,
+      "presence_matches": true,
+      "group_matches": true
+    },
+    {
+      "image_id": 885,
+      "person_annotations_excluding_crowd": 8,
+      "crowd_annotations": 0,
+      "predicted_people": 4,
+      "exact_count": false,
+      "presence_matches": true,
+      "group_matches": true
+    },
+    {
+      "image_id": 1000,
+      "person_annotations_excluding_crowd": 12,
+      "crowd_annotations": 0,
+      "predicted_people": 12,
+      "exact_count": true,
+      "presence_matches": true,
+      "group_matches": true
+    }
+  ],
+  "limitation": "仅十张固定样例，不是全量精度；crowd区域不代表可精确计数人数。"
+}

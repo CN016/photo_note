@@ -29,3 +29,9 @@
 ## 模型与算法来源
 
 模型来自 [Megvii 官方 YOLOX 0.1.1rc0](https://github.com/Megvii-BaseDetection/YOLOX/releases/tag/0.1.1rc0)，Nano 和 Tiny 的输入均为 416×416。预处理和输出解码遵循 [官方 ONNX 示例](https://github.com/Megvii-BaseDetection/YOLOX/tree/main/demo/ONNXRuntime)及 [data_augment.py](https://github.com/Megvii-BaseDetection/YOLOX/blob/main/yolox/data/data_augment.py)：BGR、0–255 浮点输入、114 填充、步长 8/16/32 解码。只统计 COCO person 类，分数阈值 0.3、NMS IoU 阈值 0.45。官方仓库使用 [Apache-2.0](https://github.com/Megvii-BaseDetection/YOLOX/blob/main/LICENSE)；工具不复制或提交权重及样例图片，图片权利仍属于各原作者。
+
+## 业务接入后的验证（4.2.0）
+
+`queue-verify/main.go` 通过 `PHOTO_NINI_TENANT_TEST_DSN` 与 `PHOTO_NINI_QUEUE_TEST_USER` 指向显式的独立测试库和十图测试用户；工具拒绝非 `photo_nini_test` 数据库，临时暂停领取、释放十张已压缩任务并轮询结果落库，输出每轮耗时和active分析租约峰值。API须已在独立网络中运行；该工具会修改测试任务和处理启用配置，不能用于生产库。
+
+`accuracy.py --predictions <JSON路径> --output <JSON路径>` 读取 `people_counts` 数组（顺序为prepare.py十张固定COCO图片），通过官方ZIP的HTTP Range只读取验证实例标注，输出精确人数、有无人和0/1/2/3+分组对照。只属于固定小样本验收，不代表全量准确率。最终证据与导出文件校验见 `docs/20261027-灵感库420交付验收与打包.md`。

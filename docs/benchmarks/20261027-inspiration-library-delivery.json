@@ -1,0 +1,177 @@
+{
+  "version": "4.2.0",
+  "date": "2026-10-27",
+  "source_commit": "1febb0ea2eaf165b2b599adef6d0662473eafa46",
+  "api_image": {
+    "tags": [
+      "photo-nini-api:4.2.0",
+      "photo-nini-api:local"
+    ],
+    "id": "sha256:4483efedac4a1d61212adce291e3c7051c7a5cd0662bff240fb8e2987b6bc49f",
+    "platform": "linux/amd64",
+    "export_reload_verified": true
+  },
+  "ai_runtime_image": {
+    "tag": "photo-nini-ai-runtime:alpine3.22-ort1.23.2-cpu-v1",
+    "id": "sha256:61c3ca19abcf2ac428b88e6c492e4cca47dd51816ab90709814e175b34155882"
+  },
+  "archives": [
+    {
+      "file": "photo-nini-api-4.2.0-linux-amd64.tar",
+      "bytes": 1041895424,
+      "sha256": "b120f9b4a8b75caf38abb0276f78aa568210f5dcd407c44650851762cf9281bf"
+    },
+    {
+      "file": "photo-nini-web-4.2.0.zip",
+      "bytes": 19542216,
+      "sha256": "30aa77e683f5ac455c689b8a7c2eb7b064e9fadb3d7cffd29f9e39a9ec35395e"
+    },
+    {
+      "file": "photo-nini-ai-runtime-alpine3.22-ort1.23.2-cpu-v1-linux-amd64.tar",
+      "bytes": 1003022336,
+      "sha256": "81bb18626ef00f94ba2113a67747eba839126e6ffbedde0ed9518710030a817b"
+    }
+  ],
+  "queue_validation": [
+    {
+      "completed": 10,
+      "peak_active_analysis_leases": 10,
+      "round": 1,
+      "seconds_including_db_save": 1.6939818
+    },
+    {
+      "completed": 10,
+      "peak_active_analysis_leases": 10,
+      "round": 2,
+      "seconds_including_db_save": 2.3826749
+    },
+    {
+      "completed": 10,
+      "peak_active_analysis_leases": 10,
+      "round": 3,
+      "seconds_including_db_save": 2.1180081
+    },
+    {
+      "completed": 10,
+      "peak_active_analysis_leases": 10,
+      "round": 4,
+      "seconds_including_db_save": 2.6722161
+    },
+    {
+      "completed": 10,
+      "peak_active_analysis_leases": 10,
+      "round": 5,
+      "seconds_including_db_save": 2.395493
+    }
+  ],
+  "resource_limits": {
+    "peak_memory_bytes": 333582336,
+    "memory_limit_bytes": 2147483648,
+    "cpu_quota_us": 200000,
+    "cpu_period_us": 100000
+  },
+  "web_archive_crc_verified": true,
+  "production_deployed": false,
+  "accuracy_validation": {
+    "source": "https://s3.amazonaws.com/images.cocodataset.org/annotations/annotations_trainval2017.zip",
+    "annotation_file": "annotations/instances_val2017.json",
+    "annotation_sha256": "e8c7f7908f1d7278341fae127d0da654f102f11bd7b21d8aeefa635b8c810b6f",
+    "sample_size": 10,
+    "exact_count_matches": 9,
+    "presence_matches": 10,
+    "group_matches": 10,
+    "samples": [
+      {
+        "image_id": 139,
+        "person_annotations_excluding_crowd": 2,
+        "crowd_annotations": 0,
+        "predicted_people": 2,
+        "exact_count": true,
+        "presence_matches": true,
+        "group_matches": true
+      },
+      {
+        "image_id": 285,
+        "person_annotations_excluding_crowd": 0,
+        "crowd_annotations": 0,
+        "predicted_people": 0,
+        "exact_count": true,
+        "presence_matches": true,
+        "group_matches": true
+      },
+      {
+        "image_id": 632,
+        "person_annotations_excluding_crowd": 0,
+        "crowd_annotations": 0,
+        "predicted_people": 0,
+        "exact_count": true,
+        "presence_matches": true,
+        "group_matches": true
+      },
+      {
+        "image_id": 724,
+        "person_annotations_excluding_crowd": 0,
+        "crowd_annotations": 0,
+        "predicted_people": 0,
+        "exact_count": true,
+        "presence_matches": true,
+        "group_matches": true
+      },
+      {
+        "image_id": 776,
+        "person_annotations_excluding_crowd": 0,
+        "crowd_annotations": 0,
+        "predicted_people": 0,
+        "exact_count": true,
+        "presence_matches": true,
+        "group_matches": true
+      },
+      {
+        "image_id": 785,
+        "person_annotations_excluding_crowd": 1,
+        "crowd_annotations": 0,
+        "predicted_people": 1,
+        "exact_count": true,
+        "presence_matches": true,
+        "group_matches": true
+      },
+      {
+        "image_id": 802,
+        "person_annotations_excluding_crowd": 0,
+        "crowd_annotations": 0,
+        "predicted_people": 0,
+        "exact_count": true,
+        "presence_matches": true,
+        "group_matches": true
+      },
+      {
+        "image_id": 872,
+        "person_annotations_excluding_crowd": 2,
+        "crowd_annotations": 0,
+        "predicted_people": 2,
+        "exact_count": true,
+        "presence_matches": true,
+        "group_matches": true
+      },
+      {
+        "image_id": 885,
+        "person_annotations_excluding_crowd": 8,
+        "crowd_annotations": 0,
+        "predicted_people": 4,
+        "exact_count": false,
+        "presence_matches": true,
+        "group_matches": true
+      },
+      {
+        "image_id": 1000,
+        "person_annotations_excluding_crowd": 12,
+        "crowd_annotations": 0,
+        "predicted_people": 12,
+        "exact_count": true,
+        "presence_matches": true,
+        "group_matches": true
+      }
+    ],
+    "limitation": "仅十张固定样例，不是全量精度；crowd区域不代表可精确计数人数。"
+  }
+}
