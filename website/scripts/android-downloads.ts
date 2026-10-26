@@ -27,7 +27,7 @@ export function androidDownloads(env: Record<string, string>): Plugin {
       if (!enabled) return
       version = JSON.parse(readFileSync(join(android, 'package.json'), 'utf8')).version
       if (!/^\d+\.\d+\.\d+$/.test(version)) throw new Error('安卓应用版本格式无效')
-      for (const abi of ['arm64-v8a', 'armeabi-v7a', 'x86_64']) {
+      for (const abi of ['arm64-v8a', 'armeabi-v7a']) {
         const filename = `photo-nini-${version}-${abi}-debug.apk`
         const path = join(android, 'artifacts', filename)
         try {
@@ -84,7 +84,7 @@ export function androidDownloads(env: Record<string, string>): Plugin {
         const pathname = request.url?.split('?')[0]
         if (!pathname?.startsWith(`${base}/`)) return next()
         const filename = pathname.slice(base.length + 1)
-        if (!/^photo-nini-\d+\.\d+\.\d+-(arm64-v8a|armeabi-v7a|x86_64)-debug\.apk(?:\.sha256)?$/.test(filename) && filename !== 'release.json') { response.statusCode = 404; response.end(); return }
+        if (!/^photo-nini-\d+\.\d+\.\d+-(arm64-v8a|armeabi-v7a)-debug\.apk(?:\.sha256)?$/.test(filename) && filename !== 'release.json') { response.statusCode = 404; response.end(); return }
         if (!existsSync(join(output, base.slice(1), filename))) { response.statusCode = 404; response.end(); return }
         response.setHeader('Content-Type', filename.endsWith('.apk') ? 'application/vnd.android.package-archive' : filename.endsWith('.json') ? 'application/json' : 'text/plain; charset=utf-8')
         if (filename.endsWith('.apk')) response.setHeader('Content-Disposition', `attachment; filename="${filename}"`)

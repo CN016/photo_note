@@ -28,6 +28,14 @@ const features = [Picture, Document, Calendar, List, Wallet, Bell];
 const releases = siteConfig.releases.filter(release => release.platform !== 'android' || !androidDownload.variants.length);
 /** 安装包大小按当前语言格式化；摘要来自构建时对真实文件的校验。 */
 function packageSize(bytes: number) { return `${new Intl.NumberFormat(locale.value, { maximumFractionDigits: 1 }).format(bytes / 1024 / 1024)} MiB` }
+/** UA 仅用于推荐，不限制用户手动选择；精简 UA 无架构时优先推荐主流 64 位。 */
+const androidRecommendation = /Android/i.test(navigator.userAgent)
+  ? (/aarch64|arm64|armv8|x86_64|x64/i.test(navigator.userAgent) ? 'arm64-v8a'
+    : /armv7|armeabi|armv6|i[3-6]86/i.test(navigator.userAgent) ? 'armeabi-v7a' : 'arm64-v8a')
+  : null;
+const androidPackages = androidDownload.variants
+  .filter(item => ['arm64-v8a', 'armeabi-v7a'].includes(item.abi))
+  .sort((a, b) => Number(b.abi === androidRecommendation) - Number(a.abi === androidRecommendation));
 const scenes = ["mountain", "light", "sea", "city"];
 const year = new Intl.DateTimeFormat("en", { year: "numeric" }).format(
   new Date(),
@@ -294,17 +302,15 @@ if (siteConfig.siteUrl) {
         </article>
         <article v-if="androidDownload.variants.length" id="android" class="android-download">
           <div class="android-heading"><Iphone class="platform-icon" /><div><span class="status">{{ t('download.androidTest') }}</span><h2>{{ t('download.androidHeading') }}</h2></div></div>
-          <p>{{ t('download.androidBody') }}</p>
           <p class="android-version">{{ t('download.version') }} {{ androidDownload.version }} · {{ t('download.androidMinimum') }}</p>
           <div class="android-packages">
-            <section v-for="item in androidDownload.variants" :key="item.abi" class="android-package">
-              <h3>{{ item.abi }} <span v-if="item.abi === 'arm64-v8a'" class="status">{{ t('download.recommended') }}</span></h3>
-              <p>{{ t(`download.abi.${item.abi}`) }} · {{ packageSize(item.bytes) }}</p>
+            <section v-for="item in androidPackages" :key="item.abi" class="android-package">
+              <h3>{{ t(`download.abi.${item.abi}`) }} <span v-if="item.abi === androidRecommendation" class="status">{{ t('download.recommended') }}</span></h3>
+              <p>{{ packageSize(item.bytes) }}</p>
               <a class="button small" :href="item.url" :download="item.filename">{{ t('download.downloadApk') }}<ArrowRight /></a>
               <details class="checksum"><summary>{{ t('download.checksum') }}</summary><code>{{ item.sha256 }}</code><a class="text-link" :href="item.checksumUrl" download>{{ t('download.checksumFile') }}</a></details>
             </section>
           </div>
-          <p class="android-install">{{ t('download.androidInstall') }}</p>
         </article>
         <div class="platform-heading">
           <h2>{{ t("download.platforms") }}</h2>

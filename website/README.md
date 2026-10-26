@@ -40,7 +40,7 @@ VITE_ANDROID_BUNDLED_DOWNLOADS=true
 VITE_ANDROID_ASSET_BASE=/releases/android
 ```
 
-先在 `frontend/apps/android/` 执行 `npm ci`、`npm run build`，得到三种架构 APK 与 `.sha256`；已有本批完整产物时无需重复打包。随后在 `website/` 执行 `pnpm build`。构建插件读取安卓版本，对每个源 APK 计算 SHA-256 并与校验文件比较，复制到 `dist/releases/android/` 后再次校验；缺失或不一致时构建失败。页面从同一元数据生成版本、架构、大小与校验入口，不使用猜测的公网地址。生成的 `release.json` 也随静态文件部署。
+先在 `frontend/apps/android/` 执行 `npm ci`、`npm run build`，得到架构 APK 与 `.sha256`（官网仅分发 ARM 64 位和 32 位）；已有本批完整产物时无需重复打包。随后在 `website/` 执行 `pnpm build`。构建插件读取安卓版本，对每个源 APK 计算 SHA-256 并与校验文件比较，复制到 `dist/releases/android/` 后再次校验；缺失或不一致时构建失败。页面从同一元数据生成版本、架构、大小与校验入口，不使用猜测的公网地址。生成的 `release.json` 也随静态文件部署。
 
 本模式独立于 `VITE_ANDROID_STATUS=available` 的正式发布配置，明确标为测试版，开启时替换普通 Android 状态卡。后续采用正式下载地址时先关闭 `VITE_ANDROID_BUNDLED_DOWNLOADS`，再配置正式发布四项。关闭该开关也可构建不带本地 APK 的官网；设置后须重新构建。不要只上传首页 HTML，也不要遗漏 `releases/`。APK 和 dist 均被 Git 忽略，不提交安装包。
 
@@ -50,4 +50,4 @@ VITE_ANDROID_ASSET_BASE=/releases/android
 
 上传后检查：`/`、`/download/`、三个 APK 的实际下载、校验文件，以及不存在的 APK 返回 404。服务器文件已上传不代表下载验收完成；本批只完成本地构建与预览，未连接生产服务器部署。
 
-部署后可执行 `pnpm check:downloads https://你的官网域名/releases/android/release.json` 验证完整文件字节、MIME、SHA-256、校验文件和缺包 404；该检查会读取三份完整安装包，产生相应下载流量。
+部署后可执行 `pnpm check:downloads https://你的官网域名/releases/android/release.json` 验证完整文件字节、MIME、SHA-256、校验文件和缺包 404；该检查会读取两份完整安装包，产生相应下载流量。

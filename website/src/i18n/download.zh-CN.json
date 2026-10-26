@@ -19,21 +19,18 @@
   "planned": "规划中",
   "miniBody": "小程序的承载方式与能力仍需单独验证，当前暂无访问入口。",
   "notice": "关于版本与下载",
-  "noticeBody": "下载前请核对版本、CPU 架构与 SHA-256 校验值，并使用本页提供的入口。测试版与正式版状态以各下载项标识为准。",
+  "noticeBody": "请选择适合设备的版本。当前安卓安装包为测试版。",
   "version": "版本",
   "architecture": "架构",
   "androidTest": "安卓测试版",
   "androidHeading": "在安卓上继续你的创作日常。",
-  "androidBody": "安装包内置 GeckoView 浏览器内核，无需另外升级系统 WebView。普通手机优先选择 ARM64。",
   "androidMinimum": "Android 9 及以上",
   "recommended": "推荐",
   "downloadApk": "下载 APK",
   "checksum": "查看 SHA-256",
   "checksumFile": "下载校验文件",
-  "androidInstall": "下载后打开 APK，按系统提示允许当前来源安装。安装完成后可关闭该来源的安装授权。当前为调试签名测试版，正式版的升级安排另行说明。",
   "abi": {
-    "arm64-v8a": "普通安卓手机",
-    "armeabi-v7a": "旧款 32 位安卓手机",
-    "x86_64": "x86_64 模拟器"
+    "arm64-v8a": "64 位",
+    "armeabi-v7a": "32 位"
   }
 }

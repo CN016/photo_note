@@ -7,7 +7,7 @@ if (!manifestUrl) throw new Error('请传入完整 release.json 地址，例如 
 const manifestResponse = await fetch(manifestUrl)
 assert.equal(manifestResponse.status, 200)
 const manifest = await manifestResponse.json()
-assert.deepEqual(manifest.variants.map(item => item.abi).sort(), ['arm64-v8a', 'armeabi-v7a', 'x86_64'].sort())
+assert.deepEqual(manifest.variants.map(item => item.abi).sort(), ['arm64-v8a', 'armeabi-v7a'].sort())
 for (const item of manifest.variants) {
   const url = new URL(item.url, manifestUrl)
   assert.equal(url.origin, new URL(manifestUrl).origin)

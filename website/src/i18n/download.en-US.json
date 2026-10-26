@@ -19,21 +19,18 @@
   "planned": "Planned",
   "miniBody": "The container approach and platform capabilities still need separate validation. No access link is available yet.",
   "notice": "Versions & downloads",
-  "noticeBody": "Check the version, CPU architecture and SHA-256 before installing, and use the links provided on this page. Each download identifies whether it is a test or production release.",
+  "noticeBody": "Choose a version for your device. Android downloads are test builds.",
   "version": "Version",
   "architecture": "Architecture",
   "androidTest": "Android test build",
   "androidHeading": "Keep creating on Android.",
-  "androidBody": "Includes the GeckoView browser engine, so no separate system WebView upgrade is needed. Choose ARM64 for most phones.",
   "androidMinimum": "Android 9 or later",
   "recommended": "Recommended",
   "downloadApk": "Download APK",
   "checksum": "View SHA-256",
   "checksumFile": "Download checksum",
-  "androidInstall": "Open the downloaded APK and follow Android’s prompt to allow installation from the current source. You can revoke that permission afterwards. These are debug-signed test builds; upgrade details for a production release will be provided separately.",
   "abi": {
-    "arm64-v8a": "Most Android phones",
-    "armeabi-v7a": "Older 32-bit Android phones",
-    "x86_64": "x86_64 emulators"
+    "arm64-v8a": "64-bit",
+    "armeabi-v7a": "32-bit"
   }
 }

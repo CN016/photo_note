@@ -1172,7 +1172,7 @@ nav > a,
 .android-heading h2 { margin: 10px 0 0; font-size: 25px; }
 .android-download > p { color: var(--muted); font-size: 14px; }
 .android-version { margin-top: 10px; }
-.android-packages { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 18px; margin-top: 24px; }
+.android-packages { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; margin-top: 24px; }
 .android-package { min-width: 0; padding: 22px; background: #f3f7fe; border-radius: 9px; }
 .android-package h3 { font-size: 17px; }
 .android-package .status { font-size: 11px; margin-left: 4px; }
