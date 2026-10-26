@@ -42,7 +42,8 @@
     "chooseDate": "Choose date",
     "records": "{count} entries",
     "noRecords": "No completed entries this month yet",
-    "mobileAgenda": "Daily cash flow"
+    "mobileAgenda": "Daily cash flow",
+    "more": "{count} more · open day"
   },
   "summary": {
     "income": "Income this period",
@@ -109,8 +110,20 @@
     "important": "Important",
     "anomaly": "Unusual",
     "pendingCheck": "Needs review",
-    "incomeCategories": ["Store", "Delivery", "Event", "Membership", "Other"],
-    "expenseCategories": ["Supplies", "Rent", "Payroll", "Shipping", "Other"],
+    "incomeCategories": [
+      "Store",
+      "Delivery",
+      "Event",
+      "Membership",
+      "Other"
+    ],
+    "expenseCategories": [
+      "Supplies",
+      "Rent",
+      "Payroll",
+      "Shipping",
+      "Other"
+    ],
     "methods": {
       "wechat": "WeChat Pay",
       "alipay": "Alipay",
@@ -144,5 +157,27 @@
   },
   "money": {
     "currency": "CNY"
+  },
+  "analytics": {
+    "scope": "Statistics follow current filters. Annual comparisons and rankings cover all history. Daily averages use recorded days.",
+    "averageTicket": "Average transaction",
+    "bestDay": "Highest income day",
+    "margin": "Net margin",
+    "coverage": "Recorded day coverage",
+    "yearComparison": "Income and expenses by year",
+    "ranking": "Best historical months",
+    "insights": "Business insights",
+    "cumulative": "Cumulative monthly balance",
+    "flags": "Record flags",
+    "incomeShare": "Top income category: {name}, contributing {share} of income.",
+    "expenseShare": "Top expense category: {name}, contributing {share} of expenses.",
+    "aboveAverage": "{count} days reached or exceeded average income per recorded day of {amount}.",
+    "expenseRatio": "Expenses represent {share} of income. Net margin = balance / income.",
+    "noBase": "No income; ratio unavailable",
+    "growth": "Income change from previous month",
+    "newBase": "Previous month has no income; growth unavailable",
+    "amount": "Amount",
+    "net": "Balance",
+    "empty": "No completed records to analyze"
   }
 }

@@ -5,6 +5,7 @@ import { useI18n } from 'vue-i18n'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { ArrowDown, ArrowLeft, ArrowRight, BottomRight, Calendar, Close, EditPen, Plus, Search, Switch, TopRight, TrendCharts } from '@element-plus/icons-vue'
 import AppHeader from '../components/AppHeader.vue'
+import LedgerAnalytics from '../ledger/LedgerAnalytics.vue'
 import { exportFile, FileExportError } from '../platform'
 import { api } from '../api/client'
 import { type LedgerFields, type LedgerImportItem, type LedgerRecord } from '../api/types'
@@ -160,14 +161,17 @@ function statsOf(items: LedgerRecord[]) {
   let incomeFen = 0
   let expenseFen = 0
   const activeDays = new Set<string>()
+  const incomeByDay = new Map<string, number>()
   for (const item of items) {
     const fen = amountToFen(item.amount) ?? 0
-    if (item.type === 'income') incomeFen += fen
+    if (item.type === 'income') { incomeFen += fen; incomeByDay.set(item.date, (incomeByDay.get(item.date) ?? 0) + fen) }
     else expenseFen += fen
     activeDays.add(item.date)
   }
   return {
     incomeFen, expenseFen, netFen: incomeFen - expenseFen, count: items.length,
+    ticketFen: items.length ? Math.round((incomeFen + expenseFen) / items.length) : 0,
+    bestIncomeFen: Math.max(0, ...incomeByDay.values()),
     activeDays: activeDays.size, averageFen: activeDays.size ? Math.round((incomeFen - expenseFen) / activeDays.size) : 0,
   }
 }
@@ -178,7 +182,7 @@ const agendaDays = computed(() => {
   const days = [...new Set(selectedMonthRecords.value.map(record => record.date))].sort((a, b) => b.localeCompare(a))
   return days.map(date => ({ date, records: dateRecords(date), stats: statsOf(dateRecords(date)) }))
 })
-const calendarMaxFen = computed(() => Math.max(1, ...selectedMonthRecords.value.map(record => amountToFen(record.amount) ?? 0)))
+const calendarMaxFen = computed(() => Math.max(1, ...agendaDays.value.map(day => day.stats.incomeFen + day.stats.expenseFen)))
 
 /** 生成当前月按日净额序列，用于趋势图和月报图片。 */
 const dailyTrend = computed(() => {
@@ -193,7 +197,8 @@ const dailyTrend = computed(() => {
 /** 按星期、分类和收付款方式聚合当前所选月份。 */
 const weekdayTotals = computed(() => Array.from({ length: 7 }, (_, weekday) => {
   const items = selectedMonthRecords.value.filter(record => fromDateKey(record.date).getDay() === weekday)
-  return { weekday, amount: Math.abs(statsOf(items).netFen), count: items.length }
+  const stats = statsOf(items)
+  return { weekday, amount: stats.incomeFen + stats.expenseFen, count: items.length }
 }))
 const weekdayMax = computed(() => Math.max(1, ...weekdayTotals.value.map(item => item.amount)))
 const categoryTotals = computed(() => aggregateBy(selectedMonthRecords.value, record => record.category || '—'))
@@ -287,7 +292,7 @@ watch(() => JSON.stringify(fields), () => {
 onMounted(async () => {
   loading.value = true
   try {
-    await Promise.all([...new Set([activeYear.value, Number(periodB.value.slice(0, 4))])].map(year => loadYear(year)))
+    await loadAllRecords()
     loadError.value = false
   } catch { loadError.value = true }
   finally { loading.value = false }
@@ -320,7 +325,7 @@ function dayStats(date: string) { return statsOf(dateRecords(date)) }
 /** 返回完成记录的支付方式、标记及收支本地化文案。 */
 function methodLabel(method: string): string {
   const known = ['wechat', 'alipay', 'cash', 'bank_card', 'other']
-  return known.includes(method) ? t(`record.methods.${method}`) : method
+  return known.includes(method) ? t(`record.methods.${method === 'bank_card' ? 'bankCard' : method}`) : method
 }
 function flagLabel(flag: string): string {
   if (flag === 'important') return t('record.important')
@@ -749,6 +754,12 @@ function resetFilters(): void {
   minimumAmount.value = ''
 }
 
+/** 原生月份输入允许清空；只接受有效月份，避免日历和历史分析进入无效日期状态。 */
+function chooseMonth(event: Event): void {
+  const value = (event.target as HTMLInputElement).value
+  if (/^\d{4}-(0[1-9]|1[0-2])$/.test(value) && Number(value.slice(0, 4)) > 0) activeMonth.value = value
+}
+
 /** 校验日期键是否为真实公历日期。 */
 function isValidDate(value: string): boolean {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false
@@ -827,7 +838,7 @@ function heatTitle(day: typeof yearlyHeat.value[number]): string {
       <section class="calendar-section">
         <div class="calendar-heading">
           <div class="month-heading"><button class="icon-button" type="button" :aria-label="t('calendar.previous')" :title="t('calendar.previous')" @click="shiftMonth(-1)"><el-icon aria-hidden="true"><ArrowLeft /></el-icon></button><h2>{{ monthLabel(activeMonth) }}</h2><button class="icon-button" type="button" :aria-label="t('calendar.next')" :title="t('calendar.next')" @click="shiftMonth(1)"><el-icon aria-hidden="true"><ArrowRight /></el-icon></button><button class="today-button" type="button" @click="jumpToday">{{ t('calendar.today') }}</button></div>
-          <div class="calendar-heading-actions"><span class="month-record-count">{{ t('calendar.records', { count: selectedMonthRecords.length }) }}</span><el-button class="soft-button copy-button" @click="copyYesterday">{{ t('record.copyYesterday') }}</el-button></div>
+          <div class="calendar-heading-actions"><input :value="activeMonth" @change="chooseMonth" type="month" :aria-label="t('calendar.month')" class="month-picker"><span class="month-record-count">{{ t('calendar.records', { count: selectedMonthRecords.length }) }}</span><el-button class="soft-button copy-button" @click="copyYesterday">{{ t('record.copyYesterday') }}</el-button></div>
         </div>
 
         <div class="weekday-row" aria-hidden="true"><span v-for="(name, index) in weekdayNames" :key="index">{{ name }}</span></div>
@@ -838,6 +849,8 @@ function heatTitle(day: typeof yearlyHeat.value[number]): string {
             <span v-if="dayStats(cell.key).incomeFen" class="cell-income">+{{ money(dayStats(cell.key).incomeFen) }}</span>
             <span v-if="dayStats(cell.key).expenseFen" class="cell-expense">−{{ money(dayStats(cell.key).expenseFen) }}</span>
             <span v-if="dateRecords(cell.key).length" class="cell-net" :class="{ negative: dayStats(cell.key).netFen < 0 }">={{ money(dayStats(cell.key).netFen) }}</span>
+            <span class="cell-records"><span v-for="record in dateRecords(cell.key).slice(0, 3)" :key="record.business_id" class="cell-record" :title="`${record.time} ${record.category} ${record.note}`"><span>{{ record.note || record.category || methodLabel(record.payment_method) }}</span><b :class="record.type">{{ record.type === 'income' ? '+' : '−' }}{{ money(amountToFen(record.amount) ?? 0) }}</b></span></span>
+            <span v-if="dateRecords(cell.key).length > 3" class="cell-more">{{ t('calendar.more', { count: dateRecords(cell.key).length - 3 }) }}</span>
             <span v-if="dateRecords(cell.key).length" class="cell-bar"><i :style="{ width: barPercent(dayStats(cell.key).incomeFen + dayStats(cell.key).expenseFen, calendarMaxFen) }" /></span>
             <el-icon class="cell-open" aria-hidden="true"><TopRight /></el-icon>
           </button>
@@ -859,10 +872,12 @@ function heatTitle(day: typeof yearlyHeat.value[number]): string {
         <div class="analysis-heading"><div><p class="eyebrow">{{ t('title') }}</p><h2>{{ t('analysis.title') }}</h2></div><span class="analysis-period">{{ monthLabel(activeMonth) }}</span></div>
         <div class="analysis-grid">
           <article class="analysis-card trend-card"><div class="card-heading"><h3>{{ t('analysis.trend') }}</h3><span>{{ t('summary.net') }}</span></div><div class="trend-chart" role="img" :aria-label="t('analysis.trend')"><div v-for="point in dailyTrend" :key="point.date" class="trend-column" :title="`${point.day} · ${money(point.netFen)}`"><span class="trend-bar" :class="{ loss: point.netFen < 0 }" :style="{ height: barPercent(point.netFen, Math.max(1, ...dailyTrend.map(item => Math.abs(item.netFen)))) }" /><small>{{ point.day % 5 === 1 || point.day === dailyTrend.length ? point.day : '' }}</small></div></div><div class="trend-baseline" /></article>
-          <article class="analysis-card weekday-card"><div class="card-heading"><h3>{{ t('analysis.weekday') }}</h3><span>{{ t('summary.count') }}</span></div><div class="weekday-chart"><div v-for="item in weekdayTotals" :key="item.weekday" class="weekday-column"><div class="weekday-track"><i :style="{ height: barPercent(item.amount, weekdayMax) }" /></div><span>{{ weekdayNames[item.weekday] }}</span><small>{{ item.count }}</small></div></div></article>
+          <article class="analysis-card weekday-card"><div class="card-heading"><h3>{{ t('analysis.weekday') }}</h3><span>{{ t('analytics.amount') }}</span></div><div class="weekday-chart"><div v-for="item in weekdayTotals" :key="item.weekday" class="weekday-column" :title="money(item.amount)"><div class="weekday-track"><i :style="{ height: barPercent(item.amount, weekdayMax) }" /></div><span>{{ weekdayNames[item.weekday] }}</span><small>{{ item.count }}</small></div></div></article>
           <article class="analysis-card group-card"><div class="card-heading"><h3>{{ t('analysis.categories') }}</h3><span>{{ categoryTotals.length }}</span></div><div v-if="categoryTotals.length" class="group-list"><div v-for="item in categoryTotals" :key="item.key" class="group-row"><span>{{ item.key }}</span><div class="group-track"><i :style="{ width: barPercent(item.incomeFen + item.expenseFen, Math.max(1, ...categoryTotals.map(row => row.incomeFen + row.expenseFen))) }" /></div><strong>{{ money(item.incomeFen - item.expenseFen) }}</strong><small>+{{ money(item.incomeFen) }} / −{{ money(item.expenseFen) }}</small></div></div><p v-else class="analysis-empty">{{ t('analysis.empty') }}</p></article>
           <article class="analysis-card group-card"><div class="card-heading"><h3>{{ t('analysis.methods') }}</h3><span>{{ methodTotals.length }}</span></div><div v-if="methodTotals.length" class="group-list"><div v-for="item in methodTotals" :key="item.key" class="group-row"><span>{{ methodLabel(item.key) }}</span><div class="group-track method-track"><i :style="{ width: barPercent(item.incomeFen + item.expenseFen, Math.max(1, ...methodTotals.map(row => row.incomeFen + row.expenseFen))) }" /></div><strong>{{ money(item.incomeFen - item.expenseFen) }}</strong><small>+{{ money(item.incomeFen) }} / −{{ money(item.expenseFen) }}</small></div></div><p v-else class="analysis-empty">{{ t('analysis.empty') }}</p></article>
         </div>
+
+        <LedgerAnalytics :records="completeRecords.filter(matchesFilters)" :month="activeMonth" @month="activeMonth = $event" />
 
         <article class="analysis-card compare-card">
           <div class="card-heading compare-heading"><div><h3>{{ t('analysis.comparison') }}</h3><p>{{ t('analysis.insights') }} · {{ compareStatsA.netFen >= compareStatsB.netFen ? t('analysis.positive') : t('analysis.negative') }}</p></div><div class="compare-mode" role="group" :aria-label="t('analysis.comparison')"><button type="button" :aria-pressed="compareMode === 'month'" :class="{ active: compareMode === 'month' }" @click="changeCompareMode('month')">{{ t('analysis.monthMode') }}</button><button type="button" :aria-pressed="compareMode === 'year'" :class="{ active: compareMode === 'year' }" @click="changeCompareMode('year')">{{ t('analysis.yearMode') }}</button></div></div>
@@ -872,6 +887,7 @@ function heatTitle(day: typeof yearlyHeat.value[number]): string {
             <div class="compare-row"><span>{{ t('summary.expense') }}</span><strong>{{ money(compareStatsA.expenseFen) }}</strong><strong>{{ money(compareStatsB.expenseFen) }}</strong><em :class="{ negative: compareDelta.expense > 0 }">{{ money(compareDelta.expense) }}</em></div>
             <div class="compare-row"><span>{{ t('summary.net') }}</span><strong>{{ money(compareStatsA.netFen) }}</strong><strong>{{ money(compareStatsB.netFen) }}</strong><em :class="{ negative: compareDelta.net < 0 }">{{ money(compareDelta.net) }}</em></div>
             <div class="compare-row"><span>{{ t('summary.count') }}</span><strong>{{ compareStatsA.count }}</strong><strong>{{ compareStatsB.count }}</strong><em>{{ compareDelta.count > 0 ? '+' : '' }}{{ compareDelta.count }}</em></div>
+            <div v-for="metric in ['activeDays', 'averageFen', 'ticketFen', 'bestIncomeFen'] as const" :key="metric" class="compare-row"><span>{{ t(metric === 'activeDays' ? 'analysis.activeDays' : metric === 'ticketFen' ? 'analytics.averageTicket' : metric === 'bestIncomeFen' ? 'analytics.bestDay' : 'analysis.dailyAverage') }}</span><strong>{{ metric === 'activeDays' ? compareStatsA[metric] : money(compareStatsA[metric]) }}</strong><strong>{{ metric === 'activeDays' ? compareStatsB[metric] : money(compareStatsB[metric]) }}</strong><em>{{ metric === 'activeDays' ? compareStatsA[metric] - compareStatsB[metric] : money(compareStatsA[metric] - compareStatsB[metric]) }}</em></div>
           </div>
           <div class="insight-strip"><el-icon class="insight-spark" aria-hidden="true"><TrendCharts /></el-icon><p>{{ compareStatsA.incomeFen > compareStatsA.expenseFen ? t('analysis.higherIncome') : t('analysis.higherExpense') }} · {{ compareStatsA.netFen >= 0 ? t('analysis.positive') : t('analysis.negative') }}</p><small>{{ t('analysis.dailyAverage') }} · {{ money(compareStatsA.averageFen) }}</small></div>
         </article>
@@ -945,4 +961,8 @@ function heatTitle(day: typeof yearlyHeat.value[number]): string {
 @media(min-width:769px){.ledger-main{width:min(1440px,calc(100vw - 310px));margin-right:auto;margin-left:calc(226px + max(42px,(100vw - 1666px)/2))}.ledger-main .workspace-footer{width:auto;margin:0}}
 @media(max-width:768px){.ledger-main .workspace-footer{width:auto;margin:0}}
 @media(min-width:769px) and (max-width:1050px){.calendar-grid{display:none}.mobile-agenda{display:block}.analysis-grid{grid-template-columns:1fr 1fr}.trend-card{grid-column:span 2}.compare-table-head,.compare-row{grid-template-columns:minmax(68px,1fr) repeat(3,minmax(0,1fr));gap:5px}.compare-row strong,.compare-row em{font-size:9px;overflow-wrap:anywhere;white-space:normal}}
+.month-picker{min-height:40px;max-width:155px;border:1px solid var(--line);border-radius:8px;background:var(--surface);color:var(--ink);padding:0 8px}
+/* 日期内保留逐笔摘要；窄屏横向滚动日历，同时提供原有每日列表。 */
+.calendar-cell{vertical-align:top;min-height:195px;padding-bottom:25px}.cell-records{display:grid;gap:5px;margin-top:9px}.cell-record{display:flex;gap:5px;justify-content:space-between;font-size:10px;color:var(--muted)}.cell-record>span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.cell-record b{white-space:nowrap;font-weight:600}.cell-record b.income{color:var(--success)}.cell-record b.expense{color:var(--danger)}.cell-more{display:block;font-size:10px;color:var(--accent);margin-top:5px}.calendar-cell:focus-visible{outline:2px solid var(--accent);outline-offset:-3px}
+@media(max-width:1050px){.calendar-section{overflow-x:auto}.calendar-grid{display:grid;min-width:770px}.weekday-row{min-width:770px}.calendar-cell{min-height:195px}.calendar-heading{position:sticky;left:0}.mobile-agenda{position:sticky;left:0}.calendar-empty{display:none}}
 </style>

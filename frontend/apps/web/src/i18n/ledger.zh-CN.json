@@ -42,7 +42,8 @@
     "chooseDate": "选择日期",
     "records": "{count} 笔",
     "noRecords": "本月还没有正式记录",
-    "mobileAgenda": "本月每日收支"
+    "mobileAgenda": "本月每日收支",
+    "more": "另有 {count} 笔，点击查看"
   },
   "summary": {
     "income": "本期收入",
@@ -109,8 +110,20 @@
     "important": "重点",
     "anomaly": "异常",
     "pendingCheck": "待核对",
-    "incomeCategories": ["门店", "外卖", "活动", "会员", "其他"],
-    "expenseCategories": ["采购", "房租", "人工", "物流", "其他"],
+    "incomeCategories": [
+      "门店",
+      "外卖",
+      "活动",
+      "会员",
+      "其他"
+    ],
+    "expenseCategories": [
+      "采购",
+      "房租",
+      "人工",
+      "物流",
+      "其他"
+    ],
     "methods": {
       "wechat": "微信",
       "alipay": "支付宝",
@@ -144,5 +157,27 @@
   },
   "money": {
     "currency": "CNY"
+  },
+  "analytics": {
+    "scope": "统计跟随当前筛选；年度对比和排行覆盖全部历史记录。日均按有记录天数计算。",
+    "averageTicket": "单笔平均金额",
+    "bestDay": "最高收入日",
+    "margin": "结余率",
+    "coverage": "记录覆盖率",
+    "yearComparison": "历年收支对比",
+    "ranking": "历史最佳月份",
+    "insights": "经营洞察",
+    "cumulative": "本月累计结余",
+    "flags": "标记分布",
+    "incomeShare": "主要收入分类：{name}，占收入 {share}。",
+    "expenseShare": "主要支出分类：{name}，占支出 {share}。",
+    "aboveAverage": "有 {count} 天收入达到或超过有记录日均收入 {amount}。",
+    "expenseRatio": "支出占收入 {share}；结余率按结余 / 收入计算。",
+    "noBase": "收入为零，比例不适用",
+    "growth": "收入较上月变化",
+    "newBase": "上月收入为零，无可用增长基数",
+    "amount": "金额",
+    "net": "结余",
+    "empty": "暂无可分析的正式记录"
   }
 }
