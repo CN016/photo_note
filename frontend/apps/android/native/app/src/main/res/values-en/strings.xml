@@ -2,8 +2,8 @@
 <resources>
     <string name="app_name">取景台</string>
     <string name="title_activity_main">取景台</string>
-    <string name="engine_loading">Starting the built-in browser…</string>
-    <string name="engine_failed">Could not start the built-in browser. Close and reopen 取景台.</string>
+    <string name="engine_loading">Starting the creative engine…</string>
+    <string name="engine_failed">Could not start the creative engine. Close and reopen 取景台.</string>
     <string name="update_checking">Checking for page updates…</string>
     <string name="update_downloading">Downloading page update: %1$d%%</string>
     <string name="update_verifying">Verifying and installing the update…</string>

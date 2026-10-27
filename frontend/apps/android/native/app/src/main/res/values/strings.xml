@@ -2,8 +2,8 @@
 <resources>
     <string name="app_name">取景台</string>
     <string name="title_activity_main">取景台</string>
-    <string name="engine_loading">正在启动内置浏览器…</string>
-    <string name="engine_failed">内置浏览器启动失败，请关闭后重新打开取景台。</string>
+    <string name="engine_loading">正在启动创作引擎…</string>
+    <string name="engine_failed">创作引擎启动失败，请关闭后重新打开取景台。</string>
     <string name="update_checking">正在检查页面更新…</string>
     <string name="update_downloading">正在下载页面更新：%1$d%%</string>
     <string name="update_verifying">正在校验并安装更新…</string>
