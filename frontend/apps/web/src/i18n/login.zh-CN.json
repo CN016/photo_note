@@ -19,5 +19,9 @@
   "newHere": "还没有账号？",
   "createAccount": "创建账号",
   "phoneInvalid": "请输入 11 位数字手机号。",
-  "loginFailed": "登录失败，请检查手机号和密码。"
+  "loginFailed": "登录失败，请检查手机号和密码。",
+  "sessionRecoveryTitle": "正在恢复登录状态",
+  "sessionRecoveryMessage": "已保留你的登录凭据，暂时无法连接登录服务。请重试恢复，无需重新输入密码。",
+  "sessionRecoveryRetry": "重试恢复登录",
+  "sessionRecoverySignIn": "退出当前会话并重新登录"
 }

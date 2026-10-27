@@ -34,6 +34,8 @@ public class WebUpdateInstrumentedTest {
     private HostnameVerifier previousVerifier;
     private volatile byte[] feed;
     private volatile byte[] archive;
+    private volatile byte[] authResponse;
+    private volatile int authStatus = 200;
     private String base;
     private String alias;
     private volatile String lastApiPath = "";
@@ -109,9 +111,10 @@ public class WebUpdateInstrumentedTest {
                 lastApiPath = request; lastApiBody = body.toString();
                 lastApiAuthorization = requestHeaders.getOrDefault("authorization",""); lastApiCookie = requestHeaders.getOrDefault("cookie","");
             }
-            byte[] bytes = request.contains("/latest.json ") ? feed : request.contains("/bundle.zip ") ? archive : "{\"ok\":true}".getBytes(java.nio.charset.StandardCharsets.UTF_8);
+            boolean auth = request.contains("/api/v1/auth/");
+            byte[] bytes = auth && authResponse != null ? authResponse : request.contains("/latest.json ") ? feed : request.contains("/bundle.zip ") ? archive : "{\"ok\":true}".getBytes(java.nio.charset.StandardCharsets.UTF_8);
             OutputStream output = socket.getOutputStream();
-            output.write(("HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: " + bytes.length + "\r\nConnection: close\r\n\r\n").getBytes(java.nio.charset.StandardCharsets.US_ASCII)); output.write(bytes); output.flush();
+            output.write(("HTTP/1.1 " + (auth ? authStatus : 200) + " Response\r\nContent-Type: application/json\r\nContent-Length: " + bytes.length + "\r\nConnection: close\r\n\r\n").getBytes(java.nio.charset.StandardCharsets.US_ASCII)); output.write(bytes); output.flush();
         } catch (Exception error) { android.util.Log.e("UpdateFixtureTLS", "fixture_server", error); }
     }
     private JSONObject config() throws Exception {
@@ -179,4 +182,28 @@ public class WebUpdateInstrumentedTest {
             HttpURLConnection cross = (HttpURLConnection)new URL(local.origin()+"/api/v1/test").openConnection(); cross.setRequestProperty("Cookie","photo_nini_local="+token); cross.setRequestProperty("Origin","https://attacker.invalid"); assertEquals(403,cross.getResponseCode()); cross.disconnect();
         }
     }
+    /** 在网页收到登录结果之前，HTTP代理必须完成加密落盘；网络故障和旧401不能清除新会话。 */
+    @Test public void proxyPersistsBeforeResponseAndLogoutWins() throws Exception {
+        WebBundleUpdater updater=new WebBundleUpdater(isolated,config()); updater.prepare((p,n)->{}); updater.confirm();
+        JSONObject tokens=new JSONObject().put("access_token","synthetic-access").put("refresh_token","synthetic-refresh").put("session_id","synthetic-session").put("orgid",17).put("session_version",2);
+        authResponse=new JSONObject().put("data",new JSONObject().put("tokens",tokens)).toString().getBytes(java.nio.charset.StandardCharsets.UTF_8);
+        try(LocalWebServer local=new LocalWebServer(isolated,updater)) {
+            String cookie="photo_nini_local="+local.startHeaders().get("X-Photo-Nini-Bootstrap");
+            assertEquals(200,authRequest(local,cookie,"login","{}"));
+            SessionVault reopened=new SessionVault(isolated,base+"/backendApi"); assertTrue(reopened.bootstrap().contains("synthetic-refresh"));
+            tokens.put("refresh_token","rotated-refresh"); authResponse=new JSONObject().put("data",new JSONObject().put("tokens",tokens)).toString().getBytes(java.nio.charset.StandardCharsets.UTF_8);
+            assertEquals(200,authRequest(local,cookie,"refresh","{\"refresh_token\":\"synthetic-refresh\"}")); assertTrue(reopened.bootstrap().contains("rotated-refresh"));
+            authStatus=503;authResponse="{}".getBytes(java.nio.charset.StandardCharsets.UTF_8);
+            assertEquals(503,authRequest(local,cookie,"refresh","{\"refresh_token\":\"rotated-refresh\"}"));assertTrue(reopened.bootstrap().contains("rotated-refresh"));
+            authStatus=403;assertEquals(403,authRequest(local,cookie,"refresh","{\"refresh_token\":\"rotated-refresh\"}"));assertTrue(reopened.bootstrap().contains("rotated-refresh"));
+            authStatus=401;assertEquals(401,authRequest(local,cookie,"refresh","{\"refresh_token\":\"synthetic-refresh\"}"));assertTrue(reopened.bootstrap().contains("rotated-refresh"));
+            authStatus=200; assertEquals(200,authRequest(local,cookie,"logout","{}"));assertFalse(reopened.bootstrap().contains("rotated-refresh"));
+        }
+    }
+    private int authRequest(LocalWebServer local,String cookie,String endpoint,String body) throws Exception {
+        HttpURLConnection connection=(HttpURLConnection)new URL(local.origin()+"/api/v1/auth/"+endpoint).openConnection();
+        connection.setRequestMethod("POST");connection.setDoOutput(true);connection.setRequestProperty("Cookie",cookie);connection.setRequestProperty("Content-Type","application/json");byte[] bytes=body.getBytes(java.nio.charset.StandardCharsets.UTF_8);connection.setFixedLengthStreamingMode(bytes.length);
+        try(OutputStream output=connection.getOutputStream()){output.write(bytes);}int status=connection.getResponseCode();connection.disconnect();return status;
+    }
+
 }

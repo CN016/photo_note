@@ -1,0 +1,46 @@
+{
+  "date": "2026-10-27",
+  "android_version": "1.1.2",
+  "android_version_code": 6,
+  "artifact_batch": "20261027-131047",
+  "validation": {
+    "frontend_tests_passed": 70,
+    "android_emulator_tests_passed": 14,
+    "separate_process_read_after_force_stop": "passed",
+    "native_build": "passed",
+    "web_build": "passed",
+    "website_build": "passed",
+    "lint_errors": 0,
+    "lint_warnings": 21,
+    "login_locale_key_parity": "passed",
+    "initial_browser_marker_immediate_kill": "lost",
+    "initial_browser_marker_after_10_seconds": "retained"
+  },
+  "packages": [
+    {
+      "file": "android-1.1.2-debug.zip",
+      "bytes": 372431291,
+      "sha256": "b1b639cf4211a93aca8c8c513ac256b1ce776064294888f97dabb60be37406c8",
+      "zip_crc": "passed"
+    },
+    {
+      "file": "web-1.1.2-session-recovery.zip",
+      "bytes": 38872112,
+      "sha256": "78c07a17edef0bb1ed3c507e772faef01fec64a8f5363e44eeb12d843b256616",
+      "zip_crc": "passed"
+    },
+    {
+      "file": "website-android-1.1.2.zip",
+      "bytes": 242115284,
+      "sha256": "63a2d5f32ce35f1b9a352ab069e826e3feb5998a7e4b45adc1942bad3b2056f3",
+      "zip_crc": "passed"
+    }
+  ],
+  "not_verified": [
+    "physical Android devices",
+    "ARM execution",
+    "real account production flows",
+    "production deployment",
+    "production signing"
+  ]
+}

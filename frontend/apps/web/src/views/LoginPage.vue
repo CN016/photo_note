@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
 import { ApiError } from '../api/types'
@@ -34,6 +34,19 @@ function errorText(value: unknown): string {
   return t('common.errors.requestFailed')
 }
 
+/** 页面重载后网络短暂失败时保留凭据并重建内存store，只有明确退出才回到账号表单。 */
+async function retrySession() {
+  if (auth.busy || !auth.recoveryPending) return
+  await auth.initialize()
+  if (auth.user) await router.replace(defaultAuthenticatedRoute())
+}
+/** 用户明确放弃恢复时才退出；离线撤销失败也清理本机状态，并显示已翻译提示。 */
+async function resetSession() {
+  try { await auth.signOut() } catch { error.value = t('common.logoutFailed') }
+}
+onMounted(() => window.addEventListener('focus', retrySession))
+onUnmounted(() => window.removeEventListener('focus', retrySession))
+
 /** 校验手机号和密码长度后调用后端登录入口。 */
 async function submit() {
   error.value = ''
@@ -62,14 +75,20 @@ async function submit() {
       <div class="auth-topbar"><RouterLink class="mobile-brand" to="/login"><BrandMark />{{ t('common.brand') }}</RouterLink><div class="auth-top-actions"><ThemeSwitcher /><LanguageSwitcher /></div></div>
       <div class="auth-form-wrap">
         <div class="auth-heading"><p class="eyebrow">{{ t('login.formHint') }}</p><h2>{{ t('login.formTitle') }}</h2></div>
-        <form class="auth-form" @submit.prevent="submit" novalidate>
+        <section v-if="auth.recoveryPending" class="auth-form" role="status" aria-live="polite">
+          <h3>{{ t('login.sessionRecoveryTitle') }}</h3>
+          <p>{{ t('login.sessionRecoveryMessage') }}</p>
+          <el-button class="primary-button full-button" type="primary" :loading="auth.busy" @click="retrySession">{{ t('login.sessionRecoveryRetry') }}</el-button>
+          <el-button text :disabled="auth.busy" @click="resetSession">{{ t('login.sessionRecoverySignIn') }}</el-button>
+        </section>
+        <form v-else class="auth-form" @submit.prevent="submit" novalidate>
           <el-form-item :label="t('login.phone')"><el-input v-model="phone" name="phone" type="tel" inputmode="numeric" autocomplete="tel-national" maxlength="11" :placeholder="t('login.phonePlaceholder')" aria-describedby="phone-help" @input="phone = phone.replace(/\D/g, '').slice(0, 11)" /></el-form-item>
           <p id="phone-help" class="field-help">{{ t('login.phoneInvalid') }}</p>
           <el-form-item :label="t('login.password')"><el-input v-model="password" name="password" type="password" show-password autocomplete="current-password" :placeholder="t('login.passwordPlaceholder')" /></el-form-item>
           <p v-if="error" class="form-error" role="alert">{{ error }}</p>
           <el-button class="primary-button full-button" type="primary" native-type="submit" :loading="busy">{{ busy ? t('login.submitting') : t('login.submit') }}<el-icon aria-hidden="true"><ArrowRight /></el-icon></el-button>
         </form>
-        <p class="auth-switch">{{ t('login.newHere') }} <RouterLink to="/register">{{ t('login.createAccount') }}</RouterLink></p>
+        <p v-if="!auth.recoveryPending" class="auth-switch">{{ t('login.newHere') }} <RouterLink to="/register">{{ t('login.createAccount') }}</RouterLink></p>
       </div>
       <p class="auth-footnote">{{ t('common.copyright') }}</p>
     </section>

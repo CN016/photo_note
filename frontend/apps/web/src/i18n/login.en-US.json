@@ -19,5 +19,9 @@
   "newHere": "New here?",
   "createAccount": "Create an account",
   "phoneInvalid": "Enter an 11-digit phone number.",
-  "loginFailed": "Sign in failed. Check your phone number and password."
+  "loginFailed": "Sign in failed. Check your phone number and password.",
+  "sessionRecoveryTitle": "Restoring your session",
+  "sessionRecoveryMessage": "Your sign-in credentials are saved, but the sign-in service is temporarily unavailable. Retry to restore your session without entering your password.",
+  "sessionRecoveryRetry": "Retry session recovery",
+  "sessionRecoverySignIn": "Sign out and sign in again"
 }

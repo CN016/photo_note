@@ -1,6 +1,7 @@
 package love.imcn016.photo;
 
 import android.content.Context;
+import org.json.JSONObject;
 import java.io.*;
 import java.net.*;
 import java.nio.charset.StandardCharsets;
@@ -15,9 +16,11 @@ public final class LocalWebServer implements AutoCloseable {
     private final ExecutorService workers = new ThreadPoolExecutor(4, 4, 0, TimeUnit.SECONDS, new ArrayBlockingQueue<>(32));
     private final String token;
     private final String origin;
+    private final SessionVault vault;
     private volatile String migrationScript = "";
     public LocalWebServer(Context context, WebBundleUpdater bundles) throws Exception {
         this.context = context; this.bundles = bundles;
+        vault = new SessionVault(context,bundles.config.getString("apiOrigin"));
         var preferences = context.getSharedPreferences("web-local-origin", 0);
         token = preferences.getString("token", UUID.randomUUID().toString());
         int port = preferences.getInt("port", 0);
@@ -84,7 +87,8 @@ public final class LocalWebServer implements AutoCloseable {
             String resource = path.equals("/") ? "index.html" : path.substring(1);
             if (!WebBundleUpdater.safePath(resource)) { status(output, 404); return; }
             InputStream file;
-            if (resource.equals("__migration.js")) file = new ByteArrayInputStream(migrationScript.getBytes(StandardCharsets.UTF_8));
+            if (resource.equals("__session.js")) file = new ByteArrayInputStream(vault.bootstrap().getBytes(StandardCharsets.UTF_8));
+            else if (resource.equals("__migration.js")) file = new ByteArrayInputStream(migrationScript.getBytes(StandardCharsets.UTF_8));
             else if (resource.equals("__native.js")) file = context.getAssets().open("native/page-bridge.js");
             else try { file = bundles.open(resource); }
             catch (FileNotFoundException missing) {
@@ -99,7 +103,7 @@ public final class LocalWebServer implements AutoCloseable {
                 if (!request[0].equals("HEAD")) {
                     if (resource.equals("index.html")) {
                         String html = new String(BundleIO.read(body), StandardCharsets.UTF_8);
-                        output.write(html.replace("<head>", "<head><script src=\"/__migration.js\"></script><script src=\"/__native.js\"></script>").getBytes(StandardCharsets.UTF_8));
+                        output.write(html.replace("<head>", "<head><script src=\"/__migration.js\"></script><script src=\"/__session.js\"></script><script src=\"/__native.js\"></script>").getBytes(StandardCharsets.UTF_8));
                     } else BundleIO.copy(body, output);
                 }
                 output.flush();
@@ -111,6 +115,12 @@ public final class LocalWebServer implements AutoCloseable {
         if (!Arrays.asList("GET","POST","PUT","PATCH","DELETE","HEAD").contains(request[0]) || headers.containsKey("transfer-encoding")) { status(output,400); return; }
         long bytes = Long.parseLong(headers.getOrDefault("content-length", "0"));
         if (bytes < 0 || bytes > 128L * 1024 * 1024) { status(output,413); return; }
+        long sessionGeneration = vault.generation();
+        String endpoint = URI.create(request[1]).getPath();
+        boolean sessionResponse = request[0].equals("POST") && Arrays.asList("/api/v1/auth/login","/api/v1/auth/register","/api/v1/auth/refresh","/api/v1/auth/switch-environment").contains(endpoint);
+        boolean refreshing = endpoint.equals("/api/v1/auth/refresh") && request[0].equals("POST");
+        ByteArrayOutputStream refreshBody = refreshing && bytes <= 16384 ? new ByteArrayOutputStream() : null;
+        if (endpoint.equals("/api/v1/auth/logout") && request[0].equals("POST")) vault.logout();
         URL url = new URL(bundles.config.getString("apiOrigin") + request[1]);
         HttpURLConnection remote = (HttpURLConnection) url.openConnection();
         remote.setInstanceFollowRedirects(false); remote.setConnectTimeout(10000); remote.setReadTimeout(60000); remote.setRequestMethod(request[0]);
@@ -122,19 +132,44 @@ public final class LocalWebServer implements AutoCloseable {
                 remote.setDoOutput(true); remote.setFixedLengthStreamingMode(bytes);
                 try (OutputStream body = remote.getOutputStream()) {
                     byte[] buffer = new byte[65536]; long remaining = bytes;
-                    while (remaining > 0) { int n = input.read(buffer,0,(int)Math.min(buffer.length,remaining)); if (n < 0) throw new EOFException(); body.write(buffer,0,n); remaining -= n; }
+                    while (remaining > 0) { int n = input.read(buffer,0,(int)Math.min(buffer.length,remaining)); if (n < 0) throw new EOFException(); body.write(buffer,0,n); if (refreshBody != null) refreshBody.write(buffer,0,n); remaining -= n; }
                 }
             }
             int code = remote.getResponseCode();
             if (code >= 300 && code < 400 && code != 304) { status(output,502); return; }
+            byte[] sessionBytes = null;
+            if (sessionResponse) {
+                InputStream source = code >= 400 ? remote.getErrorStream() : remote.getInputStream();
+                if (source != null) try (source; ByteArrayOutputStream body = new ByteArrayOutputStream()) {
+                    byte[] buffer = new byte[8192];
+                    for (int n; (n = source.read(buffer)) != -1;) { if (body.size()+n > 1024*1024) throw new IOException("session_response_size"); body.write(buffer,0,n); }
+                    sessionBytes = body.toByteArray();
+                }
+                if (sessionBytes != null && code >= 200 && code < 300) {
+                    JSONObject envelope = new JSONObject(new String(sessionBytes,StandardCharsets.UTF_8));
+                    JSONObject data = envelope.optJSONObject("data");
+                    if (data != null && data.optJSONObject("tokens") != null) vault.accept(data.getJSONObject("tokens"),sessionGeneration,endpoint.equals("/api/v1/auth/login") || endpoint.equals("/api/v1/auth/register"));
+                }
+                boolean revokedEnvironment = false;
+                if (code == 403 && sessionBytes != null) try {
+                    JSONObject failure = new JSONObject(new String(sessionBytes,StandardCharsets.UTF_8)).optJSONObject("error");
+                    revokedEnvironment = failure != null && "environment_unavailable".equals(failure.optString("code"));
+                } catch (org.json.JSONException ignored) { /* 代理HTML或未知403不能被当作会话撤销。 */ }
+                if (refreshing && (code == 401 || revokedEnvironment) && refreshBody != null) {
+                    JSONObject submitted = new JSONObject(refreshBody.toString("UTF-8")); vault.reject(submitted.optString("refresh_token"));
+                }
+            }
             StringBuilder response = new StringBuilder("HTTP/1.1 " + code + " Response\r\nConnection: close\r\nCache-Control: no-store\r\nX-Content-Type-Options: nosniff\r\n");
             for (String name : Arrays.asList("Content-Type","Content-Length","Content-Disposition","Content-Range","Accept-Ranges","ETag","Last-Modified")) {
                 String value = remote.getHeaderField(name);
                 if (value != null && value.indexOf('\r') < 0 && value.indexOf('\n') < 0) response.append(name).append(": ").append(value).append("\r\n");
             }
             output.write(response.append("\r\n").toString().getBytes(StandardCharsets.ISO_8859_1));
-            InputStream body = code >= 400 ? remote.getErrorStream() : remote.getInputStream();
-            if (body != null) try (body) { if (!request[0].equals("HEAD")) BundleIO.copy(body, output); }
+            if (sessionBytes != null) output.write(sessionBytes);
+            else if (!sessionResponse) {
+                InputStream body = code >= 400 ? remote.getErrorStream() : remote.getInputStream();
+                if (body != null) try (body) { if (!request[0].equals("HEAD")) BundleIO.copy(body, output); }
+            }
             output.flush();
         } finally { remote.disconnect(); }
     }
@@ -153,5 +188,5 @@ public final class LocalWebServer implements AutoCloseable {
         String type = URLConnection.guessContentTypeFromName(path); return type == null ? "application/octet-stream" : type;
     }
     private static void status(OutputStream output, int code) throws IOException { output.write(("HTTP/1.1 " + code + " Response\r\nContent-Length: 0\r\nConnection: close\r\n\r\n").getBytes(StandardCharsets.US_ASCII)); output.flush(); }
-    public void close() { try { listener.close(); } catch (IOException ignored) { } workers.shutdownNow(); }
+    public void close() { vault.stop(); try { listener.close(); } catch (IOException ignored) { } workers.shutdownNow(); }
 }
