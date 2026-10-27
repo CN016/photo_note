@@ -2,6 +2,7 @@ import { createPublicKey } from 'node:crypto'
 import { cpSync, mkdirSync, readFileSync, writeFileSync, rmSync } from 'node:fs'
 import { resolve, dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { apkUpdateConfig } from './apk-update-config.mjs'
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 /** 只清理本脚本负责的生成目录，绝不遍历或移动用户文件。 */
@@ -37,5 +38,6 @@ export function syncWeb(apiUrl) {
   const publicKey = publicFile ? createPublicKey(readFileSync(publicFile)).export({ type: 'spki', format: 'der' }).toString('base64') : ''
   const config = { enabled: Boolean(updateUrl && publicKey), url: updateUrl, publicKey, apiOrigin: api.href.replace(/\/$/, ''), release: release.release, shellCode: shell.androidVersionCode, bridgeVersion: 1, version: release.version }
   writeFileSync(join(root, 'native/app/src/main/assets/update-config.json'), JSON.stringify(config))
+  writeFileSync(join(root, 'native/app/src/main/assets/apk-update-config.json'), JSON.stringify(apkUpdateConfig(root)))
   writeFileSync(join(assets, 'manifest.json'), JSON.stringify(manifest, null, 2))
 }

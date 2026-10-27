@@ -51,3 +51,9 @@ VITE_ANDROID_ASSET_BASE=/releases/android
 上传后检查：`/`、`/download/`、三个 APK 的实际下载、校验文件，以及不存在的 APK 返回 404。服务器文件已上传不代表下载验收完成；本批只完成本地构建与预览，未连接生产服务器部署。
 
 部署后可执行 `pnpm check:downloads https://你的官网域名/releases/android/release.json` 验证完整文件字节、MIME、SHA-256、校验文件和缺包 404；该检查会读取两份完整安装包，产生相应下载流量。
+
+### 安卓每小时版本检查
+
+`VITE_SITE_URL` 当前配置为 `https://www.016imcn.love`。同源 APK 构建插件在 `releases/android/release.json` 中自动写入 `schema: 1`、`versionCode`、版本、渠道和已校验下载文件，兼容既有 `version/channel/minAndroid/variants` 字段。原生客户端比较安装版本号，并将“升级”固定跳转到官网下载页，不使用清单携带的任意外链。
+
+发布顺序为：递增 Android 壳版本和安装版本号 → 构建 APK → 构建/部署官网，保留 `releases/android/` 完整文件。版本记录建议 `Cache-Control: no-cache`，不可长期 immutable 缓存；不要只修改 JSON 制造不存在的版本。现有同源下载为调试签名测试包，不作为正式商店版本。

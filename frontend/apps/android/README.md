@@ -54,3 +54,13 @@ cd native
 AGP 9.3.1 会提示其测试范围止于 SDK 37.1，本批以 Gecko 要求的 SDK 37.2 实际完成构建和 Lint，未隐藏该提示。
 
 本批实际验证结果、工具链提示及未覆盖流程见 `docs/20261025-安卓工程与打包.md`。
+
+## APK 新版本提醒
+
+Android 1.2.0 起，应用首次打开及在前台每小时检查官网下载版本；后台使用系统 JobScheduler 的一小时周期（五分钟弹性窗口）保存检查结果，回到前台后显示原生更新弹窗。省电、无网络、强制停止或厂商限制可能延后后台检查；不申请精确闹钟、悬浮窗或通知权限。
+
+官网配置读取 `website/.env` / `.env.production` 的 `VITE_SITE_URL` 与 `VITE_ANDROID_ASSET_BASE`。当前官网为 `https://www.016imcn.love`，版本记录为 `/releases/android/release.json`，升级按钮通过外部浏览器打开 `/download/`。可用构建环境变量 `PHOTO_NINI_APK_RELEASE_URL`、`PHOTO_NINI_DOWNLOAD_PAGE_URL` 覆盖同官网源下的路径；必须为无凭据 HTTPS 地址。
+
+APK 提醒按 `versionCode` 比较，并检查 debug/release 渠道。同一版本一小时内只提示一次；“稍后再说”不升级、不退出登录，“前往官网下载”只打开外部网页，不自动下载或安装。版本检查失败不阻碍编辑或清理登录数据。Web 签名热更新仍使用原有独立机制，不因为 Web 页面更新而要求重新安装 APK。
+
+发新版时同时递增壳 `package.json` 的 `version` 和 `androidVersionCode`，先构建 APK，再构建官网；官网插件自动生成 `schema/version/versionCode/channel`，不能手工只改清单而不更新安装包。版本记录应使用 `Cache-Control: no-cache`，路径缺失应返回 404，不回退 HTML。

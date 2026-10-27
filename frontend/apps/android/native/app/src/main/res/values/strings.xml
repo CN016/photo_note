@@ -10,4 +10,9 @@
     <string name="update_fallback">正在启动本地可用版本…</string>
     <string name="update_retry">重新检查</string>
     <string name="update_version">页面版本：%1$s</string>
+    <string name="apk_update_title">发现新版本</string>
+    <string name="apk_update_message">取景台 %1$s 已发布，是否前往官网下载新版安装包？</string>
+    <string name="apk_update_later">稍后再说</string>
+    <string name="apk_update_open">前往官网下载</string>
+    <string name="apk_update_no_browser">无法打开浏览器，请检查是否已安装浏览器。</string>
 </resources>

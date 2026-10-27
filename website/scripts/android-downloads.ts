@@ -14,6 +14,7 @@ export function androidDownloads(env: Record<string, string>): Plugin {
   type Item = { abi: string; filename: string; url: string; checksumUrl: string; bytes: number; sha256: string }
   let records: Item[] = []
   let version = ''
+  let versionCode = 0
   let ready: Promise<void> | undefined
   let output = ''
   let building = false
@@ -25,8 +26,11 @@ export function androidDownloads(env: Record<string, string>): Plugin {
   function prepare() {
     return ready ||= (async () => {
       if (!enabled) return
-      version = JSON.parse(readFileSync(join(android, 'package.json'), 'utf8')).version
+      const shell = JSON.parse(readFileSync(join(android, 'package.json'), 'utf8'))
+      version = shell.version
+      versionCode = shell.androidVersionCode
       if (!/^\d+\.\d+\.\d+$/.test(version)) throw new Error('安卓应用版本格式无效')
+      if (!Number.isSafeInteger(versionCode) || versionCode <= 0 || versionCode > 2147483647) throw new Error('安卓安装版本号无效')
       for (const abi of ['arm64-v8a', 'armeabi-v7a']) {
         const filename = `photo-nini-${version}-${abi}-debug.apk`
         const path = join(android, 'artifacts', filename)
@@ -60,7 +64,8 @@ export function androidDownloads(env: Record<string, string>): Plugin {
         if (await sha256(target) !== item.sha256) throw new Error(`安装包复制校验失败：${item.filename}`)
         writeFileSync(`${target}.sha256`, `${item.sha256}  ${item.filename}\n`)
       }
-      writeFileSync(join(destination, 'release.json'), JSON.stringify({ version, channel: 'debug', minAndroid: 9, variants: records }, null, 2))
+      // versionCode 是 APK 升级比较依据；保留旧字段兼容官网与既有下载检查脚本。
+      writeFileSync(join(destination, 'release.json'), JSON.stringify({ schema: 1, version, versionCode, channel: 'debug', minAndroid: 9, variants: records }, null, 2))
     },
     configureServer(server) {
       server.middlewares.use(async (request, response, next) => {

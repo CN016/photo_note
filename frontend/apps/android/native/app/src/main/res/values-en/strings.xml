@@ -10,4 +10,9 @@
     <string name="update_fallback">Starting the available local version…</string>
     <string name="update_retry">Check again</string>
     <string name="update_version">Page version: %1$s</string>
+    <string name="apk_update_title">Update available</string>
+    <string name="apk_update_message">Qujingtai %1$s is available. Open the official website to download the new version?</string>
+    <string name="apk_update_later">Later</string>
+    <string name="apk_update_open">Open download page</string>
+    <string name="apk_update_no_browser">Could not open a browser. Check that a browser is installed.</string>
 </resources>

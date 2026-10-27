@@ -1,0 +1,21 @@
+{
+  "android_version": "1.2.0",
+  "versionCode": 8,
+  "api28_native_tests": 22,
+  "session_new_process_test": 1,
+  "node_script_tests": 3,
+  "canonical": "https://www.016imcn.love/download/",
+  "feed": {
+    "schema": 1,
+    "version": "1.2.0",
+    "versionCode": 8,
+    "channel": "debug"
+  },
+  "period_ms": 3600000,
+  "flex_ms": 300000,
+  "browser_intent": "intercepted and verified",
+  "job_scheduler": "registered, forced dispatch accepted, returned to waiting",
+  "physical_device_verified": false,
+  "real_one_hour_wait_verified": false,
+  "production_deployed": false
+}

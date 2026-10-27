@@ -120,6 +120,38 @@ public class WebUpdateInstrumentedTest {
     private JSONObject config() throws Exception {
         return new JSONObject().put("enabled",true).put("release",1).put("version","fixture-1").put("shellCode",4).put("url",base+"/latest.json").put("apiOrigin",base+"/backendApi").put("publicKey",Base64.encodeToString(certificate.getPublicKey().getEncoded(),Base64.NO_WRAP));
     }
+    /** APK 检查复用真实 TLS 夹具，验证小时节流、缓存恢复、无新版和异常大清单。 */
+    @Test public void apkHourlyCheckOverTls() throws Exception {
+        var checker = new ApkUpdateChecker(isolated, new JSONObject().put("feedUrl", base+"/latest.json").put("downloadUrl", base+"/download/"));
+        long current = isolated.getPackageManager().getPackageInfo(isolated.getPackageName(),0).getLongVersionCode();
+        long now = 10000000;
+        JSONObject latest = new JSONObject().put("schema",1).put("versionCode",current+1).put("version","9.0.0").put("channel","debug");
+        feed = latest.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8);
+        checker.checkAt(now,null); assertEquals(current+1,checker.pending(now).code());
+        checker.prompted(checker.pending(now),now); assertNull(checker.pending(now+1000));
+        feed = latest.put("versionCode",current+2).toString().getBytes(java.nio.charset.StandardCharsets.UTF_8);
+        checker.checkAt(now+1000,null); assertNull(checker.pending(now+1000));
+        checker.checkAt(now+ApkUpdateChecker.INTERVAL_MS,null); assertEquals(current+2,checker.pending(now+ApkUpdateChecker.INTERVAL_MS).code());
+        // 构造新检查器仍保留候选版本；异常清单不能覆盖最后确认的升级信息。
+        checker = new ApkUpdateChecker(isolated,new JSONObject().put("feedUrl",base+"/latest.json").put("downloadUrl",base+"/download/"));
+        feed = new byte[65537]; checker.checkAt(now+2*ApkUpdateChecker.INTERVAL_MS,null);
+        assertEquals(current+2,checker.pending(now+2*ApkUpdateChecker.INTERVAL_MS).code());
+        feed = latest.put("versionCode",current).toString().getBytes(java.nio.charset.StandardCharsets.UTF_8);
+        checker.checkAt(now+3*ApkUpdateChecker.INTERVAL_MS,null); assertNull(checker.pending(now+3*ApkUpdateChecker.INTERVAL_MS));
+    }
+    /** 系统弹性窗口内也要检查，随后前台恢复不能紧接着重复请求。 */
+    @Test public void apkBackgroundFlexDoesNotSkipAnEntireHour() throws Exception {
+        var checker = new ApkUpdateChecker(isolated,new JSONObject().put("feedUrl",base+"/latest.json").put("downloadUrl",base+"/download/"));
+        long current = isolated.getPackageManager().getPackageInfo(isolated.getPackageName(),0).getLongVersionCode(), now=20000000;
+        JSONObject latest = new JSONObject().put("schema",1).put("versionCode",current+1).put("version","9.0.0").put("channel","debug");
+        feed=latest.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8);checker.checkAt(now,null);
+        feed=latest.put("versionCode",current+2).toString().getBytes(java.nio.charset.StandardCharsets.UTF_8);
+        checker.checkAt(now+ApkUpdateChecker.INTERVAL_MS-ApkUpdateJobService.FLEX_MS,null,true);
+        assertEquals(current+2,checker.pending(now+ApkUpdateChecker.INTERVAL_MS).code());
+        feed=latest.put("versionCode",current+3).toString().getBytes(java.nio.charset.StandardCharsets.UTF_8);
+        checker.checkAt(now+ApkUpdateChecker.INTERVAL_MS,null);
+        assertEquals(current+2,checker.pending(now+ApkUpdateChecker.INTERVAL_MS).code());
+    }
     private static String hash(byte[] bytes) throws Exception {
         StringBuilder out = new StringBuilder(); for (byte b : MessageDigest.getInstance("SHA-256").digest(bytes)) out.append(String.format(Locale.ROOT,"%02x",b&255)); return out.toString();
     }

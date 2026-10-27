@@ -47,6 +47,24 @@ public class MainActivity extends AppCompatActivity {
     private GeckoSession.PromptDelegate.FilePrompt filePrompt;
     private GeckoResult<GeckoSession.PromptDelegate.PromptResponse> fileResult;
     private ActivityResultLauncher<Intent> fileLauncher;
+    private ApkUpdateChecker apkUpdates;
+    private androidx.appcompat.app.AlertDialog apkDialog;
+    private final android.os.Handler apkHandler = new android.os.Handler(android.os.Looper.getMainLooper());
+    private final java.util.concurrent.ExecutorService apkIO = java.util.concurrent.Executors.newSingleThreadExecutor();
+    private final Runnable apkListener = () -> runOnUiThread(this::showApkUpdate);
+    private final Runnable apkTick = new Runnable() {
+        @Override public void run() {
+            if (apkUpdates == null || !getLifecycle().getCurrentState().isAtLeast(androidx.lifecycle.Lifecycle.State.RESUMED)) return;
+            apkIO.execute(() -> {
+                apkUpdates.checkAt(System.currentTimeMillis(), null);
+                runOnUiThread(() -> {
+                    if (isDestroyed() || !getLifecycle().getCurrentState().isAtLeast(androidx.lifecycle.Lifecycle.State.RESUMED)) return;
+                    showApkUpdate(); apkHandler.removeCallbacks(this);
+                    apkHandler.postDelayed(this, apkUpdates.nextDelay(System.currentTimeMillis()));
+                });
+            });
+        }
+    };
 
     /** 单进程共享内核运行时，Activity 重建不重复启动 Gecko 进程。 */
     public static synchronized GeckoRuntime getRuntime(android.content.Context context) {
@@ -67,6 +85,8 @@ public class MainActivity extends AppCompatActivity {
         super.onCreate(state);
         EdgeToEdge.enable(this);
         shell = new NativeShellService(this);
+        try { apkUpdates = new ApkUpdateChecker(getApplicationContext()); ApkUpdateJobService.schedule(getApplicationContext()); }
+        catch (Exception ignored) { /* APK 版本检查配置失效时仍允许启动编辑器及原有 Web 热更新。 */ }
         clearExpiredPickedFiles();
         fileLauncher = registerForActivityResult(new ActivityResultContracts.StartActivityForResult(), result -> {
             if (filePrompt == null || fileResult == null) return;
@@ -223,6 +243,7 @@ public class MainActivity extends AppCompatActivity {
                     pagePort = port;
                     updateHandler.removeCallbacksAndMessages(null);
                     updatePage.setVisibility(View.GONE);
+                    showApkUpdate();
                     localWeb.finishMigration();
                     getSharedPreferences("web-local-origin", 0).edit().putBoolean("migrated", true).apply();
                     updateIO.execute(() -> updater.confirm());
@@ -314,14 +335,37 @@ public class MainActivity extends AppCompatActivity {
         if (!java.util.Arrays.asList("https", "http", "mailto", "tel").contains(uri.getScheme())) return;
         try { startActivity(new Intent(Intent.ACTION_VIEW, uri).addCategory(Intent.CATEGORY_BROWSABLE)); } catch (Exception ignored) { }
     }
-    @Override protected void onStart() { super.onStart(); if (session != null) session.setActive(true); }
-    @Override protected void onStop() { if (session != null) session.setActive(false); super.onStop(); }
+    /** 只有应用回到前台且引擎就绪才展示弹窗；后台系统任务只保存候选版本。 */
+    void showApkUpdate() {
+        if (apkUpdates == null || pagePort == null || isFinishing() || isDestroyed()
+                || !getLifecycle().getCurrentState().isAtLeast(androidx.lifecycle.Lifecycle.State.RESUMED)
+                || updatePage.getVisibility() == View.VISIBLE || apkDialog != null) return;
+        ApkUpdateChecker.Release release = apkUpdates.pending(System.currentTimeMillis());
+        if (release == null) return;
+        apkDialog = new androidx.appcompat.app.AlertDialog.Builder(this)
+            .setTitle(R.string.apk_update_title).setMessage(getString(R.string.apk_update_message, release.version()))
+            .setNegativeButton(R.string.apk_update_later, (dialog, which) -> {})
+            .setPositiveButton(R.string.apk_update_open, (dialog, which) -> {
+                try { startActivity(apkUpdates.downloadIntent()); }
+                catch (android.content.ActivityNotFoundException error) {
+                    android.widget.Toast.makeText(this, R.string.apk_update_no_browser, android.widget.Toast.LENGTH_LONG).show();
+                }
+            }).create();
+        apkDialog.setOnDismissListener(dialog -> apkDialog = null);
+        apkDialog.show(); apkUpdates.prompted(release, System.currentTimeMillis());
+    }
+    @Override protected void onStart() { super.onStart(); if (session != null) session.setActive(true); ApkUpdateChecker.subscribe(apkListener); }
+    @Override protected void onResume() { super.onResume(); apkHandler.removeCallbacks(apkTick); apkHandler.post(apkTick); showApkUpdate(); }
+    @Override protected void onPause() { apkHandler.removeCallbacks(apkTick); super.onPause(); }
+    @Override protected void onStop() { ApkUpdateChecker.unsubscribe(apkListener); if (session != null) session.setActive(false); super.onStop(); }
     @Override protected void onDestroy() {
         if (fileResult != null && filePrompt != null) fileResult.complete(filePrompt.dismiss());
         if (session != null) session.close();
         if (shell != null) shell.close();
         updateHandler.removeCallbacksAndMessages(null);
         updateIO.shutdownNow();
+        apkHandler.removeCallbacksAndMessages(null); apkIO.shutdownNow();
+        if (apkDialog != null) apkDialog.dismiss();
         if (localWeb != null) localWeb.close();
         super.onDestroy();
     }

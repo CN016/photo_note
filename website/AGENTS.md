@@ -9,3 +9,5 @@
 - 安卓测试包另支持 VITE_ANDROID_BUNDLED_DOWNLOADS 同源托管模式：构建插件必须核验真实 APK 的 SHA-256 并复制到 dist，才向配置模块提供相对下载路径。标为调试签名测试版，不冒充 available 正式版；缺包或校验失败必须阻止构建。部署保持 HTTPS，下载路径不存在时返回 404，不允许 SPA 回退。
 - 新增页面同步 HTML 元信息、语言注册、检查脚本与静态构建入口。正式域名未配置时不生成 canonical。
 - 交付执行 pnpm build、git diff --check 及受影响的浏览器检查，在根 docs/ 新增当天记录并提交；不提交 dist、node_modules、.env 或测试截图。
+
+- 安卓 APK 版本检查复用官网同源 `release.json`：`schema/version/versionCode/channel` 必须由真实壳版本与已验证安装包自动生成，保持旧下载字段兼容；不得手工抬高版本号或将网络返回的任意地址作为客户端升级跳转地址。
