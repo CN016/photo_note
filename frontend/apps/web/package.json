@@ -10,7 +10,8 @@
     "build": "vue-tsc --noEmit && vite build",
     "typecheck": "vue-tsc --noEmit",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "postbuild": "node ../android/scripts/package-web.mjs --if-configured"
   },
   "dependencies": {
     "@element-plus/icons-vue": "2.3.2",

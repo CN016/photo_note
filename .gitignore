@@ -16,3 +16,5 @@
 /website/.env
 /website/.env.*
 !/website/.env.example
+
+/frontend/apps/android/native/app/src/main/assets/update-config.json

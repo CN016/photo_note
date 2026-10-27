@@ -25,7 +25,7 @@ import org.json.JSONObject;
 import org.mozilla.geckoview.*;
 import java.util.ArrayList;
 
-/** 随 APK 分发 Gecko 内核；仅可信内置扩展页能调用系统能力，外部页面没有桥接权限。 */
+/** 随APK分发Gecko内核；固定扩展只为本会话内可信的本机资源页面提供系统能力。 */
 public class MainActivity extends AppCompatActivity {
     public static final String EXTENSION_ID = "photo-nini@imcn016.love";
     private static GeckoRuntime runtime;
@@ -36,6 +36,15 @@ public class MainActivity extends AppCompatActivity {
     private String extensionBase;
     private boolean canGoBack;
     private TextView status;
+    private View updatePage;
+    private TextView updateVersion;
+    private android.widget.Button retryButton;
+    private boolean rollbackPending;
+    private ProgressBar updateProgress;
+    private WebBundleUpdater updater;
+    private LocalWebServer localWeb;
+    private final android.os.Handler updateHandler = new android.os.Handler(android.os.Looper.getMainLooper());
+    private final java.util.concurrent.ExecutorService updateIO = java.util.concurrent.Executors.newSingleThreadExecutor();
     private GeckoSession.PromptDelegate.FilePrompt filePrompt;
     private GeckoResult<GeckoSession.PromptDelegate.PromptResponse> fileResult;
     private ActivityResultLauncher<Intent> fileLauncher;
@@ -45,7 +54,7 @@ public class MainActivity extends AppCompatActivity {
         if (runtime == null) {
             GeckoRuntimeSettings settings = new GeckoRuntimeSettings.Builder()
                 .remoteDebuggingEnabled(false).consoleOutput(false)
-                .allowInsecureConnections(GeckoRuntimeSettings.HTTPS_ONLY).build();
+                .allowInsecureConnections(GeckoRuntimeSettings.ALLOW_ALL).build();
             runtime = GeckoRuntime.create(context.getApplicationContext(), settings);
         }
         return runtime;
@@ -92,7 +101,29 @@ public class MainActivity extends AppCompatActivity {
         status.setText(R.string.engine_loading);
         status.setTextColor(android.graphics.Color.rgb(23,43,77));
         status.setGravity(android.view.Gravity.CENTER);
-        content.addView(status, new FrameLayout.LayoutParams(-1, -1));
+        android.widget.LinearLayout updating = new android.widget.LinearLayout(this);
+        updating.setOrientation(android.widget.LinearLayout.VERTICAL);
+        updating.setGravity(android.view.Gravity.CENTER);
+        updating.setPadding(40, 40, 40, 40);
+        boolean night = (getResources().getConfiguration().uiMode & android.content.res.Configuration.UI_MODE_NIGHT_MASK) == android.content.res.Configuration.UI_MODE_NIGHT_YES;
+        updating.setBackgroundColor(night ? android.graphics.Color.rgb(16,19,24) : android.graphics.Color.rgb(243,247,254));
+        status.setTextColor(night ? android.graphics.Color.WHITE : android.graphics.Color.rgb(23,43,77));
+        status.setTextSize(18);
+        updating.addView(status, new android.widget.LinearLayout.LayoutParams(-1, -2));
+        updateVersion = new TextView(this); updateVersion.setGravity(android.view.Gravity.CENTER);
+        updateVersion.setTextColor(night ? android.graphics.Color.LTGRAY : android.graphics.Color.DKGRAY);
+        updating.addView(updateVersion, new android.widget.LinearLayout.LayoutParams(-1, -2));
+        updateProgress = new ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal);
+        updateProgress.setIndeterminate(true);
+        var barLayout = new android.widget.LinearLayout.LayoutParams(-1, 24); barLayout.topMargin = 32;
+        updating.addView(updateProgress, barLayout);
+        retryButton = new android.widget.Button(this);
+        retryButton.setText(R.string.update_retry);
+        retryButton.setVisibility(View.GONE);
+        retryButton.setOnClickListener(view -> { retryButton.setEnabled(false); recreate(); });
+        updating.addView(retryButton);
+        updatePage = updating;
+        content.addView(updatePage, new FrameLayout.LayoutParams(-1, -1));
         setContentView(content);
         // 原生容器统一避让系统栏和输入法，不依赖老系统 WebView 的 safe-area 实现。
         ViewCompat.setOnApplyWindowInsetsListener(content, (view, insets) -> {
@@ -108,8 +139,25 @@ public class MainActivity extends AppCompatActivity {
                 } else if (canGoBack) session.goBack(); else moveTaskToBack(true);
             }
         });
-        try { openEngine(); }
-        catch (Exception error) { status.setVisibility(View.VISIBLE); status.setText(R.string.engine_failed); }
+        updateIO.execute(() -> {
+            try {
+                updater = new WebBundleUpdater(getApplicationContext());
+                updater.prepare((phase, percent) -> runOnUiThread(() -> {
+                    if (isDestroyed()) return;
+                    int label = switch (phase) { case "checking" -> R.string.update_checking; case "downloading" -> R.string.update_downloading; case "verifying" -> R.string.update_verifying; default -> R.string.update_fallback; };
+                    status.setText(getString(label, percent));
+                    updateVersion.setText(getString(R.string.update_version, updater.displayVersion));
+                    updateProgress.setIndeterminate(!phase.equals("downloading")); updateProgress.setProgress(percent);
+                }));
+                if (Thread.currentThread().isInterrupted()) return;
+                localWeb = new LocalWebServer(getApplicationContext(), updater);
+                runOnUiThread(() -> {
+                    if (isDestroyed()) { localWeb.close(); return; }
+                    try { status.setText(R.string.engine_loading); openEngine(); }
+                    catch (Exception error) { showEngineFailure(); }
+                });
+            } catch (Exception error) { runOnUiThread(this::showEngineFailure); }
+        });
     }
 
     /** 导航、文件选择和消息边界在创建会话时装配，未验证的远端导航默认拒绝。 */
@@ -119,7 +167,7 @@ public class MainActivity extends AppCompatActivity {
         session.setNavigationDelegate(new GeckoSession.NavigationDelegate() {
             @Override public void onCanGoBack(GeckoSession current, boolean value) { canGoBack = value; }
             @Override public GeckoResult<AllowOrDeny> onLoadRequest(GeckoSession current, LoadRequest request) {
-                if (extensionBase != null && request.uri.startsWith(extensionBase)) return GeckoResult.fromValue(AllowOrDeny.ALLOW);
+                if ((extensionBase != null && request.uri.startsWith(extensionBase)) || (localWeb != null && localWeb.trusted(request.uri))) return GeckoResult.fromValue(AllowOrDeny.ALLOW);
                 openExternal(request.uri);
                 return GeckoResult.fromValue(AllowOrDeny.DENY);
             }
@@ -127,12 +175,13 @@ public class MainActivity extends AppCompatActivity {
         });
         session.setProgressDelegate(new GeckoSession.ProgressDelegate() {
             @Override public void onPageStop(GeckoSession current, boolean success) {
-                status.setVisibility(success ? View.GONE : View.VISIBLE);
-                if (!success) status.setText(R.string.engine_failed);
+                if (current != session || isDestroyed()) return;
+                if (!success) { if (!rollbackUpdate()) showEngineFailure(); }
+                // 页面HTTP成功不等于共享应用已挂载；等待受授权返回键连接确认。
             }
         });
         session.setContentDelegate(new GeckoSession.ContentDelegate() {
-            @Override public void onCrash(GeckoSession current) { status.setVisibility(View.VISIBLE); status.setText(R.string.engine_failed); }
+            @Override public void onCrash(GeckoSession current) { if (current == session && !rollbackUpdate()) showEngineFailure(); }
         });
         session.setPromptDelegate(new GeckoSession.PromptDelegate() {
             @Override public GeckoResult<PromptResponse> onFilePrompt(GeckoSession current, FilePrompt prompt) {
@@ -181,6 +230,12 @@ public class MainActivity extends AppCompatActivity {
                 @Override public GeckoResult<Object> onMessage(String app, Object message, WebExtension.MessageSender sender) {
                     if (!trusted(sender) || !(message instanceof JSONObject)) return GeckoResult.fromException(new SecurityException("untrusted_sender"));
                     JSONObject data = (JSONObject) message;
+                    if ("migrateLegacyStorage".equals(data.optString("method"))) {
+                        if (extensionBase == null || !sender.url.startsWith(extensionBase) || data.toString().length() > 512 * 1024) return GeckoResult.fromException(new SecurityException("untrusted_migration"));
+                        localWeb.migrate(data.optJSONObject("options") == null ? new JSONObject() : data.optJSONObject("options"));
+                        updateHandler.postDelayed(() -> { if (!isDestroyed()) loadLocalPage(); }, 50);
+                        return GeckoResult.fromValue(new JSONObject());
+                    }
                     GeckoResult<Object> result = new GeckoResult<>();
                     shell.invoke(data.optString("method"), data.optJSONObject("options") == null ? new JSONObject() : data.optJSONObject("options"), new NativeShellService.Reply() {
                         @Override public void success(JSONObject value) { runOnUiThread(() -> result.complete(value)); }
@@ -191,6 +246,11 @@ public class MainActivity extends AppCompatActivity {
                 @Override public void onConnect(WebExtension.Port port) {
                     if (!trusted(port.sender)) { port.disconnect(); return; }
                     pagePort = port;
+                    updateHandler.removeCallbacksAndMessages(null);
+                    updatePage.setVisibility(View.GONE);
+                    localWeb.finishMigration();
+                    getSharedPreferences("web-local-origin", 0).edit().putBoolean("migrated", true).apply();
+                    updateIO.execute(() -> updater.confirm());
                     port.setDelegate(new WebExtension.PortDelegate() {
                         @Override public void onDisconnect(WebExtension.Port disconnected) { if (pagePort == disconnected) pagePort = null; }
                     });
@@ -198,8 +258,12 @@ public class MainActivity extends AppCompatActivity {
             };
             extension.setMessageDelegate(delegate, "photo_nini");
             session.getWebExtensionController().setMessageDelegate(extension, delegate, "photo_nini");
-            session.loadUri(extensionBase + "index.html");
-        }, error -> { status.setVisibility(View.VISIBLE); status.setText(R.string.engine_failed); });
+            if (!getSharedPreferences("web-local-origin", 0).getBoolean("migrated", false)) {
+                session.loadUri(extensionBase + "migrate.html");
+                updateHandler.postDelayed(() -> { if (pagePort == null) loadLocalPage(); }, 5000);
+            } else loadLocalPage();
+            updateHandler.postDelayed(() -> { if (pagePort == null && !rollbackUpdate()) showEngineFailure(); }, 45000);
+        }, error -> showEngineFailure());
     }
 
     /** 仅清理本选择器一天前的随机缓存目录，避免图片长期滞留；不触碰其他缓存。 */
@@ -237,10 +301,38 @@ public class MainActivity extends AppCompatActivity {
         return Uri.fromFile(target);
     }
 
-    /** 只信任当前会话的顶层内置扩展页；不授权后台、子框架或其他扩展。 */
+    /** 只信任本会话顶层的迁移扩展页或精确本机来源；不授权后台、子框架或其他扩展。 */
     private boolean trusted(WebExtension.MessageSender sender) {
         return EXTENSION_ID.equals(sender.webExtension.id) && sender.session == session && sender.isTopLevel()
-            && extensionBase != null && sender.url.startsWith(extensionBase);
+            && ((extensionBase != null && sender.url.startsWith(extensionBase)) || (localWeb != null && localWeb.trusted(sender.url)));
+    }
+    /** 只向固定本机地址注入随机启动凭据，禁止网页控制请求头或目标。 */
+    private void loadLocalPage() {
+        session.load(new GeckoSession.Loader().uri(localWeb.startUrl())
+            .additionalHeaders(localWeb.startHeaders()).headerFilter(GeckoSession.HEADER_FILTER_UNRESTRICTED_UNSAFE));
+    }
+    /** 候选启动失败时回到已确认资源；不会重新下载同一个失败版本。 */
+    private boolean rollbackUpdate() {
+        if (rollbackPending) return true;
+        if (updater == null || !updater.hasCandidate()) return false;
+        rollbackPending = true; pagePort = null;
+        updateHandler.removeCallbacksAndMessages(null);
+        updatePage.setVisibility(View.VISIBLE); status.setText(R.string.update_fallback);
+        updateIO.execute(() -> {
+            boolean recovered = updater.rollback();
+            runOnUiThread(() -> {
+                rollbackPending = false;
+                if (isDestroyed()) return;
+                if (!recovered) { showEngineFailure(); return; }
+                try { if (session != null) session.close(); openEngine(); }
+                catch (Exception error) { showEngineFailure(); }
+            });
+        });
+        return true;
+    }
+    private void showEngineFailure() {
+        if (isDestroyed()) return;
+        updatePage.setVisibility(View.VISIBLE); status.setText(R.string.engine_failed); updateProgress.setIndeterminate(false); retryButton.setVisibility(View.VISIBLE);
     }
     private void openExternal(String value) {
         Uri uri = Uri.parse(value);
@@ -253,6 +345,9 @@ public class MainActivity extends AppCompatActivity {
         if (fileResult != null && filePrompt != null) fileResult.complete(filePrompt.dismiss());
         if (session != null) session.close();
         if (shell != null) shell.close();
+        updateHandler.removeCallbacksAndMessages(null);
+        updateIO.shutdownNow();
+        if (localWeb != null) localWeb.close();
         super.onDestroy();
     }
 }

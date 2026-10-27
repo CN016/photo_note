@@ -4,4 +4,10 @@
     <string name="title_activity_main">取景台</string>
     <string name="engine_loading">Starting the built-in browser…</string>
     <string name="engine_failed">Could not start the built-in browser. Close and reopen 取景台.</string>
+    <string name="update_checking">Checking for page updates…</string>
+    <string name="update_downloading">Downloading page update: %1$d%%</string>
+    <string name="update_verifying">Verifying and installing the update…</string>
+    <string name="update_fallback">Starting the available local version…</string>
+    <string name="update_retry">Check again</string>
+    <string name="update_version">Page version: %1$s</string>
 </resources>

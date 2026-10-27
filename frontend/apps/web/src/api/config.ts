@@ -8,4 +8,7 @@ const parsedApiHost = new URL(configuredBaseUrl.trim())
 export const API_HOST_URL = parsedApiHost
 
 /** 开发环境使用同源相对路径以经过 Vite 代理；生产构建直连配置的服务主机。 */
-export const API_REQUEST_ORIGIN = import.meta.env.DEV ? '' : API_HOST_URL
+// 安卓私有资源服务将API流式转发到APK固定的HTTPS后端；浏览器仍使用既有配置。
+const localAndroid = typeof location !== 'undefined' && location.protocol === 'http:' && location.hostname === '127.0.0.1'
+  && (globalThis as typeof globalThis & { browser?: { runtime?: { id?: string } } }).browser?.runtime?.id === 'photo-nini@imcn016.love'
+export const API_REQUEST_ORIGIN = import.meta.env.DEV || localAndroid ? '' : API_HOST_URL

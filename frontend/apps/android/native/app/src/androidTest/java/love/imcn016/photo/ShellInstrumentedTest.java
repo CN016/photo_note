@@ -33,6 +33,12 @@ public class ShellInstrumentedTest {
         Intent intent = new Intent(instrumentation.getTargetContext(), MainActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
         activity = (MainActivity) instrumentation.startActivitySync(intent);
         shell = activity.getShell();
+        // 留存独立原生更新页外观，使用合成模拟器且尚未登录任何账号。
+        device.wait(Until.hasObject(By.pkg("love.imcn016.photo")), 5000);
+        device.waitForIdle(300);
+        device.takeScreenshot(new java.io.File(activity.getCacheDir(), "update-screen.png"));
+        long readyDeadline = SystemClock.uptimeMillis() + 45000;
+        while (activity.getSession() == null && SystemClock.uptimeMillis() < readyDeadline) SystemClock.sleep(200);
     }
 
     @After

@@ -17,6 +17,14 @@ export default defineConfig(({ mode }) => {
     build: process.env.PHOTO_NINI_ANDROID_BUILD === '1' ? { target: 'firefox140', cssTarget: 'firefox140' } : {},
     plugins: [
       vue(),
+      {
+        name: 'web-release-record',
+        generateBundle() {
+          const release = Number(process.env.PHOTO_NINI_WEB_RELEASE || Date.now())
+          if (!Number.isSafeInteger(release) || release <= 0) throw new Error('Web发布号必须是递增正安全整数')
+          this.emitFile({ type: 'asset', fileName: 'web-release.json', source: JSON.stringify({ schema: 1, release, version: process.env.PHOTO_NINI_WEB_VERSION || new Date(release).toISOString(), bridgeVersion: 1, apiBase: new URL(process.env.VITE_API_BASE_URL || env.VITE_API_BASE_URL).href.replace(/\/$/, '') }) })
+        },
+      },
       AutoImport({ resolvers: [ElementPlusResolver()] }),
       // 构建阶段复用已提交的声明，避免 Windows 并发写入 components.d.ts 失败。
       Components({ resolvers: [ElementPlusResolver({ importStyle: 'css' })], dts: mode !== 'production' }),

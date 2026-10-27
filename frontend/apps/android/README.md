@@ -20,13 +20,13 @@ npm run build
 
 流程：检查工具链 → 构建共享 Web → 同步为内置扩展资源 → `assembleDebug` 和 `lintDebug` → 输出 `artifacts/photo-nini-<version>-<abi>-debug.apk` 与 `.sha256`。任一步失败即停止。`npm run icons` 重新生成图标；Android Studio 可直接打开 `native/` 工程。
 
-API 地址读取现有 Web 的 `.env` / `.env.production` 配置或 `VITE_API_BASE_URL` 环境变量，必须使用 HTTPS。本地配置、SDK 路径、安装包、日志、密钥及缓存不提交。前端更新和内核更新均须重新构建 APK，不增加热更新或内核运行时下载。
+API 地址读取现有 Web 的 `.env` / `.env.production` 配置或 `VITE_API_BASE_URL` 环境变量，必须使用 HTTPS。本地配置、SDK 路径、安装包、日志、密钥及缓存不提交。从1.1.0开始支持签名Web资源更新；首次启用及内核/原生桥接升级仍需构建APK，Gecko内核始终随APK交付。动态更新详见 [发布与更新说明](../../../docs/android-web-updates.md)。
 
 ## 内置浏览器与安全边界
 
 - [GeckoView](https://mozilla.github.io/geckoview/) 是随 APK 发布的独立内核。Android 9 即使自带 WebView 69，也不要求用户更新该组件。包内包含 ARM64、ARMv7、x86_64 原生库，分别输出三种架构的独立安装包，均包含完整内核；普通手机优先使用 ARM64 包，旧 32 位手机使用 ARMv7，模拟器使用 x86_64。
-- 共享 Web 作为固定 ID 的内置扩展页运行；仅向构建时配置的 HTTPS API 主机授予网络权限。扩展页面通过原生消息调用文件和主题能力，原生端验证扩展 ID、当前会话、顶层 frame 与来源前缀；不信任普通网页传入的身份字段。
-- 访问 API 使用 Gecko 的标准 fetch/XHR 与扩展主机权限，不修改既有服务授权、租户逻辑或后端 CORS。生产 OPTIONS 曾返回 405，扩展主机授权使安卓访问无需依赖 Web 页面的跨域预检配置。完整登录、上传下载与空间切换仍需账号验收。
+- 固定ID的内置扩展只负责桥接和旧来源数据迁移。共享Web由应用私有资源服务在127.0.0.1提供；固定端口保持来源，随机HttpOnly凭据限制读取，Java再次验证扩展ID、当前会话、顶层及精确来源。外部网页不能进入此可信容器。
+- 安卓API经本机同源入口流式转发到APK固定HTTPS后端，保留已有路径前缀；不转发本机Cookie，不允许客户端指定任意上游或跟随重定向。后端鉴权、租户规则及CORS保持不变。外网明文访问不在资源CSP允许范围内；Android网络安全配置只允许127.0.0.1明文。本机TCP服务不监听局域网。完整真实账号业务仍需验收。
 - 外部页面交给系统浏览器，不允许进入带原生权限的容器。不开放原生网络或文件任意路径接口，禁用远程调试、浏览器控制台输出和系统备份/迁移。
 - Gecko 内核从 Mozilla 官方 Maven 获取，未修改第三方二进制；MPL-2.0、源码定位与第三方声明包含在 `native/app/src/main/assets/licenses/`。升级内核时需同步依赖锁、许可证、功能及最低系统回归。
 

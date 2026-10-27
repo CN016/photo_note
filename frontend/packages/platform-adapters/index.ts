@@ -14,7 +14,7 @@ interface BrowserRuntime {
   sendNativeMessage(app: string, message: { method: string; options: unknown }): Promise<unknown>
   connectNative(app: string): { onMessage: { addListener(callback: (message: { type?: string }) => void): void } }
 }
-/** 只有 APK 自带的扩展页暴露此 API；普通网页不探测或请求原生能力。 */
+/** APK固定扩展及其受来源校验的本机页面暴露此API；普通网页沿用Web能力。 */
 function runtime(): BrowserRuntime | undefined {
   return (globalThis as typeof globalThis & { browser?: { runtime?: BrowserRuntime } }).browser?.runtime
 }

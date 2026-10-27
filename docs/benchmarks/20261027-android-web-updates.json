@@ -1,0 +1,55 @@
+{
+  "date": "2026-10-27",
+  "android_version": "1.1.0",
+  "android_version_code": 4,
+  "web_release": {
+    "schema": 1,
+    "release": 1793074197307,
+    "version": "2026-10-27T04:09:57.307Z",
+    "bridgeVersion": 1,
+    "apiBase": "https://photo.016imcn.love/backendApi"
+  },
+  "artifacts": {
+    "photo-nini-1.1.0-arm64-v8a-debug.apk": {
+      "bytes": 155947091,
+      "sha256": "6cc601d93562cdb97200dbceaed4f1099dff6a76f66e9b75d42f01d781d1c9b7",
+      "signing": "Android debug signing"
+    },
+    "photo-nini-1.1.0-armeabi-v7a-debug.apk": {
+      "bytes": 150751249,
+      "sha256": "cc303b62c559d87e4b3b4e364f3af05970f030a3e18aff65cf9b4fad66a24853",
+      "signing": "Android debug signing"
+    },
+    "photo-nini-1.1.0-x86_64-debug.apk": {
+      "bytes": 162740412,
+      "sha256": "fe9b0b95e69395e70e66420d6b6479d19904f87f98a5d20ffcf0828507a0e7bd",
+      "signing": "Android debug signing"
+    },
+    "photo-nini-web-20261027-android-updates.zip": {
+      "bytes": 38870954,
+      "sha256": "9f7b3f87a54b16f9bec89770c2dbc748d9f26f32915347b79215474a48497b93"
+    },
+    "web-1793074197307.zip": {
+      "bytes": 19444674,
+      "sha256": "8fa17597578f7140b52af0973b4c14574ef21a492f9552a5ce079049c4e02138",
+      "files": 395
+    }
+  },
+  "tests": {
+    "web_tests": 65,
+    "node_signing_tests": 2,
+    "android_device": "Android 9 API28 x86_64 emulator",
+    "lint_errors": 0,
+    "lint_warnings": 21,
+    "android_instrumentation_passed": 8,
+    "signed_archive_crc_file_hashes": "passed",
+    "published_manifest_signature": "passed"
+  },
+  "not_verified": [
+    "physical Android devices",
+    "ARM device execution",
+    "production deployment",
+    "real account business flows",
+    "app store distribution"
+  ]
+}
