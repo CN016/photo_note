@@ -1,6 +1,13 @@
 package service
 
 import (
+	"context"
+	"io"
+	"net/http"
+	"os"
+	"os/exec"
+	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -31,13 +38,68 @@ func TestDailyScanBoundary(t *testing.T) {
 		return d
 	}
 	cases := []struct {
-		initial   bool
+		previous  string
 		last, now string
 		due       bool
-	}{{true, "", "2026-10-27 01:00", true}, {false, "", "2026-10-27 02:59", false}, {false, "", "2026-10-27 03:00", true}, {false, "2026-10-27", "2026-10-27 03:01", false}, {false, "2026-10-27", "2026-10-28 03:00", true}}
+	}{{"", "2026-10-27", "2026-10-27 01:00", false}, {"", "2026-10-27", "2026-10-27 03:10", false}, {"02:59", "2026-10-27", "2026-10-27 03:00", true}, {"03:00", "2026-10-27", "2026-10-27 03:01", false}, {"02:59", "2026-10-27", "2026-10-28 03:00", true}}
 	for _, c := range cases {
-		if inspirationScanDue(c.initial, c.last, at(c.now), "03:00") != c.due {
+		if inspirationScanDue(c.last, c.previous, at(c.now), "03:00") != c.due {
 			t.Errorf("扫描边界错误: %+v", c)
 		}
+	}
+}
+
+// readinessTransport 模拟进程已经启动但模型尚未完成加载的私有健康接口。
+type readinessTransport struct{ ready *atomic.Bool }
+
+func (t readinessTransport) RoundTrip(*http.Request) (*http.Response, error) {
+	body := `{"ready":false}`
+	if t.ready.Load() {
+		body = `{"ready":true}`
+	}
+	return &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(body)), Header: make(http.Header)}, nil
+}
+
+// TestAIChildProcess 仅作为监控测试的可终止子进程，不加载真实模型。
+func TestAIChildProcess(t *testing.T) {
+	if os.Getenv("PHOTO_NINI_TEST_AI_CHILD") != "1" {
+		return
+	}
+	time.Sleep(20 * time.Second)
+}
+
+// TestAIReadinessLifecycle 验证健康就绪前不能许可任务，退出后撤销许可，避免冷启动等待重试。
+func TestAIReadinessLifecycle(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, os.Args[0], "-test.run=^TestAIChildProcess$")
+	cmd.Env = append(os.Environ(), "PHOTO_NINI_TEST_AI_CHILD=1")
+	if err := cmd.Start(); err != nil {
+		t.Fatal(err)
+	}
+	var ready atomic.Bool
+	s := &InspirationLibraryService{client: &http.Client{Transport: readinessTransport{&ready}}}
+	done := make(chan error, 1)
+	go func() { done <- s.monitorAI(ctx, cmd, InspirationProcessingConfig{PollMS: 20, TimeoutSeconds: 1}) }()
+	time.Sleep(60 * time.Millisecond)
+	if s.aiReady.Load() {
+		cancel()
+		<-done
+		t.Fatal("模型未就绪即许可了任务")
+	}
+	ready.Store(true)
+	deadline := time.Now().Add(time.Second)
+	for !s.aiReady.Load() && time.Now().Before(deadline) {
+		time.Sleep(5 * time.Millisecond)
+	}
+	if !s.aiReady.Load() {
+		cancel()
+		<-done
+		t.Fatal("模型就绪后未开放任务")
+	}
+	cancel()
+	<-done
+	if s.aiReady.Load() {
+		t.Fatal("进程退出后仍标记为就绪")
 	}
 }

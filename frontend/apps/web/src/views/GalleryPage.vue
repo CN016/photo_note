@@ -7,7 +7,6 @@ import InspirationThumbnail from '../components/InspirationThumbnail.vue'
 import InspirationLibraryTools from '../components/InspirationLibraryTools.vue'
 import { useAuthStore } from '../stores/auth'
 import type { InspirationLibraryFilters } from '../api/types'
-import { ElMessage } from 'element-plus'
 import { api } from '../api/client'
 import { ApiError, type InspirationRecord, type TagRecord } from '../api/types'
 
@@ -26,7 +25,6 @@ const error = ref('')
 const auth = useAuthStore()
 const libraryFilters = ref<InspirationLibraryFilters>({})
 const libraryRevision = ref(0)
-const retrying = ref<string[]>([])
 const hasMore = computed(() => items.value.length < total.value)
 const filtersActive = computed(() => Boolean(searchQuery.value.trim() || selectedTagIDs.value.length || Object.values(libraryFilters.value).some(Boolean)))
 let requestVersion = 0
@@ -83,13 +81,7 @@ function resetFilters() {
 }
 
 /** 重试只提交当前图片任务，等待后端确认后刷新列表，防止重复点击。 */
-async function retryAnalysis(id: string) {
-  if (retrying.value.includes(id)) return
-  retrying.value.push(id)
-  try { await api.retryInspirationProcessing(id); ElMessage.success(t('gallery.library.retryAccepted')); await loadPage(); libraryRevision.value += 1 }
-  catch { ElMessage.error(t('gallery.library.retryFailed')) }
-  finally { retrying.value = retrying.value.filter(item => item !== id) }
-}
+
 watch(() => [auth.orgid, auth.user?.business_id, auth.sessionVersion], () => {
   requestVersion += 1; items.value = []; total.value = 0; libraryFilters.value = {}; selectedTagIDs.value = []; tags.value = []
   void loadPage(); void loadTags()
@@ -187,7 +179,6 @@ onBeforeUnmount(() => { tagsVersion += 1; window.clearInterval(processingTimer);
           <div v-if="item.analysis_status" class="gallery-analysis">
             <span v-if="item.analysis_status === 'succeeded'">{{ item.people_count === 0 ? t('gallery.library.emptyOnly') : t('gallery.library.personCount', { count: item.people_count }) }}<i v-if="item.dominant_color" :style="{ background: item.dominant_color }" :title="item.color_bucket ? t(`gallery.library.colorNames.${item.color_bucket}`) : ''" /></span>
             <span v-else role="status">{{ t(`gallery.library.states.${item.analysis_status}`) }}</span>
-            <el-button v-if="item.analysis_status === 'failed' || item.analysis_status === 'unsupported'" text size="small" :loading="retrying.includes(item.business_id)" @click="retryAnalysis(item.business_id)">{{ t('gallery.library.retryProcessing') }}</el-button>
           </div>
         </article>
       </section>

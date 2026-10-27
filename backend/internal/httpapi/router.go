@@ -121,6 +121,7 @@ func Router(dependencies Dependencies) *gin.Engine {
 	protected.Use(authenticationMiddleware(dependencies.Tokens), tenantScopeMiddleware(scopeResolver, dependencies.Organizations))
 	protected.GET("/environments", environmentsHandler(dependencies.Organizations))
 	protected.POST("/auth/logout", logoutHandler(dependencies.Auth))
+	protected.GET("/files/:storekey/thumbnail", downloadThumbnailHandler(dependencies.Files))
 	protected.POST("/files", uploadFileHandler(dependencies.Files, dependencies.MaxUploadBytes, dependencies.CurrentFileStoreType))
 	protected.POST("/projects/cover-upload", uploadProjectCoverHandler(dependencies.Files, dependencies.MaxUploadBytes, dependencies.CurrentFileStoreType))
 	protected.GET("/files/:storekey", downloadFileHandler(dependencies.Files))

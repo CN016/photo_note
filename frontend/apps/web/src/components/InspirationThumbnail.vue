@@ -2,10 +2,10 @@
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import type { InspirationRecord } from '../api/types'
-import { api } from '../api/client'
-import { previewObjectUrl } from '../../../../packages/image-processing/src'
+import { loadThumbnail } from '../images/thumbnails'
 
-type ThumbnailRecord = Pick<InspirationRecord, 'file_name' | 'image_key'> & { data?: Record<string, unknown> }
+
+type ThumbnailRecord = Pick<InspirationRecord, 'file_name' | 'image_key'> & { data?: Record<string, unknown>; file_hash?: string | null }
 const props = defineProps<{ record: ThumbnailRecord; loadImage?: (key: string) => Promise<Blob> }>()
 const { t } = useI18n()
 const element = ref<HTMLElement | null>(null)
@@ -19,21 +19,22 @@ const imageName = computed(() => props.record.file_name || t('gallery.untitled')
 const imageLabel = computed(() => t('gallery.openImage', { name: imageName.value }))
 const imageKey = computed(() => props.record.image_key)
 
-/** 懒加载触发后鉴权读取图片并生成缩略图地址，过期请求会立即释放地址。 */
+/** 懒加载触发后共享读取已授权缩略图，直接生成对象地址，过期请求会立即释放地址。 */
 async function loadPreview() {
   const version = ++requestVersion
   loading.value = true
   failed.value = false
   try {
-    const blob = await (props.loadImage ? props.loadImage(imageKey.value) : api.download(imageKey.value))
-    const url = await previewObjectUrl(blob)
+    const blob = await (props.loadImage ? props.loadImage(imageKey.value) : loadThumbnail(imageKey.value, props.record.file_hash || ''))
+    // 管理工作台自带专用授权loader，保留原来的兼容解码；普通图库直接使用服务器JPEG。
+    const url = props.loadImage ? await (await import('../../../../packages/image-processing/src')).previewObjectUrl(blob) : URL.createObjectURL(blob)
     if (version !== requestVersion) { URL.revokeObjectURL(url); return }
     imageUrl.value = url
   } catch { if (version === requestVersion) failed.value = true }
   finally { if (version === requestVersion) loading.value = false }
 }
 
-watch(imageKey, () => {
+watch(() => `${imageKey.value}:${props.record.file_hash || ''}`, () => {
   if (imageUrl.value) URL.revokeObjectURL(imageUrl.value)
   imageUrl.value = null
   if (element.value && observer === null) void loadPreview()

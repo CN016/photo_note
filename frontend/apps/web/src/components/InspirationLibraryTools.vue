@@ -145,6 +145,7 @@ onBeforeUnmount(() => { requestVersion += 1; window.clearInterval(timer) })
       <el-progress v-if="activity?.goal.enabled" class="goal-progress" :percentage="progress" :show-text="false" :aria-label="t('gallery.library.progress', { count: number(currentCount), target: number(activity.goal.target) })" />
     </div>
     <div v-if="error" class="library-error" role="alert">{{ error }}<el-button text @click="load">{{ t('gallery.library.retry') }}</el-button></div>
+    <p class="library-hint">{{ t('gallery.library.processingRule') }}</p>
     <div class="activity-heading"><h3>{{ t('gallery.library.heatmap') }}</h3><el-input-number v-model="year" :min="1970" :max="9999" :aria-label="t('gallery.library.year')" controls-position="right" size="small" /></div>
     <div class="activity-scroll"><div class="activity-grid">
       <template v-for="(day, index) in dates" :key="day || `pad-${index}`"><button v-if="day" type="button" class="activity-cell" :class="[`heat-${level(day)}`, { selected: selectedDate === day, achieved: !!activityByDay.get(day)?.target && (activityByDay.get(day)?.saved_count || 0) >= (activityByDay.get(day)?.target || Infinity) }]" :title="dayTitle(day)" :aria-label="dayTitle(day)" :aria-pressed="selectedDate === day" @click="selectDay(day)" /><span v-else /></template>

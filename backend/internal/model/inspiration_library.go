@@ -54,6 +54,7 @@ type InspirationProcessingJob struct {
 	AsyncVersion  int64
 	Algorithm     string
 	Stage         string
+	AnalysisReady bool `gorm:"not null;default:false"`
 	Attempts      int
 	NextAttemptAt time.Time
 	LeaseUntil    *time.Time
@@ -87,6 +88,7 @@ type InspirationPreview struct {
 	BusinessID uuid.UUID `json:"business_id"`
 	ImageKey   string    `json:"image_key"`
 	FileName   string    `json:"file_name"`
+	FileHash   *string   `json:"file_hash"`
 	Day        string    `json:"-"`
 }
 

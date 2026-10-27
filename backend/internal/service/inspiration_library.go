@@ -14,6 +14,7 @@ import (
 	"regexp"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/google/uuid"
@@ -93,6 +94,7 @@ type InspirationLibraryService struct {
 	notices      *NoticeService
 	errors       *ErrorLogService
 	wg           sync.WaitGroup
+	aiReady      atomic.Bool
 	client       *http.Client
 }
 
@@ -176,9 +178,9 @@ func (s *InspirationLibraryService) BrowseSummary(ctx context.Context, user uuid
 	return s.repository.InspirationBrowseSummary(ctx, user, from, to)
 }
 
-// Retry 仅提交当前身份下的失败任务重试，HTTP 接受不代表异步任务已完成。
+// Retry 保留兼容路由但拒绝手动AI触发，未识别记录只由每日扫描补处理。
 func (s *InspirationLibraryService) Retry(ctx context.Context, user, id uuid.UUID) error {
-	return s.repository.RetryInspirationProcessing(ctx, user, id)
+	return fault.Conflict("未识别图片由每日定时任务处理，不能手动触发AI识别")
 }
 
 // ValidateInspirationFilters 统一验证新增筛选参数，数据库只接受白名单条件。
@@ -265,7 +267,10 @@ func (s *InspirationLibraryService) supervise(ctx context.Context, c Inspiration
 		cmd.Env = []string{"PATH=/usr/local/bin:/usr/bin:/bin", "OMP_NUM_THREADS=1", "OPENBLAS_NUM_THREADS=1", "PYTHONUNBUFFERED=1"}
 		cmd.Stdout = io.Discard
 		cmd.Stderr = io.Discard
-		err := cmd.Run()
+		err := cmd.Start()
+		if err == nil {
+			err = s.monitorAI(ctx, cmd, c)
+		}
 		if ctx.Err() != nil {
 			return
 		}
@@ -278,11 +283,46 @@ func (s *InspirationLibraryService) supervise(ctx context.Context, c Inspiration
 	}
 }
 
+// monitorAI 只有私有健康接口确认模型已加载后才允许领取识别任务，退出时立即撤销就绪标记。
+func (s *InspirationLibraryService) monitorAI(ctx context.Context, cmd *exec.Cmd, c InspirationProcessingConfig) error {
+	defer s.aiReady.Store(false)
+	done := make(chan error, 1)
+	go func() { done <- cmd.Wait() }()
+	ticker := time.NewTicker(time.Duration(c.PollMS) * time.Millisecond)
+	defer ticker.Stop()
+	for {
+		select {
+		case err := <-done:
+			return err
+		case <-ctx.Done():
+			return <-done
+		case <-ticker.C:
+			if s.aiReady.Load() {
+				continue
+			}
+			probeCtx, cancel := context.WithTimeout(ctx, time.Duration(c.TimeoutSeconds)*time.Second)
+			req, _ := http.NewRequestWithContext(probeCtx, http.MethodGet, "http://ai/health", nil)
+			response, err := s.client.Do(req)
+			if err == nil {
+				var health struct {
+					Ready bool `json:"ready"`
+				}
+				decodeErr := json.NewDecoder(io.LimitReader(response.Body, 128)).Decode(&health)
+				response.Body.Close()
+				if response.StatusCode == http.StatusOK && decodeErr == nil && health.Ready {
+					s.aiReady.Store(true)
+				}
+			}
+			cancel()
+		}
+	}
+}
+
 // worker 根据阶段单条领取；配置暂停时保留任务，不把模型不可用误记为图片内容错误。
 func (s *InspirationLibraryService) worker(ctx context.Context, kind string, index int) {
 	for ctx.Err() == nil {
 		c, err := s.config.InspirationProcessing(ctx)
-		if err != nil || !c.Enabled || (kind == "compression" && index >= c.CompressionWorkers) || (kind == "analysis" && index >= c.AnalysisWorkers) {
+		if err != nil || !c.Enabled || (kind == "compression" && index >= c.CompressionWorkers) || (kind == "analysis" && (index >= c.AnalysisWorkers || !s.aiReady.Load())) {
 			s.capture("inspiration_processing_config", err)
 			select {
 			case <-ctx.Done():
@@ -315,6 +355,13 @@ func (s *InspirationLibraryService) worker(ctx context.Context, kind string, ind
 			stage = "pending_analysis"
 			compressionCtx, cancelCompression := context.WithTimeout(ctx, time.Duration(c.CompressionTimeoutSeconds)*time.Second)
 			err = s.inspirations.processCompressionJobContext(compressionCtx, inspirationCompressionJob{scope: tenant.Scope{OrgID: job.OrgID, UserID: job.UserID}, scoped: true, userID: job.UserID, inspirationID: job.InspirationID, imageKey: job.ImageKey, asyncVersion: job.AsyncVersion})
+			if err == nil {
+				if thumbnails, ok := s.inspirations.files.(interface {
+					WarmThumbnail(context.Context, string) error
+				}); ok {
+					s.capture("inspiration_thumbnail_warm_failed", thumbnails.WarmThumbnail(scoped, job.ImageKey))
+				}
+			}
 			cancelCompression()
 		} else {
 			analysis, err = s.analyze(scoped, *job, c)
@@ -379,15 +426,19 @@ func (s *InspirationLibraryService) analyze(ctx context.Context, job model.Inspi
 	return &result, nil
 }
 
-// schedule 启动补扫及每日到点扫描；每天可重复触发，但任务唯一约束保证不会重复处理成功代次。
+// schedule 只在每日时刻到达时扫描未识别记录，启动和页面浏览均不触发补扫。
 func (s *InspirationLibraryService) schedule(ctx context.Context) {
-	scanned := ""
-	initialScan := true
+	scanned := time.Now().In(inspirationChina).Format("2006-01-02")
+	previousClock := ""
 	for ctx.Err() == nil {
 		c, err := s.config.InspirationProcessing(ctx)
 		local := time.Now().In(inspirationChina)
 		day := local.Format("2006-01-02")
-		if err == nil && c.Enabled && inspirationScanDue(initialScan, scanned, local, c.ScanTime) {
+		due := err == nil && inspirationScanDue(scanned, previousClock, local, c.ScanTime)
+		if due {
+			scanned = ""
+		}
+		if due && c.Enabled {
 			after := 0
 			for ctx.Err() == nil {
 				next, n, e := s.repository.ScanInspirationProcessingPage(tenant.System(ctx), after, c.Algorithm)
@@ -397,13 +448,13 @@ func (s *InspirationLibraryService) schedule(ctx context.Context) {
 				}
 				after = next
 				if n < 500 {
-					initialScan = false
-					if local.Format("15:04") >= c.ScanTime {
-						scanned = day
-					}
+					scanned = day
 					break
 				}
 			}
+		}
+		if err == nil {
+			previousClock = local.Format("15:04")
 		}
 		after := 0
 		for ctx.Err() == nil {
@@ -431,7 +482,9 @@ func (s *InspirationLibraryService) schedule(ctx context.Context) {
 	}
 }
 
-// inspirationScanDue 将启动补扫与每日到点分开，凌晨启动不能吞掉当天三点的扫描。
-func inspirationScanDue(initial bool, last string, local time.Time, clock string) bool {
-	return initial || (last != local.Format("2006-01-02") && local.Format("15:04") >= clock)
+// inspirationScanDue 启动后错过时刻不补扫；只在跨越每日时刻、次日到点或本次扫描失败时执行。
+func inspirationScanDue(last, previous string, local time.Time, clock string) bool {
+	day := local.Format("2006-01-02")
+	now := local.Format("15:04")
+	return now >= clock && (last != day || (previous != "" && previous < clock))
 }

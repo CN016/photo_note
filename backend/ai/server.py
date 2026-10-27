@@ -144,6 +144,8 @@ class Analyzer:
 class Server(socketserver.ThreadingMixIn, socketserver.UnixStreamServer):
     """仅同 UID 的 Go 进程能访问；有界执行器保证模型调用最多十个并发。"""
     daemon_threads = True
+    # 容纳十个并发连接和健康探测，避免Unix Socket默认小backlog在突发时拒绝连接。
+    request_queue_size = 32
 
 
 class Handler(BaseHTTPRequestHandler):

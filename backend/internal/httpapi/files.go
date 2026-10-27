@@ -13,6 +13,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/photo-nini/backend/internal/domain/fault"
 	"github.com/photo-nini/backend/internal/filestore"
+	"github.com/photo-nini/backend/internal/imagecompress"
 	"github.com/photo-nini/backend/internal/service"
 )
 
@@ -216,5 +217,40 @@ func downloadExtension(contentType, fallback string) string {
 		return "webp"
 	default:
 		return fallback
+	}
+}
+
+// downloadThumbnailHandler 只返回授权的持久JPEG副本，浏览请求不创建AI任务或修改画像。
+func downloadThumbnailHandler(files fileStorage) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		backend, ok := files.(interface {
+			OpenThumbnail(context.Context, string) (io.ReadCloser, int64, error)
+		})
+		if !ok {
+			writeError(c, fault.Unavailable(errors.New("缩略图服务未配置")))
+			return
+		}
+		reader, size, err := backend.OpenThumbnail(c.Request.Context(), c.Param("storekey"))
+		if err != nil {
+			var accessError *fault.Error
+			if errors.As(err, &accessError) {
+				writeError(c, accessError)
+				return
+			}
+			if errors.Is(err, filestore.ErrInvalidStoreKey) {
+				writeError(c, fault.InvalidRequest("storekey格式无效"))
+			} else if errors.Is(err, filestore.ErrFileNotFound) {
+				writeError(c, fault.NotFound())
+			} else if errors.Is(err, imagecompress.ErrInvalidThumbnailImage) {
+				writeError(c, fault.InvalidRequest("图片损坏或超过缩略图像素上限"))
+			} else if errors.Is(err, imagecompress.ErrUnsupportedImage) {
+				writeError(c, fault.New(http.StatusUnsupportedMediaType, "thumbnail_format_unsupported", "该图片需要兼容预览", nil, nil))
+			} else {
+				writeError(c, fileStoreError(err))
+			}
+			return
+		}
+		defer reader.Close()
+		c.DataFromReader(http.StatusOK, size, "image/jpeg", reader, map[string]string{"Cache-Control": "private, no-store", "X-Content-Type-Options": "nosniff", "Content-Security-Policy": "sandbox", "Referrer-Policy": "no-referrer"})
 	}
 }

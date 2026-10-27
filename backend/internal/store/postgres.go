@@ -260,7 +260,7 @@ func (store *PostgresStore) CreateInspiration(ctx context.Context, inspiration *
 		if err := recordInspirationActivity(tx, inspiration); err != nil {
 			return err
 		}
-		if err := store.enqueueInspirationProcessing(tx, inspiration); err != nil {
+		if err := store.enqueueInspirationProcessing(tx, inspiration, true); err != nil {
 			return err
 		}
 		items := []model.Inspiration{*inspiration}

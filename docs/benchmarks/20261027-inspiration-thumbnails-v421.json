@@ -1,0 +1,82 @@
+{
+  "version": "4.2.1",
+  "performance": {
+    "version": "4.2.1",
+    "existing_gallery": {
+      "images": 10,
+      "original_bytes": 1906182,
+      "thumbnail_bytes": 268471,
+      "seconds": 0.08283099999971455
+    },
+    "legacy_large_image": {
+      "original_bytes": 925003,
+      "thumbnail_bytes": 20043,
+      "cold_ms": 296.27,
+      "warm_ms": 20.28
+    },
+    "startup_and_page_reads_do_not_trigger_ai": true,
+    "cross_user_cached_thumbnail_rejected": true,
+    "daily_worker_processes_replacement": true,
+    "saved_count_unchanged_after_replacement": true,
+    "browser": {
+      "first_view_unique_thumbnail_requests": 10,
+      "reentry_additional_thumbnail_requests": 0,
+      "failed_images": 0,
+      "concurrency_limit_tested": 4
+    }
+  },
+  "queue_rounds": [
+    {
+      "completed": 10,
+      "peak_active_analysis_leases": 10,
+      "round": 1,
+      "seconds_including_db_save": 1.2375619
+    },
+    {
+      "completed": 10,
+      "peak_active_analysis_leases": 10,
+      "round": 2,
+      "seconds_including_db_save": 2.2706932
+    },
+    {
+      "completed": 10,
+      "peak_active_analysis_leases": 10,
+      "round": 3,
+      "seconds_including_db_save": 2.1718686
+    },
+    {
+      "completed": 10,
+      "peak_active_analysis_leases": 10,
+      "round": 4,
+      "seconds_including_db_save": 2.4893156
+    },
+    {
+      "completed": 10,
+      "peak_active_analysis_leases": 10,
+      "round": 5,
+      "seconds_including_db_save": 2.6686606
+    }
+  ],
+  "resources": {
+    "cpus": 2,
+    "memory_limit_bytes": 2147483648,
+    "peak_memory_bytes": 306552832
+  },
+  "validation": {
+    "go_with_postgresql": "passed",
+    "frontend_tests": 65,
+    "web_build": "passed",
+    "gzip_roundtrip_and_docker_load": "passed",
+    "web_zip_crc": "passed"
+  },
+  "artifacts": {
+    "photo-nini-api-4.2.1-linux-amd64.tar.gz": {
+      "bytes": 346140460,
+      "sha256": "9f614b682ee77b108ea7c6c865402aa85ab2ac0f4b25fb646bbe97fd84de0198"
+    },
+    "photo-nini-web-4.2.1.zip": {
+      "bytes": 19543291,
+      "sha256": "3bedb7ad1046606e4085c88ea05ca855397c60427d519a7cdef33e65ed8828f4"
+    }
+  }
+}

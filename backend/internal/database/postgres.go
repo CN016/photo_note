@@ -146,6 +146,9 @@ func checkSchema(ctx context.Context, connection *gorm.DB) error {
 			}
 		}
 		// 灵感图文件元数据缺失时不能安全创建或更新灵感图，因此启动阶段要求先执行增量迁移。
+		if name == "inspiration_processing_jobs" && !connection.WithContext(ctx).Migrator().HasColumn(table, "AnalysisReady") {
+			return fmt.Errorf("PostgreSQL schema 缺少任务识别许可字段，请先执行 backend/migrations/000024_inspiration_thumbnail_triggers.sql")
+		}
 		if name == "inspirations" {
 			migrator := connection.WithContext(ctx).Migrator()
 			// 新表存在仍需核对画像列，拒绝未完整应用增量迁移的 schema。

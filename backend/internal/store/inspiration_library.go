@@ -44,7 +44,7 @@ func recordInspirationActivity(tx *gorm.DB, item *model.Inspiration) error {
 }
 
 // enqueueInspirationProcessing 与图片写入共用事务；历史代次任务取消，唯一约束拒绝重复排队。
-func (store *PostgresStore) enqueueInspirationProcessing(tx *gorm.DB, item *model.Inspiration) error {
+func (store *PostgresStore) enqueueInspirationProcessing(tx *gorm.DB, item *model.Inspiration, immediate ...bool) error {
 	// 扫描快照可能已被替换；先锁定并重新读取当前图片，避免旧快照取消新代次任务。
 	var current model.Inspiration
 	if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("user_id=? AND business_id=?", item.UserID, item.BusinessID).First(&current).Error; err != nil {
@@ -58,7 +58,7 @@ func (store *PostgresStore) enqueueInspirationProcessing(tx *gorm.DB, item *mode
 	if err := tx.Model(&model.InspirationProcessingJob{}).Where("user_id = ? AND inspiration_id = ? AND (async_version <> ? OR image_key <> ? OR algorithm <> ?) AND stage NOT IN ('succeeded','canceled')", item.UserID, item.BusinessID, item.AsyncVersion, item.ImageKey, store.inspirationAlgorithm).Updates(map[string]any{"stage": "canceled", "updated_at": now}).Error; err != nil {
 		return err
 	}
-	job := model.InspirationProcessingJob{BaseModel: model.BaseModel{BusinessID: uuid.New()}, UserID: item.UserID, InspirationID: item.BusinessID, ImageKey: item.ImageKey, AsyncVersion: item.AsyncVersion, Algorithm: store.inspirationAlgorithm, Stage: "pending_compression", NextAttemptAt: now}
+	job := model.InspirationProcessingJob{BaseModel: model.BaseModel{BusinessID: uuid.New()}, UserID: item.UserID, InspirationID: item.BusinessID, ImageKey: item.ImageKey, AsyncVersion: item.AsyncVersion, Algorithm: store.inspirationAlgorithm, AnalysisReady: len(immediate) > 0 && immediate[0], Stage: "pending_compression", NextAttemptAt: now}
 	return tx.Clauses(clause.OnConflict{Columns: []clause.Column{{Name: "orgid"}, {Name: "user_id"}, {Name: "inspiration_id"}, {Name: "async_version"}, {Name: "algorithm"}}, DoNothing: true}).Create(&job).Error
 }
 
@@ -247,7 +247,7 @@ func (store *PostgresStore) InspirationBrowseSummary(ctx context.Context, userID
 	}
 	// 每天最多三张预览，窗口函数在数据库裁剪；不为日历加载当月全部文档。
 	var previews []model.InspirationPreview
-	if err := store.db.WithContext(ctx).Raw(`SELECT business_id,image_key,file_name,day FROM (SELECT business_id,image_key,file_name,to_char(created_at AT TIME ZONE 'Asia/Shanghai','YYYY-MM-DD') AS day,row_number() OVER(PARTITION BY (created_at AT TIME ZONE 'Asia/Shanghai')::date ORDER BY created_at DESC,business_id DESC) AS rank FROM inspirations WHERE orgid=? AND user_id=? AND created_at >= (?::date::timestamp AT TIME ZONE 'Asia/Shanghai') AND created_at < ((?::date+1)::timestamp AT TIME ZONE 'Asia/Shanghai')) daily WHERE rank<=3`, scope.OrgID, userID, from, to).Scan(&previews).Error; err != nil {
+	if err := store.db.WithContext(ctx).Raw(`SELECT business_id,image_key,file_name,file_hash,day FROM (SELECT business_id,image_key,file_name,file_hash,to_char(created_at AT TIME ZONE 'Asia/Shanghai','YYYY-MM-DD') AS day,row_number() OVER(PARTITION BY (created_at AT TIME ZONE 'Asia/Shanghai')::date ORDER BY created_at DESC,business_id DESC) AS rank FROM inspirations WHERE orgid=? AND user_id=? AND created_at >= (?::date::timestamp AT TIME ZONE 'Asia/Shanghai') AND created_at < ((?::date+1)::timestamp AT TIME ZONE 'Asia/Shanghai')) daily WHERE rank<=3`, scope.OrgID, userID, from, to).Scan(&previews).Error; err != nil {
 		return nil, persistenceError(err)
 	}
 	for i := range days {
@@ -275,13 +275,29 @@ func (store *PostgresStore) ScanInspirationProcessingPage(ctx context.Context, a
 		return after, 0, fault.Unauthorized()
 	}
 	var rows []model.Inspiration
-	if err := store.db.WithContext(ctx).Where("id > ? AND (analysis_algorithm <> ? OR analysis_version <> async_version OR analysis_status <> 'succeeded')", after, algorithm).Order("id").Limit(500).Find(&rows).Error; err != nil {
+	if err := store.db.WithContext(ctx).Where("id > ? AND analyzed_at IS NULL", after).Order("id").Limit(500).Find(&rows).Error; err != nil {
 		return after, 0, persistenceError(err)
 	}
 	for _, item := range rows {
 		after = item.ID
 		scoped := scopedResourceContext(ctx, item.OrgID, item.UserID)
-		if err := store.db.WithContext(scoped).Transaction(func(tx *gorm.DB) error { return store.enqueueInspirationProcessing(tx, &item) }); err != nil {
+		if err := store.db.WithContext(scoped).Transaction(func(tx *gorm.DB) error {
+			var current model.Inspiration
+			if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("user_id=? AND business_id=? AND analyzed_at IS NULL", item.UserID, item.BusinessID).First(&current).Error; err != nil {
+				if errors.Is(err, gorm.ErrRecordNotFound) {
+					return nil
+				}
+				return err
+			}
+			if err := store.enqueueInspirationProcessing(tx, &current); err != nil {
+				return err
+			}
+			q := tx.Model(&model.InspirationProcessingJob{}).Where("user_id=? AND inspiration_id=? AND async_version=? AND algorithm=?", current.UserID, current.BusinessID, current.AsyncVersion, store.inspirationAlgorithm)
+			if err := q.Where("stage IN ('failed','unsupported','canceled')").Updates(map[string]any{"stage": "pending_compression", "attempts": 0, "next_attempt_at": time.Now().UTC(), "error_code": ""}).Error; err != nil {
+				return err
+			}
+			return tx.Model(&model.InspirationProcessingJob{}).Where("user_id=? AND inspiration_id=? AND async_version=? AND algorithm=?", current.UserID, current.BusinessID, current.AsyncVersion, store.inspirationAlgorithm).Update("analysis_ready", true).Error
+		}); err != nil {
 			return after, 0, persistenceError(err)
 		}
 	}
@@ -300,7 +316,11 @@ func (store *PostgresStore) ClaimInspirationProcessing(ctx context.Context, stag
 	var job *model.InspirationProcessingJob
 	err := store.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		var row model.InspirationProcessingJob
-		err := tx.Clauses(clause.Locking{Strength: "UPDATE", Options: "SKIP LOCKED"}).Where("((stage=? AND next_attempt_at<=CURRENT_TIMESTAMP) OR (stage=? AND lease_until<CURRENT_TIMESTAMP))", pending, active).
+		query := tx
+		if stage == "analysis" {
+			query = query.Where("analysis_ready=true")
+		}
+		err := query.Clauses(clause.Locking{Strength: "UPDATE", Options: "SKIP LOCKED"}).Where("((stage=? AND next_attempt_at<=CURRENT_TIMESTAMP) OR (stage=? AND lease_until<CURRENT_TIMESTAMP))", pending, active).
 			Where(`orgid=-1 OR EXISTS(SELECT 1 FROM organizations o JOIN organization_members m ON m.orgid=o.orgid WHERE o.orgid=inspiration_processing_jobs.orgid AND o.organization_status='active' AND m.user_id=inspiration_processing_jobs.user_id AND m.member_status='active')`).Order("next_attempt_at,id").First(&row).Error
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil
@@ -388,7 +408,7 @@ func (store *PostgresStore) RetryInspirationProcessing(ctx context.Context, user
 		if err := store.enqueueInspirationProcessing(tx, &item); err != nil {
 			return err
 		}
-		result := tx.Model(&model.InspirationProcessingJob{}).Where("user_id=? AND inspiration_id=? AND async_version=? AND algorithm=? AND stage IN ('failed','unsupported')", userID, id, item.AsyncVersion, store.inspirationAlgorithm).Updates(map[string]any{"stage": "pending_compression", "attempts": 0, "error_code": "", "next_attempt_at": time.Now().UTC(), "updated_at": time.Now().UTC()})
+		result := tx.Model(&model.InspirationProcessingJob{}).Where("user_id=? AND inspiration_id=? AND async_version=? AND algorithm=? AND stage IN ('failed','unsupported')", userID, id, item.AsyncVersion, store.inspirationAlgorithm).Updates(map[string]any{"stage": "pending_compression", "analysis_ready": false, "attempts": 0, "error_code": "", "next_attempt_at": time.Now().UTC(), "updated_at": time.Now().UTC()})
 		if result.Error != nil {
 			return result.Error
 		}

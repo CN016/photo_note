@@ -78,6 +78,9 @@ func run() error {
 		return err
 	}
 	fileService := service.NewFileService(fileManager, repository)
+	if err := fileService.ConfigureThumbnails(startupContext, runtimeConfigService); err != nil {
+		return err
+	}
 	organizations := service.NewOrganizationService(repository)
 	authService := service.NewAuthService(repository, tokens, passwords)
 	authService.SetOrganizations(organizations)

@@ -191,6 +191,7 @@ func (manager *Manager) Delete(ctx context.Context, storekey string) error {
 		return ctx.Err()
 	default:
 	}
+	manager.removeThumbnails(manager.localPath(key), "")
 	err = os.Remove(manager.localPath(key))
 	if errors.Is(err, os.ErrNotExist) {
 		return nil
@@ -264,6 +265,7 @@ func (manager *Manager) Replace(ctx context.Context, storekey string, content []
 		return fmt.Errorf("原子替换本地文件失败: %w", err)
 	}
 	complete = true
+	manager.removeThumbnails(targetPath, "")
 	return nil
 }
 

@@ -135,6 +135,9 @@ func TestInspirationLibraryPostgres(t *testing.T) {
 	// 使用精确任务领取而非系统全库领取，隔离其他集成测试的待处理任务。
 	var job model.InspirationProcessingJob
 	must(db.WithContext(ctx).Where("inspiration_id=?", item.BusinessID).First(&job).Error)
+	if !job.AnalysisReady {
+		t.Fatal("首次新增未允许异步识别")
+	}
 	lease := uuid.New()
 	until := time.Now().Add(time.Minute)
 	job.Stage = "analyzing"
@@ -164,9 +167,23 @@ func TestInspirationLibraryPostgres(t *testing.T) {
 	must(r.FinishInspirationProcessing(ctx, previous, "succeeded", "", time.Now(), nil))
 	var replacement model.InspirationProcessingJob
 	must(db.WithContext(ctx).Where("inspiration_id=? AND async_version=?", item.BusinessID, item.AsyncVersion+1).First(&replacement).Error)
+	// 换图与浏览不会允许AI；每日扫描只启用尚未识别的新代次。
+	if replacement.AnalysisReady {
+		t.Fatal("换图立即触发了AI")
+	}
+	must(db.WithContext(ctx).Model(&replacement).Update("stage", "pending_analysis").Error)
+	_, e = r.InspirationBrowseSummary(ctx, uid, day, day)
+	_ = e
+	blocked, e := r.ClaimInspirationProcessing(tenant.System(context.Background()), "analysis", time.Minute)
+	must(e)
+	if blocked != nil {
+		t.Fatal("浏览/换图允许了AI领取")
+	}
+	_, _, e = r.ScanInspirationProcessingPage(tenant.System(context.Background()), 0, "ignored-new-version")
+	must(e)
 	expired := time.Now().Add(-time.Minute)
 	oldToken := uuid.New()
-	must(db.WithContext(ctx).Model(&replacement).Updates(map[string]any{"stage": "analyzing", "lease_until": expired, "lease_token": oldToken, "next_attempt_at": time.Date(2000, 1, 1, 0, 0, 0, 0, time.UTC)}).Error)
+	must(db.WithContext(ctx).Model(&replacement).Updates(map[string]any{"stage": "analyzing", "analysis_ready": true, "lease_until": expired, "lease_token": oldToken, "next_attempt_at": time.Date(2000, 1, 1, 0, 0, 0, 0, time.UTC)}).Error)
 	recovered, e := r.ClaimInspirationProcessing(tenant.System(context.Background()), "analysis", time.Minute)
 	must(e)
 	if recovered == nil || recovered.BusinessID != replacement.BusinessID || recovered.LeaseToken == nil || *recovered.LeaseToken == oldToken {
@@ -179,6 +196,11 @@ func TestInspirationLibraryPostgres(t *testing.T) {
 	bucket := "white"
 	palette := model.JSONB(`{"version":1,"palette":[{"hex":"#ffffff","percentage":100}],"other_percentage":0}`)
 	must(r.FinishInspirationProcessing(ctx, *recovered, "succeeded", "", time.Now(), &model.InspirationAnalysis{PeopleCount: &zero, IsEmptyShot: &empty, DominantColor: &color, DominantHue: &hue, ColorBucket: &bucket, ColorPalette: &palette}))
+	_, scanned, e := r.ScanInspirationProcessingPage(tenant.System(context.Background()), 0, "force-new-algorithm")
+	must(e)
+	if scanned != 0 {
+		t.Fatal("已识别成功图片因版本变化被重复扫描")
+	}
 	filtered := model.WithInspirationFilters(ctx, model.InspirationFilters{People: "0", EmptyShot: "true", Color: "white", DateFrom: day, DateTo: day, Project: "unassigned"})
 	matches, total, e := r.ListInspirations(filtered, uid, nil, "any", "", "created_desc", 0, 1)
 	must(e)
@@ -267,4 +289,20 @@ func TestLibraryIncrementalMigration(t *testing.T) {
 	if count != 0 {
 		t.Fatal("缺少中文字段注释")
 	}
+	// 从4.2.0升级：已有待识别任务不在启动后立刻重跑，等待每日扫描显式许可。
+	must(db.Exec(`INSERT INTO inspiration_processing_jobs(business_id,orgid,user_id,inspiration_id,image_key,async_version,algorithm,stage,next_attempt_at) SELECT gen_random_uuid(),orgid,user_id,business_id,image_key,async_version,'legacy-model','pending_analysis',now() FROM inspirations WHERE user_id=? LIMIT 1`, uid).Error)
+	upgrade, e := os.ReadFile(filepath.Join("..", "..", "migrations", "000024_inspiration_thumbnail_triggers.sql"))
+	must(e)
+	must(db.Exec(string(upgrade)).Error)
+	var ready int64
+	must(db.WithContext(private).Model(&model.InspirationProcessingJob{}).Where("user_id=? AND analysis_ready=true", uid).Count(&ready).Error)
+	if ready != 0 {
+		t.Fatal("升级时自动许可了历史AI任务")
+	}
+	var comment string
+	must(db.Raw(`SELECT col_description('inspiration_processing_jobs'::regclass,attnum) FROM pg_attribute WHERE attrelid='inspiration_processing_jobs'::regclass AND attname='analysis_ready'`).Scan(&comment).Error)
+	if comment == "" {
+		t.Fatal("缺少迁移字段说明")
+	}
+
 }

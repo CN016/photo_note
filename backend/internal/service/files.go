@@ -28,8 +28,11 @@ type FileBackend interface {
 
 // FileService 将数据库登记的组织及用户归属作为私有文件的可信授权边界。
 type FileService struct {
-	backend   FileBackend
-	ownership FileOwnershipRepository
+	backend         FileBackend
+	ownership       FileOwnershipRepository
+	thumbnailConfig func(context.Context) (ThumbnailConfig, error)
+	thumbnailSlots  chan struct{}
+	thumbnailLocks  storeKeyLocks
 }
 
 // NewFileService 包装物理存储；启动装配必须将此服务注入所有读取私有文件的业务。
@@ -119,6 +122,9 @@ func (service *FileService) Replace(ctx context.Context, key string, content []b
 	if err := service.AuthorizePrivateFile(ctx, key); err != nil {
 		return err
 	}
+	// 与缩略图生成互斥，避免读取覆盖中间态或删除后遗留刚生成的副本。
+	unlock := service.thumbnailLocks.acquire(key)
+	defer unlock()
 	return service.backend.Replace(ctx, key, content)
 }
 
@@ -136,6 +142,8 @@ func (service *FileService) Delete(ctx context.Context, key string) error {
 	if service == nil || service.backend == nil {
 		return fault.NotFound()
 	}
+	unlock := service.thumbnailLocks.acquire(key)
+	defer unlock()
 	return service.backend.Delete(ctx, key)
 }
 

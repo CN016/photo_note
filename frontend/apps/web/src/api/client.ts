@@ -271,6 +271,7 @@ export const api = {
     return request<{ storekey: string }>('/files', { method: 'POST', body })
   },
   /** 带鉴权下载文件字节，不将 storekey 拼成公开 URL；可选 cache 用于显式绕过旧头像缓存。 */
+  thumbnail(storekey: string): Promise<Blob> { return requestBlob(`/files/${encodeURIComponent(storekey)}/thumbnail`) },
   async download(storekey: string, options: { cache?: RequestCache } = {}): Promise<Blob> {
     return requestBlob(`/files/${encodeURIComponent(storekey)}`, true, options.cache)
   },

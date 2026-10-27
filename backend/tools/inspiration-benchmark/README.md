@@ -35,3 +35,8 @@
 `queue-verify/main.go` 通过 `PHOTO_NINI_TENANT_TEST_DSN` 与 `PHOTO_NINI_QUEUE_TEST_USER` 指向显式的独立测试库和十图测试用户；工具拒绝非 `photo_nini_test` 数据库，临时暂停领取、释放十张已压缩任务并轮询结果落库，输出每轮耗时和active分析租约峰值。API须已在独立网络中运行；该工具会修改测试任务和处理启用配置，不能用于生产库。
 
 `accuracy.py --predictions <JSON路径> --output <JSON路径>` 读取 `people_counts` 数组（顺序为prepare.py十张固定COCO图片），通过官方ZIP的HTTP Range只读取验证实例标注，输出精确人数、有无人和0/1/2/3+分组对照。只属于固定小样本验收，不代表全量准确率。最终证据与导出文件校验见 `docs/20261027-灵感库420交付验收与打包.md`。
+
+
+## 4.2.1 每日触发边界
+
+`daily-verify/main.go`仅用于显式独立测试库（PHOTO_NINI_TENANT_TEST_DSN且库名photo_nini_test）模拟每日worker入口，验证换图在重启/页面读取后不识别，只有定时扫描同样的代码路径才允许AI。它不编入API运行镜像，不提供手动业务触发接口；普通前端已移除重试按钮，兼容retry路径返回409。测试先后状态与缩略图网络/体积证据见20261027的4.2.1改动记录。

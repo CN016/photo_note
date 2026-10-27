@@ -103,7 +103,7 @@ export interface InspirationLibraryFilters { date_from?: string; date_to?: strin
 /** 每日数量是成功创建的历史计数，不能以当前列表条数替代。 */
 export interface InspirationDay { day: string; saved_count: number; target: number | null }
 export interface InspirationGoalStatus { goal: { enabled: boolean; target: number; reminder_time: string }; today: InspirationDay; days?: InspirationDay[]; reminder_pending: boolean }
-export interface InspirationFacet { key: string; name?: string; count: number; previews?: { business_id: string; image_key: string; file_name: string }[] }
+export interface InspirationFacet { key: string; name?: string; count: number; previews?: { business_id: string; image_key: string; file_name: string; file_hash?: string | null }[] }
 
 /** 从原图读取的标准属性；extra 保留带命名空间且通过大小限制的其他标签。 */
 export interface InspirationImageMetadata {

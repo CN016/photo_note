@@ -114,6 +114,7 @@
       "black": "Black",
       "white": "White",
       "gray": "Gray"
-    }
+    },
+    "processingRule": "AI runs after a new image is saved, or during the daily scan for images not yet analyzed."
   }
 }
