@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import ContentZoom from '../components/ContentZoom.vue'
 import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { onBeforeRouteLeave, useRouter } from 'vue-router'
@@ -379,7 +380,7 @@ onBeforeUnmount(() => {
 
 <template>
   <AppHeader />
-  <main class="messages-main">
+  <ContentZoom><main class="messages-main">
     <header class="messages-heading">
       <div>
         <p class="eyebrow">{{ t('common.brand') }}</p>
@@ -510,5 +511,5 @@ onBeforeUnmount(() => {
         </div>
       </template>
     </el-dialog>
-  </main>
+  </main></ContentZoom>
 </template>

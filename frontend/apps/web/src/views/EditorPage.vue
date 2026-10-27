@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import ContentZoom from '../components/ContentZoom.vue'
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, shallowRef } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { onBeforeRouteLeave, useRoute, useRouter } from 'vue-router'
@@ -852,7 +853,7 @@ onBeforeUnmount(() => {
 <template>
   <div class="workspace-page editor-page">
     <AppHeader />
-    <main class="editor-main" :style="anchorDisplayStyle">
+    <ContentZoom><main class="editor-main" :style="anchorDisplayStyle">
       <div class="editor-heading-row">
         <div class="editor-title-group">
           <RouterLink class="back-link" to="/inspirations"><el-icon aria-hidden="true"><ArrowLeft /></el-icon>{{ t('common.back') }}</RouterLink>
@@ -881,7 +882,7 @@ onBeforeUnmount(() => {
               <el-button class="icon-button" :disabled="!canRedo" :aria-label="t('editor.redo')" :title="t('editor.redo')" @click="redo"><el-icon aria-hidden="true"><RefreshRight /></el-icon></el-button>
             </div>
           </div>
-          <div ref="stageBox" class="canvas-stage" :class="{ 'anchor-active': anchorMode, 'crop-active': cropMode }" @click="onStageClick">
+          <div ref="stageBox" class="canvas-stage" :data-content-zoom-ignore="cropMode || anchorMode ? 'true' : undefined" :class="{ 'anchor-active': anchorMode, 'crop-active': cropMode }" @click="onStageClick">
             <div v-if="imageReady" class="editor-canvas-wrap" :style="{ width: `${displayDimensions.width}px`, height: `${displayDimensions.height}px` }">
               <canvas ref="previewCanvas" class="editor-canvas" role="img" :tabindex="isEditing ? 0 : -1" :aria-label="anchorMode ? t('editor.anchorModeOn') : t('editor.previewLabel')" @keydown.enter.prevent="addAnchorAtCenter" @keydown.space.prevent="addAnchorAtCenter" @pointerdown="beginCropSelection" @pointermove="moveCropSelection" @pointerup="endCropSelection" @pointercancel="endCropSelection"></canvas>
               <div v-if="cropMode && cropSelection" class="crop-selection" :style="cropDragStyle" aria-hidden="true"></div>
@@ -1039,8 +1040,8 @@ onBeforeUnmount(() => {
       </div>
 
       <div v-if="error && !imageReady" class="editor-load-error" role="alert"><p>{{ error }}</p><RouterLink class="secondary-button" to="/inspirations">{{ t('common.back') }}</RouterLink></div>
+    </main></ContentZoom>
       <div v-if="imageReady && isEditing" class="mobile-save-bar"><span v-if="error" class="mobile-save-error" role="alert">{{ error }}</span><span v-else-if="busyPhase" class="mobile-save-progress" role="status">{{ busyPhase }}</span><el-button v-if="isExisting" class="cancel-edit-button mobile-cancel-button" :disabled="saving" @click="cancelEditing">{{ t('editor.cancelEdit') }}</el-button><el-button class="primary-button save-button" type="primary" :disabled="saving || loading || cropMode || anchorDialog || !!transformDialog" :loading="saving" @click="save">{{ saving ? t('editor.saving') : !isExisting && uploadSourceKey ? t('editor.retry') : isExisting ? t('editor.saveEdit') : t('editor.saveNew') }}<el-icon aria-hidden="true"><Check /></el-icon></el-button></div>
-    </main>
 
     <el-dialog :model-value="!!transformDialog" :title="t('editor.transformTitle')" width="min(500px, calc(100vw - 32px))" @close="transformDialog = null">
       <p>{{ t('editor.transformText') }}</p>

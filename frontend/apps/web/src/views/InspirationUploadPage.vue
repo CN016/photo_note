@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import ContentZoom from '../components/ContentZoom.vue'
 import { computed, onBeforeUnmount, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { ElMessage } from 'element-plus'
@@ -194,7 +195,7 @@ onBeforeUnmount(() => {
 <template>
   <div class="workspace-page inspiration-upload-page">
     <AppHeader />
-    <main class="upload-main">
+    <ContentZoom><main class="upload-main">
       <header class="upload-heading">
         <RouterLink class="back-link" to="/inspirations"><el-icon aria-hidden="true"><ArrowLeft /></el-icon>{{ t('common.back') }}</RouterLink>
         <p class="eyebrow">{{ t('common.product') }}</p>
@@ -252,7 +253,7 @@ onBeforeUnmount(() => {
           </div>
         </template>
       </section>
-    </main>
+    </main></ContentZoom>
     <footer class="workspace-footer"><span>{{ t('common.brand') }}</span><span>{{ t('common.footer') }}</span></footer>
   </div>
 </template>

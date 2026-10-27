@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import ContentZoom from '../components/ContentZoom.vue'
 import { computed, onBeforeUnmount, ref } from 'vue'
 import { onBeforeRouteLeave } from 'vue-router'
 import { useI18n } from 'vue-i18n'
@@ -86,7 +87,7 @@ onBeforeUnmount(() => {
 <template>
   <div class="workspace-page">
     <AppHeader />
-    <main class="profile-main">
+    <ContentZoom><main class="profile-main">
       <header class="profile-heading"><p class="eyebrow">{{ t('profile.eyebrow') }}</p><h1>{{ t('profile.title') }}</h1><p>{{ t('profile.subtitle') }}</p></header>
       <div class="profile-grid">
         <section class="profile-card">
@@ -113,6 +114,6 @@ onBeforeUnmount(() => {
           </el-form>
         </section>
       </div>
-    </main>
+    </main></ContentZoom>
   </div>
 </template>

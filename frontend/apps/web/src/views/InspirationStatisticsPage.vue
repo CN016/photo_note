@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import ContentZoom from '../components/ContentZoom.vue'
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { Aim, Camera, DataAnalysis, Picture, Sunny, Timer, TrendCharts } from '@element-plus/icons-vue'
@@ -163,7 +164,7 @@ onBeforeUnmount(() => { requestVersion += 1 })
 <template>
   <div class="workspace-page statistics-page">
     <AppHeader />
-    <main class="statistics-main">
+    <ContentZoom><main class="statistics-main">
       <section class="gallery-intro statistics-intro">
         <div><p class="eyebrow">{{ t('common.product') }}</p><h1>{{ t('statistics.title') }}</h1><p class="gallery-subtitle">{{ t('statistics.subtitle') }}</p></div>
       </section>
@@ -225,7 +226,7 @@ onBeforeUnmount(() => { requestVersion += 1 })
           </article>
         </div>
       </section>
-    </main>
+    </main></ContentZoom>
     <footer class="workspace-footer"><span>{{ t('common.brand') }}</span><span>{{ t('common.footer') }}</span></footer>
   </div>
 </template>

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import ContentZoom from '../components/ContentZoom.vue'
 import { computed, onMounted, ref } from 'vue'
 import { onBeforeRouteLeave } from 'vue-router'
 import { useI18n } from 'vue-i18n'
@@ -81,7 +82,7 @@ onMounted(load)
 </script>
 
 <template>
-  <div class="workspace-page"><AppHeader /><main class="organization-main">
+  <div class="workspace-page"><AppHeader /><ContentZoom><main class="organization-main">
     <header class="organization-toolbar"><div><h1>{{ t('organizations.title') }}</h1><p>{{ t('organizations.description') }}</p></div><el-button v-if="platform" type="primary" :icon="Plus" @click="createVisible = true">{{ t('organizations.create') }}</el-button></header>
     <el-alert v-if="error" :title="error" type="error" :closable="false" />
     <template v-if="platform">
@@ -101,7 +102,7 @@ onMounted(load)
       <el-pagination v-if="memberTotal > 20" v-model:current-page="memberPage" :total="memberTotal" :page-size="20" layout="prev,pager,next" @current-change="operation(loadMembers)" />
     </section>
     <el-dialog v-model="createVisible" :title="t('organizations.create')" width="min(520px, 94vw)"><el-form label-position="top"><el-form-item :label="t('organizations.name')"><el-input v-model="name" maxlength="120" /></el-form-item><el-form-item :label="t('organizations.initialAdmin')"><el-input v-model="initialAdmin" /></el-form-item><p>{{ t('organizations.initialAdminHint') }}</p></el-form><template #footer><el-button @click="createVisible = false">{{ t('common.cancel') }}</el-button><el-button type="primary" :loading="busy" :disabled="!name.trim() || !initialAdmin.trim()" @click="create">{{ t('organizations.create') }}</el-button></template></el-dialog>
-  </main></div>
+  </main></ContentZoom></div>
 </template>
 
 <style scoped>

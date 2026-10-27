@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import ContentZoom from '../../components/ContentZoom.vue'
 import { computed, markRaw, shallowRef, watch, onMounted, onBeforeUnmount } from 'vue'
 import { Extension, getSchema, type Editor } from '@tiptap/core'
 import StarterKit from '@tiptap/starter-kit'
@@ -92,7 +93,7 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div class="project-document-editor">
+  <ContentZoom selector=".tvp-content-wrap"><div class="project-document-editor">
     <el-alert v-if="!compatible" :title="t('projects.documentIncompatible')" type="error" :closable="false" />
     <ProEditorElementPlus v-else :model-value="props.document" output="json" :extensions="extensions" :toolbar="toolbar"
       :toolbar-options="{ fontSizes: ['12px', '14px', '16px', '18px', '20px', '24px', '30px', '36px', '48px'] }"
@@ -108,7 +109,7 @@ onBeforeUnmount(() => {
     <DragHandle v-if="editor" :editor="editor" class="project-block-drag-handle">
       <el-tooltip :content="t('projects.moveBlock')"><span :aria-label="t('projects.moveBlock')"><el-icon><Rank /></el-icon></span></el-tooltip>
     </DragHandle>
-  </div>
+  </div></ContentZoom>
 </template>
 
 <style scoped>

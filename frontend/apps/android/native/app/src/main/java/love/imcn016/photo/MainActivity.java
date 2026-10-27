@@ -3,7 +3,6 @@ package love.imcn016.photo;
 import android.content.Intent;
 import android.net.Uri;
 import android.provider.OpenableColumns;
-import androidx.activity.result.PickVisualMediaRequest;
 import java.io.File;
 import java.io.InputStream;
 import java.io.FileOutputStream;
@@ -188,34 +187,8 @@ public class MainActivity extends AppCompatActivity {
                 if (fileResult != null || prompt.type == FilePrompt.Type.FOLDER) return GeckoResult.fromValue(prompt.dismiss());
                 filePrompt = prompt; fileResult = new GeckoResult<>();
                 GeckoResult<PromptResponse> result = fileResult;
-                Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE).setType("*/*")
-                    .putExtra(Intent.EXTRA_ALLOW_MULTIPLE, prompt.type == FilePrompt.Type.MULTIPLE);
-                if (prompt.mimeTypes != null) {
-                    String[] types = java.util.Arrays.stream(prompt.mimeTypes).filter(type -> type.contains("/")).toArray(String[]::new);
-                    if (types.length == 1) intent.setType(types[0]);
-                    else if (types.length > 1) intent.putExtra(Intent.EXTRA_MIME_TYPES, types);
-                }
-                // 图片和视频输入采用 AndroidX 照片选择器：优先使用 Photo Picker，旧系统使用相册的 ACTION_PICK。
-                // 混合附件输入仍保留文件管理器，避免 PDF 和 Office 被过滤。
-                if (prompt.mimeTypes != null && prompt.mimeTypes.length > 0
-                    && java.util.Arrays.stream(prompt.mimeTypes).allMatch(type -> type.startsWith("image/") || type.startsWith("video/"))) {
-                    PickVisualMediaRequest request = new PickVisualMediaRequest.Builder()
-                        .setMediaType(java.util.Arrays.stream(prompt.mimeTypes).allMatch(type -> type.startsWith("image/"))
-                            ? ActivityResultContracts.PickVisualMedia.ImageOnly.INSTANCE
-                            : ActivityResultContracts.PickVisualMedia.ImageAndVideo.INSTANCE).build();
-                    intent = prompt.type == FilePrompt.Type.MULTIPLE
-                        ? new ActivityResultContracts.PickMultipleVisualMedia().createIntent(MainActivity.this, request)
-                        : new ActivityResultContracts.PickVisualMedia().createIntent(MainActivity.this, request);
-                    // 未安装系统/回移照片选择器的 Android 9+ 使用相册 Intent，避免降级到文档管理器。
-                    // 旧相册可能仅返回单个媒体，回调同时兼容单选和多选结果。
-                    if (!ActivityResultContracts.PickVisualMedia.isPhotoPickerAvailable(MainActivity.this)) {
-                        boolean imageOnly = java.util.Arrays.stream(prompt.mimeTypes).allMatch(type -> type.startsWith("image/"));
-                        intent = new Intent(Intent.ACTION_PICK)
-                            .setDataAndType(android.provider.MediaStore.Images.Media.EXTERNAL_CONTENT_URI, imageOnly ? "image/*" : "*/*")
-                            .putExtra(Intent.EXTRA_MIME_TYPES, imageOnly ? new String[] { "image/*" } : new String[] { "image/*", "video/*" })
-                            .putExtra(Intent.EXTRA_ALLOW_MULTIPLE, prompt.type == FilePrompt.Type.MULTIPLE);
-                    }
-                }
+                Intent intent = MediaPicker.createIntent(MainActivity.this, prompt.mimeTypes,
+                    prompt.type == FilePrompt.Type.MULTIPLE);
                 try { fileLauncher.launch(intent); }
                 catch (Exception error) { filePrompt = null; fileResult = null; result.complete(prompt.dismiss()); }
                 return result;
@@ -223,6 +196,8 @@ public class MainActivity extends AppCompatActivity {
         });
         session.open(engine);
         browserView.setSession(session);
+        // 内核由异步启动任务创建，此时 onStart 可能已执行，必须补齐当前前后台状态以启用绘制和触控。
+        session.setActive(getLifecycle().getCurrentState().isAtLeast(androidx.lifecycle.Lifecycle.State.STARTED));
         engine.getWebExtensionController().ensureBuiltIn("resource://android/assets/browser/", EXTENSION_ID).accept(extension -> {
             if (isFinishing() || isDestroyed()) return;
             extensionBase = extension.metaData.baseUrl;

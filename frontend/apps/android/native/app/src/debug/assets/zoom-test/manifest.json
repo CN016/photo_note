@@ -1,0 +1,27 @@
+{
+  "manifest_version": 2,
+  "name": "Content zoom synthetic test",
+  "version": "1.0.0",
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "photo-nini-zoom-tests@imcn016.love"
+    }
+  },
+  "permissions": [
+    "nativeMessaging",
+    "geckoViewAddons",
+    "http://127.0.0.1/*",
+    "nativeMessagingFromContent"
+  ],
+  "content_scripts": [
+    {
+      "matches": [
+        "http://127.0.0.1/*"
+      ],
+      "js": [
+        "zoom.js"
+      ],
+      "run_at": "document_idle"
+    }
+  ]
+}

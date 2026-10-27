@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import ContentZoom from '../components/ContentZoom.vue'
 import { onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { OfficeBuilding, User } from '@element-plus/icons-vue'
@@ -30,7 +31,7 @@ onMounted(load)
 </script>
 
 <template>
-  <div class="workspace-page"><AppHeader /><main class="space-main" data-space-ready>
+  <div class="workspace-page"><AppHeader /><ContentZoom><main class="space-main" data-space-ready>
     <h1>{{ t('spaces.title') }}</h1><p>{{ t('spaces.description') }}</p>
     <el-alert v-if="!supported" type="warning" :closable="false" :title="t('spaces.unsupported')" />
     <el-alert v-if="error" type="error" :closable="false" :title="error" />
@@ -42,7 +43,7 @@ onMounted(load)
         <el-button :type="item.orgid === auth.orgid ? 'default' : 'primary'" :disabled="busy || !supported || item.orgid === auth.orgid || item.status !== 'active'" :loading="busy" @click="select(item.orgid)">{{ item.orgid === auth.orgid ? t('spaces.current') : t('spaces.enter') }}</el-button>
       </el-card>
     </div>
-  </main></div>
+  </main></ContentZoom></div>
 </template>
 
 <style scoped>

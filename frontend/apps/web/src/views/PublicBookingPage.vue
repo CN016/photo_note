@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import ContentZoom from '../components/ContentZoom.vue'
 import { computed, onMounted, reactive, ref } from 'vue'
 import { useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
@@ -101,7 +102,7 @@ onMounted(() => { void load() })
         <RouterLink class="public-brand" to="/inspirations"><BrandMark size="small" /><strong>{{ t('common.brand') }}</strong></RouterLink>
         <div class="public-booking-actions"><ThemeSwitcher /><LanguageSwitcher /></div>
       </header>
-      <section class="public-booking-intro"><p>{{ t('common.schedule') }}</p><h1>{{ t('public.title') }}</h1><span>{{ t('public.subtitle') }}</span></section>
+      <ContentZoom><section class="public-booking-intro"><p>{{ t('common.schedule') }}</p><h1>{{ t('public.title') }}</h1><span>{{ t('public.subtitle') }}</span></section>
 
       <div v-if="loading" class="public-booking-state" role="status">{{ t('public.loading') }}</div>
       <section v-else-if="unavailable" class="public-booking-state is-error"><el-icon aria-hidden="true"><WarningFilled /></el-icon><p>{{ t('public.unavailable') }}</p></section>
@@ -117,6 +118,7 @@ onMounted(() => { void load() })
           </article>
         </div>
       </section>
+      </ContentZoom>
       <footer class="public-booking-footer"><RouterLink to="/login">{{ t('common.login') }}</RouterLink><span>·</span><span>{{ t('common.product') }}</span></footer>
     </section>
 

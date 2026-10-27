@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import ContentZoom from '../components/ContentZoom.vue'
 import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { onBeforeRouteLeave } from 'vue-router'
 import { useI18n } from 'vue-i18n'
@@ -778,7 +779,7 @@ function heatTitle(day: typeof yearlyHeat.value[number]): string {
 <template>
   <div class="workspace-page ledger-page">
     <AppHeader />
-    <main class="ledger-main">
+    <ContentZoom><main class="ledger-main">
       <section class="ledger-hero">
         <div class="hero-copy">
           <p class="eyebrow">{{ t('common.product') }}</p>
@@ -899,8 +900,8 @@ function heatTitle(day: typeof yearlyHeat.value[number]): string {
         <article class="analysis-card recent-card"><div class="card-heading"><h3>{{ t('analysis.recent') }}</h3><span>{{ recentRecords.length }}</span></div><div v-if="recentRecords.length" class="recent-list"><button v-for="record in recentRecords" :key="record.business_id" type="button" class="recent-row" @click="openRecord(record)"><span class="recent-type" :class="record.type">{{ record.type === 'income' ? '＋' : '−' }}</span><span class="recent-main"><strong>{{ record.category || t('record.ordinary') }}</strong><small>{{ dateLabel(record.date, { year: 'numeric', month: 'short', day: 'numeric' }) }} · {{ methodLabel(record.payment_method) }}</small></span><b :class="record.type">{{ record.type === 'expense' ? '−' : '+' }}{{ money(amountToFen(record.amount) ?? 0) }}</b></button></div><p v-else class="analysis-empty">{{ t('analysis.empty') }}</p></article>
       </section>
 
-      <footer class="workspace-footer"><span>{{ t('common.brand') }}</span><span>{{ t('common.footer') }}</span></footer>
-    </main>
+    </main></ContentZoom>
+    <footer class="workspace-footer"><span>{{ t('common.brand') }}</span><span>{{ t('common.footer') }}</span></footer>
 
     <div v-if="dayPanelOpen" class="sheet-backdrop" @click.self="dayPanelOpen = false">
       <section class="ledger-sheet day-sheet" role="dialog" aria-modal="true" :aria-label="t('record.dayTitle', { date: dateLabel(selectedDate, { year: 'numeric', month: 'long', day: 'numeric' }) })">

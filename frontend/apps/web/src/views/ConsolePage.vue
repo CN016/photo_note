@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import ContentZoom from '../components/ContentZoom.vue'
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { ChatDotRound, Delete, Picture, Plus, Search, Setting, User } from '@element-plus/icons-vue'
@@ -354,7 +355,7 @@ onBeforeUnmount(() => {
 <template>
   <div class="workspace-page console-page">
     <AppHeader />
-    <main class="console-main">
+    <ContentZoom><main class="console-main">
       <header class="console-heading">
         <div>
           <p class="eyebrow">{{ t('common.product') }}</p>
@@ -463,7 +464,7 @@ onBeforeUnmount(() => {
         <span>{{ t('console.page', { page: currentPage, total: currentTotal }) }}</span>
         <el-button :disabled="currentPage * pageSize >= currentTotal || loading" @click="changePage(1)">{{ t('console.next') }}</el-button>
       </nav>
-    </main>
+    </main></ContentZoom>
 
     <el-dialog v-model="configDialog" :title="editingConfig ? t('console.editConfig') : t('console.createConfig')" width="min(540px, calc(100vw - 32px))" destroy-on-close>
       <div class="console-config-form">

@@ -14,6 +14,7 @@ declare module 'vue' {
     AppHeader: typeof import('./src/components/AppHeader.vue')['default']
     AuthenticatedImageThumbnail: typeof import('./src/components/AuthenticatedImageThumbnail.vue')['default']
     BrandMark: typeof import('./src/components/BrandMark.vue')['default']
+    ContentZoom: typeof import('./src/components/ContentZoom.vue')['default']
     ElAlert: typeof import('element-plus/es')['ElAlert']
     ElAvatar: typeof import('element-plus/es')['ElAvatar']
     ElButton: typeof import('element-plus/es')['ElButton']

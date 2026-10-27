@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, watch } from 'vue'
+import { computed, nextTick, watch, onBeforeUnmount } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute } from 'vue-router'
 import zhCn from 'element-plus/es/locale/lang/zh-cn'
@@ -10,6 +10,21 @@ import { useAuthStore } from './stores/auth'
 import { configureSpaceCoordination, preparingSpaceSwitch } from './spaces/coordination'
 import { router, defaultAuthenticatedRoute } from './router'
 
+import { isAndroid } from '../../../packages/platform-adapters'
+
+// 禁止安卓容器将整页和导航一起放大，主体通过 ContentZoom 独立处理两指手势。
+const scopedZoom = isAndroid()
+const viewport = document.querySelector<HTMLMetaElement>('meta[name="viewport"]')
+const originalViewport = viewport?.content
+if (scopedZoom) {
+  document.documentElement.classList.add('native-content-zoom')
+  // Gecko 的原生视口手势可能抢占网页双指事件；只在 APK 内关闭整页缩放，主体仍提供 1～3 倍缩放。
+  if (viewport) viewport.content = 'width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover'
+}
+onBeforeUnmount(() => {
+  document.documentElement.classList.remove('native-content-zoom')
+  if (scopedZoom && viewport && originalViewport !== undefined) viewport.content = originalViewport
+})
 const { locale } = useI18n()
 const route = useRoute()
 const auth = useAuthStore()

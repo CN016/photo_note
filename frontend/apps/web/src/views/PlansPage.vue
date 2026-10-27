@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import ContentZoom from '../components/ContentZoom.vue'
 import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
 import { onBeforeRouteLeave } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
@@ -274,7 +275,7 @@ onBeforeUnmount(() => {
 
 <template>
   <AppHeader />
-  <main class="plans-main">
+  <ContentZoom><main class="plans-main">
     <header class="plans-heading">
       <div>
         <p class="plans-eyebrow">{{ t('title') }}</p>
@@ -330,7 +331,7 @@ onBeforeUnmount(() => {
         <el-button v-if="activeTab !== 'completed'" type="primary" plain @click="openForm()"><el-icon aria-hidden="true"><Plus /></el-icon>{{ t('actions.add') }}</el-button>
       </section>
     </template>
-  </main>
+  </main></ContentZoom>
 
   <el-dialog v-model="dialogOpen" class="plans-dialog" :title="editing ? t('form.editTitle') : t('form.newTitle')" width="min(620px, calc(100vw - 28px))" :close-on-click-modal="!saving && !uploadingCover" :close-on-press-escape="!saving && !uploadingCover" :show-close="!saving && !uploadingCover" destroy-on-close @closed="closeDialog">
     <el-form label-position="top" :disabled="saving || uploadingCover" @submit.prevent="save">

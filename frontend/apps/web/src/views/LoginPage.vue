@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import ContentZoom from '../components/ContentZoom.vue'
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
@@ -60,7 +61,7 @@ async function submit() {
 </script>
 
 <template>
-  <main class="auth-page">
+  <ContentZoom><main class="auth-page">
     <section class="auth-art" aria-hidden="true">
       <div class="art-brand"><BrandMark /><span>{{ t('common.brand') }}</span></div>
       <div class="art-copy"><p class="eyebrow">{{ t('login.eyebrow') }}</p><h1>{{ t('login.title') }}</h1><p>{{ t('login.subtitle') }}</p></div>
@@ -92,5 +93,5 @@ async function submit() {
       </div>
       <p class="auth-footnote">{{ t('common.copyright') }}</p>
     </section>
-  </main>
+  </main></ContentZoom>
 </template>

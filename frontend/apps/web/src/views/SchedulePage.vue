@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import ContentZoom from '../components/ContentZoom.vue'
 import { computed, onMounted, reactive, ref } from 'vue'
 import { onBeforeRouteLeave } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
@@ -259,7 +260,7 @@ onMounted(() => { void load() })
 
 <template>
   <AppHeader />
-  <main class="schedule-main">
+  <ContentZoom><main class="schedule-main">
     <header class="schedule-heading">
       <div><p class="schedule-eyebrow">{{ t('title') }}</p><h1>{{ t('title') }}</h1><p>{{ t('subtitle') }}</p></div>
       <el-button type="primary" @click="openNew('work')"><el-icon aria-hidden="true"><Plus /></el-icon>{{ t('actions.add') }}</el-button>
@@ -355,7 +356,7 @@ onMounted(() => { void load() })
       </el-form>
       <template #footer><el-button :disabled="saving" @click="dialogOpen = false">{{ t('actions.close') }}</el-button><el-button type="primary" :loading="saving" :disabled="!canEdit" @click="save">{{ t('actions.save') }}</el-button></template>
     </el-dialog>
-  </main>
+  </main></ContentZoom>
 </template>
 
 <style scoped>

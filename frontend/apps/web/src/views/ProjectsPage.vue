@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import ContentZoom from '../components/ContentZoom.vue'
 import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { onBeforeRouteLeave, useRouter } from 'vue-router'
@@ -132,7 +133,7 @@ onBeforeUnmount(() => {
 
 <template>
   <AppHeader />
-  <main class="projects-main gallery-main">
+  <ContentZoom><main class="projects-main gallery-main">
     <header class="projects-heading">
       <div><p class="eyebrow"><el-icon><Files /></el-icon>{{ t('projects.title') }}</p><h1>{{ t('projects.title') }}</h1><p>{{ t('projects.subtitle') }}</p></div>
       <el-button class="projects-new" type="primary" :icon="Plus" :title="t('projects.newProject')" :aria-label="t('projects.newProject')" @click="openCreate">{{ t('projects.newProject') }}</el-button>
@@ -156,7 +157,7 @@ onBeforeUnmount(() => {
     <div v-if="total > pageSize" class="projects-pagination">
       <el-button :icon="ArrowLeft" :title="t('projects.viewer.previous')" :aria-label="t('projects.viewer.previous')" :disabled="loading || page <= 1" @click="page -= 1" /><span>{{ page }} / {{ Math.ceil(total / pageSize) }}</span><el-button :icon="ArrowRight" :title="t('projects.viewer.next')" :aria-label="t('projects.viewer.next')" :disabled="loading || page >= Math.ceil(total / pageSize)" @click="page += 1" />
     </div>
-  </main>
+  </main></ContentZoom>
 
   <el-dialog v-model="dialogOpen" class="project-create-dialog" width="min(480px, calc(100vw - 30px))" :title="t('projects.createTitle')" destroy-on-close>
     <el-form label-position="top" @submit.prevent="createProject">

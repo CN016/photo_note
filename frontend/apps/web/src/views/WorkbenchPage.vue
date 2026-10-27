@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import ContentZoom from '../components/ContentZoom.vue'
 import { computed, type Component } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { ArrowRight, Calendar, ChatDotRound, Clock, Files, List, Picture, Setting, User } from '@element-plus/icons-vue'
@@ -27,7 +28,7 @@ const menuItems = computed(() => {
 <template>
   <div class="workspace-page workbench-page">
     <AppHeader />
-    <main class="workbench-main">
+    <ContentZoom><main class="workbench-main">
       <header class="workbench-heading">
         <p class="eyebrow">{{ t('workbench.eyebrow') }}</p>
         <h1>{{ t('workbench.title') }}</h1>
@@ -43,6 +44,6 @@ const menuItems = computed(() => {
           </RouterLink>
         </nav>
       </section>
-    </main>
+    </main></ContentZoom>
   </div>
 </template>

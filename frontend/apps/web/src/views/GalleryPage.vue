@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import ContentZoom from '../components/ContentZoom.vue'
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { ArrowRight, PictureFilled, Plus, Search } from '@element-plus/icons-vue'
@@ -114,7 +115,7 @@ onBeforeUnmount(() => { tagsVersion += 1; window.clearInterval(processingTimer);
 <template>
   <div class="workspace-page">
     <AppHeader />
-    <main class="gallery-main">
+    <ContentZoom><main class="gallery-main">
       <section class="gallery-intro">
         <div><p class="eyebrow">{{ t('common.product') }}</p><h1>{{ t('gallery.title') }}</h1><p class="gallery-subtitle">{{ t('gallery.subtitle') }}</p></div>
         <RouterLink custom to="/inspirations/new" v-slot="{ navigate }"><el-button class="primary-button add-button" type="primary" :aria-label="t('gallery.newImage')" :title="t('gallery.newImage')" @click="navigate"><el-icon aria-hidden="true"><Plus /></el-icon>{{ t('gallery.newImage') }}</el-button></RouterLink>
@@ -197,7 +198,7 @@ onBeforeUnmount(() => { tagsVersion += 1; window.clearInterval(processingTimer);
 
       <div v-if="loading && !items.length" class="gallery-loading" role="status"><span class="loading-dot"></span>{{ t('common.loading') }}</div>
       <div v-if="hasMore" class="load-more-wrap"><el-button :disabled="loading" @click="loadPage(page + 1)">{{ loading ? t('common.loading') : t('gallery.loadMore') }}</el-button></div>
-    </main>
+    </main></ContentZoom>
     <footer class="workspace-footer"><span>{{ t('common.brand') }}</span><span>{{ t('common.footer') }}</span></footer>
   </div>
 </template>

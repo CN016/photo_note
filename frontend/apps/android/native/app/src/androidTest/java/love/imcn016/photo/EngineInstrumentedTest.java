@@ -55,10 +55,10 @@ public class EngineInstrumentedTest {
             assertEquals(4096, canvas.get().optInt("height"));
             assertTrue(canvas.get().optInt("bytes") > 0);
             var file = device.wait(Until.findObject(By.clazz("android.widget.Button").text(java.util.regex.Pattern.compile("(?i).*browse.*|.*choose.*|.*浏览.*|.*选择.*"))), 5000);
-            assertNotNull("系统文件选择入口应存在", file);
+            assertNotNull("图片选择入口应存在", file);
             file.click();
-            // 图片输入允许系统照片选择器或旧系统相册；混合文件输入仍走DocumentsUI。
-            assertNotNull(device.wait(Until.findObject(By.pkg(java.util.regex.Pattern.compile(".*documentsui|com.google.android.apps.photos|.*photopicker")).depth(0)), 10000));
+            // 包含 HEIC 扩展名的纯图片输入必须进入照片选择器或相册，不能落入 DocumentsUI。
+            assertNotNull(device.wait(Until.findObject(By.pkg(java.util.regex.Pattern.compile("com.google.android.apps.photos|.*photopicker|.*gallery.*|.*providers[.]media.*")).depth(0)), 10000));
             device.pressBack();
         } finally { instrumentation.runOnMainSync(activity::finish); }
     }

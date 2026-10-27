@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import ContentZoom from '../components/ContentZoom.vue'
 import { onBeforeUnmount, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
@@ -72,7 +73,7 @@ onBeforeUnmount(() => { if (avatar.value) URL.revokeObjectURL(avatar.value.previ
 </script>
 
 <template>
-  <main class="auth-page register-page">
+  <ContentZoom><main class="auth-page register-page">
     <section class="auth-art register-art" aria-hidden="true">
       <div class="art-brand"><BrandMark /><span>{{ t('common.brand') }}</span></div>
       <div class="art-copy"><p class="eyebrow">{{ t('register.eyebrow') }}</p><h1>{{ t('register.title') }}</h1><p>{{ t('register.subtitle') }}</p></div>
@@ -110,5 +111,5 @@ onBeforeUnmount(() => { if (avatar.value) URL.revokeObjectURL(avatar.value.previ
       </div>
       <p class="auth-footnote">{{ t('common.copyright') }}</p>
     </section>
-  </main>
+  </main></ContentZoom>
 </template>

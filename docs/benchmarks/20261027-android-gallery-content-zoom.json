@@ -1,0 +1,53 @@
+{
+  "platform": "Android 9 API 28 x86_64 / GeckoView 158",
+  "web_tests": 70,
+  "native_tests": 18,
+  "new_process_session_test": 1,
+  "zoom": {
+    "viewport_scale": 1,
+    "content_zoom": "2.12903",
+    "before": {
+      "footer": {
+        "height": 64,
+        "width": 414
+      },
+      "header": {
+        "height": 60,
+        "width": 414
+      },
+      "main": {
+        "height": 663.5499877929688,
+        "width": 414
+      }
+    },
+    "after": {
+      "footer": {
+        "height": 64,
+        "width": 414
+      },
+      "header": {
+        "height": 60,
+        "width": 414
+      },
+      "main": {
+        "height": 1412.7166748046875,
+        "width": 881.4166259765625
+      }
+    },
+    "page_width": 414,
+    "viewport_width": 414
+  },
+  "chrome_project_editor": {
+    "viewport_width": 412,
+    "content_width_before": 410,
+    "content_width_after": 820,
+    "toolbar_width": 412,
+    "toolbar_height": 51,
+    "typing_after_zoom": "observed"
+  },
+  "boundaries": [
+    "顶底区域为合成固定区域；生产正文组件与系统双指触控为真实运行",
+    "API28相册已打开并取消，未验证实际多图导入或云相册",
+    "未完成API36模拟器启动；未验证实体ARM手机、厂商相册及其他原生平台"
+  ]
+}
