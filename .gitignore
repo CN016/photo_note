@@ -1,4 +1,6 @@
 /.idea/
+/artifacts/*
+!/artifacts/README.md
 /backend/.env
 /backend/dist/
 /backend/postgres17_data/
