@@ -67,6 +67,9 @@ func TestPortfolioHTTPPostgres(t *testing.T) {
 		router.ServeHTTP(res, req)
 		return res
 	}
+	if denied := request("GET", "/api/v1/portfolios", nil, false, ""); denied.Code != http.StatusUnauthorized {
+		t.Fatalf("未鉴权访问管理接口: %d", denied.Code)
+	}
 	created := request("POST", "/api/v1/portfolios", bytes.NewBufferString(`{"title":"test","description":"","tag_ids":[]}`), true, "application/json")
 	if created.Code != 201 {
 		t.Fatalf("创建作品集 %d %s", created.Code, created.Body.String())
@@ -78,6 +81,10 @@ func TestPortfolioHTTPPostgres(t *testing.T) {
 	}
 	if err = json.Unmarshal(created.Body.Bytes(), &album); err != nil || album.Data.ID == "" {
 		t.Fatal("缺少作品集 ID", err)
+	}
+	edited := request("PATCH", "/api/v1/portfolios/"+album.Data.ID, bytes.NewBufferString(`{"title":"edited","description":"desc","tag_ids":[],"project_ids":[]}`), true, "application/json")
+	if edited.Code != 200 || !strings.Contains(edited.Body.String(), `"title":"edited"`) {
+		t.Fatalf("编辑作品集失败 %d %s", edited.Code, edited.Body.String())
 	}
 	var file bytes.Buffer
 	img := image.NewRGBA(image.Rect(0, 0, 2, 2))
@@ -103,12 +110,17 @@ func TestPortfolioHTTPPostgres(t *testing.T) {
 	var result struct {
 		Data struct {
 			Key string `json:"image_key"`
+			ID  string `json:"business_id"`
 		} `json:"data"`
 	}
 	if err = json.Unmarshal(upload.Body.Bytes(), &result); err != nil || !strings.HasPrefix(result.Data.Key, "public_") {
 		t.Fatal("未产生公开文件", err)
 	}
 
+	changed := request("PATCH", "/api/v1/portfolios/"+album.Data.ID+"/photos/"+result.Data.ID, bytes.NewBufferString(`{"title":"caption","tag_ids":[],"sort_order":3}`), true, "application/json")
+	if changed.Code != 200 || !strings.Contains(changed.Body.String(), `"sort_order":3`) {
+		t.Fatalf("编辑照片失败 %d %s", changed.Code, changed.Body.String())
+	}
 	// 从拥有的私有灵感图复制文件与元数据；其他用户不能借用该记录。
 	personal := tenant.Personal(context.Background(), user)
 	privateKey, err := files.Store(personal, "local", "source.png", bytes.NewReader(file.Bytes()), 1024*1024)
