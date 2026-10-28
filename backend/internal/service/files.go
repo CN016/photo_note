@@ -60,7 +60,7 @@ func (service *FileService) Store(ctx context.Context, storeType, name string, s
 	return key, nil
 }
 
-// StorePublic 保留反馈专用公开目录行为；公共上传只能由既有反馈业务调用。
+// StorePublic 保存公开副本；只有经业务授权的反馈及作品集流程可以调用。
 func (service *FileService) StorePublic(ctx context.Context, storeType, name string, source io.Reader, maximum int64) (string, error) {
 	if service == nil || service.backend == nil {
 		return "", fault.Unavailable(errors.New("文件存储未初始化"))
@@ -108,7 +108,7 @@ func (service *FileService) OpenContext(ctx context.Context, key string) (io.Rea
 	return service.backend.Open(key)
 }
 
-// Open 仅兼容无需认证的公开反馈图片；缺少上下文的私有读取一律拒绝。
+// Open 仅兼容无需认证的公开图片；缺少上下文的私有读取一律拒绝。
 func (service *FileService) Open(key string) (io.ReadCloser, int64, string, error) {
 	parsed, err := filestore.ParseKey(key)
 	if err != nil || !parsed.Public {
@@ -128,7 +128,7 @@ func (service *FileService) Replace(ctx context.Context, key string, content []b
 	return service.backend.Replace(ctx, key, content)
 }
 
-// Delete 对私有文件执行与读取相同的归属检查，公开反馈文件只用于失败上传回收。
+// Delete 对私有文件执行与读取相同的归属检查；公开文件删除由相应业务验证归属。
 func (service *FileService) Delete(ctx context.Context, key string) error {
 	parsed, err := filestore.ParseKey(key)
 	if err != nil {

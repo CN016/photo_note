@@ -92,17 +92,21 @@ func (store *PostgresStore) UpdateProject(ctx context.Context, userID, projectID
 	return updated, err
 }
 
-// DeleteProject 软删除项目并保留正文及所有资源关系，引用中的灵感图仍不能被删除。
+// DeleteProject 软删除策划，保留正文资源关系，同时清除作品集对已删除策划的引用。
 func (store *PostgresStore) DeleteProject(ctx context.Context, userID, projectID uuid.UUID) error {
-	result := store.db.WithContext(ctx).Model(&model.Project{}).Where("user_id = ? AND business_id = ? AND deleted_at IS NULL", userID, projectID).
-		Updates(map[string]any{"deleted_at": time.Now().UTC(), "updated_at": time.Now().UTC()})
-	if result.Error != nil {
-		return persistenceError(result.Error)
-	}
-	if result.RowsAffected == 0 {
-		return fault.NotFound()
-	}
-	return nil
+	return store.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		result := tx.Model(&model.Project{}).Where("user_id = ? AND business_id = ? AND deleted_at IS NULL", userID, projectID).Updates(map[string]any{"deleted_at": time.Now().UTC(), "updated_at": time.Now().UTC()})
+		if result.Error != nil {
+			return persistenceError(result.Error)
+		}
+		if result.RowsAffected == 0 {
+			return fault.NotFound()
+		}
+		if err := tx.Where("user_id = ? AND project_id = ?", userID, projectID).Delete(&model.PortfolioProject{}).Error; err != nil {
+			return persistenceError(err)
+		}
+		return nil
+	})
 }
 
 // FindProjectAttachment 将附件授权限定到项目拥有者、项目和附件业务 UUID 三个维度。

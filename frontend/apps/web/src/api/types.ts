@@ -464,3 +464,8 @@ export class ApiError extends Error {
     this.name = 'ApiError'
   }
 }
+
+/** 独立作品集及公开作品照片的稳定接口字段。 */
+export interface PortfolioRecord { business_id: string; title: string; description: string; tag_ids: string[]; share_enabled: boolean; cover_image_key?: string }
+export interface PortfolioPhoto { business_id: string; image_key: string; title: string; tag_ids: string[]; sort_order: number; image_metadata: InspirationImageMetadata }
+export interface PortfolioInput { title: string; description: string; tag_ids: string[]; project_ids: string[] }

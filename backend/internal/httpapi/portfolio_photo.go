@@ -91,8 +91,13 @@ func publicPortfolioHandler(shares *service.PortfolioShareService, portfolios *s
 			writeError(c, err)
 			return
 		}
+		tags, err := portfolios.PublicTags(ctx, item.UserID, view, list)
+		if err != nil {
+			writeError(c, err)
+			return
+		}
 		c.Header("Cache-Control", "no-store")
-		writeData(c, http.StatusOK, gin.H{"portfolio": view, "photos": list})
+		writeData(c, http.StatusOK, gin.H{"portfolio": view, "photos": list, "tags": tags})
 	}
 }
 
@@ -119,5 +124,91 @@ func portfolioPhotoDeleteHandler(s *service.PortfolioPhotoService) gin.HandlerFu
 			return
 		}
 		writeData(c, http.StatusOK, gin.H{"deleted": true})
+	}
+}
+
+// portfolioPhotoUpdateHandler 更新照片的标题、标签和排序。
+func portfolioPhotoUpdateHandler(s *service.PortfolioPhotoService) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		claims, err := authContext(c)
+		if err != nil {
+			writeError(c, err)
+			return
+		}
+		id, err := parseBusinessID(c)
+		if err != nil {
+			writeError(c, err)
+			return
+		}
+		photo, err := uuid.Parse(c.Param("photo_id"))
+		if err != nil {
+			writeError(c, fault.InvalidField("photo_id", "照片 ID 无效"))
+			return
+		}
+		var input service.PortfolioPhotoInput
+		if err = decodeJSON(c, &input); err != nil {
+			writeError(c, err)
+			return
+		}
+		item, err := s.Update(c.Request.Context(), claims.UserBusinessID, id, photo, input)
+		if err != nil {
+			writeError(c, err)
+			return
+		}
+		writeData(c, http.StatusOK, item)
+	}
+}
+
+// portfolioDeleteHandler 删除作品集、关联和公开照片。
+func portfolioDeleteHandler(s *service.PortfolioPhotoService) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		claims, err := authContext(c)
+		if err != nil {
+			writeError(c, err)
+			return
+		}
+		id, err := parseBusinessID(c)
+		if err != nil {
+			writeError(c, err)
+			return
+		}
+		if err = s.DeletePortfolio(c.Request.Context(), claims.UserBusinessID, id); err != nil {
+			writeError(c, err)
+			return
+		}
+		writeData(c, http.StatusOK, gin.H{"deleted": true})
+	}
+}
+
+// portfolioCopyHandler 将当前作者灵感图库中的照片复制到作品集。
+func portfolioCopyHandler(s *service.PortfolioPhotoService) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		claims, err := authContext(c)
+		if err != nil {
+			writeError(c, err)
+			return
+		}
+		id, err := parseBusinessID(c)
+		if err != nil {
+			writeError(c, err)
+			return
+		}
+		var input struct {
+			InspirationID uuid.UUID `json:"inspiration_id"`
+		}
+		if err = decodeJSON(c, &input); err != nil {
+			writeError(c, err)
+			return
+		}
+		if input.InspirationID == uuid.Nil {
+			writeError(c, fault.InvalidField("inspiration_id", "灵感图 ID 无效"))
+			return
+		}
+		item, err := s.CopyInspiration(c.Request.Context(), claims.UserBusinessID, id, input.InspirationID)
+		if err != nil {
+			writeError(c, err)
+			return
+		}
+		writeData(c, http.StatusCreated, item)
 	}
 }

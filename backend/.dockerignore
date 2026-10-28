@@ -8,3 +8,5 @@ coverage.out
 postgres17_data/
 uploads/
 dist/
+# 本机上传数据不参与镜像构建，禁止进入 Docker 构建上下文。
+uploaded_files_data/

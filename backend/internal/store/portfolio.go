@@ -47,3 +47,37 @@ func (store *PostgresStore) CreatePortfolio(ctx context.Context, item *model.Por
 	}
 	return persistenceError(store.db.WithContext(ctx).Create(item).Error)
 }
+
+// PortfolioTagLabels 仅返回作品集中实际使用且仍由当前作者拥有的标签名称。
+func (store *PostgresStore) PortfolioTagLabels(ctx context.Context, user uuid.UUID, ids []uuid.UUID) ([]model.Tag, error) {
+	scope, err := tenant.Require(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if scope.UserID != user {
+		return nil, fault.NotFound()
+	}
+	if len(ids) == 0 {
+		return []model.Tag{}, nil
+	}
+	var tags []model.Tag
+	err = store.db.WithContext(ctx).Where("user_id = ? AND business_id IN ?", user, ids).Find(&tags).Error
+	return tags, persistenceError(err)
+}
+
+// ListPortfolioCovers 按空间、用户及作品集范围批量获取首图，避免列表逐条查询。
+func (store *PostgresStore) ListPortfolioCovers(ctx context.Context, user uuid.UUID, ids []uuid.UUID) ([]model.PortfolioCover, error) {
+	scope, err := tenant.Require(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if scope.UserID != user {
+		return nil, fault.NotFound()
+	}
+	if len(ids) == 0 {
+		return []model.PortfolioCover{}, nil
+	}
+	var covers []model.PortfolioCover
+	err = store.db.WithContext(ctx).Model(&model.PortfolioPhoto{}).Select("DISTINCT ON (portfolio_id) portfolio_id, image_key").Where("user_id = ? AND portfolio_id IN ?", user, ids).Order("portfolio_id, sort_order, created_at, business_id").Scan(&covers).Error
+	return covers, persistenceError(err)
+}

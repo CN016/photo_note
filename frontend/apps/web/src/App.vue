@@ -28,7 +28,12 @@ onBeforeUnmount(() => {
 const { locale } = useI18n()
 const route = useRoute()
 const auth = useAuthStore()
-watch(() => [auth.ready, auth.user] as const, ([ready, user]) => { if (ready && !user && !router.currentRoute.value.meta.public) void router.replace('/login') })
+// 等待首个导航完成后再处理失效会话，避免初始路由尚未解析时覆盖公开分享页。
+watch(() => [auth.ready, auth.user] as const, async ([ready, user]) => {
+  if (!ready || user) return
+  await router.isReady()
+  if (auth.ready && !auth.user && !router.currentRoute.value.meta.public) await router.replace('/login')
+})
 configureSpaceCoordination({
   prepare: async () => {
     await router.push('/spaces')
@@ -49,7 +54,7 @@ const elementLocale = computed(() => locale.value === 'en-US' ? en : zhCn)
 const editorRoute = computed(() => route.name === 'new-inspiration' || route.name === 'edit-inspiration' || route.name === 'project-editor')
 const projectEditorRoute = computed(() => route.name === 'project-editor')
 /** 登录后的主要页面共用移动底部导航；游客预约页只保留页面内容与反馈入口。 */
-const hasMobileNav = computed(() => ['workbench', 'gallery', 'inspiration-statistics', 'new-inspiration', 'edit-inspiration', 'ledger', 'schedule', 'plans', 'projects', 'project-editor', 'messages', 'profile', 'atelier-console'].includes(String(route.name)))
+const hasMobileNav = computed(() => ['workbench', 'portfolios', 'portfolio-detail', 'gallery', 'inspiration-statistics', 'new-inspiration', 'edit-inspiration', 'ledger', 'schedule', 'plans', 'projects', 'project-editor', 'messages', 'profile', 'atelier-console'].includes(String(route.name)))
 watch(projectEditorRoute, active => document.body.classList.toggle('project-editor-route', active), { immediate: true })
 </script>
 

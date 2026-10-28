@@ -228,6 +228,12 @@ func (store *PostgresStore) DeleteTagAndCleanInspirations(ctx context.Context, u
 		`, tagID.String(), scope.OrgID, userID, tagID.String()).Error; err != nil {
 			return persistenceError(err)
 		}
+		// 标签也用于独立作品集；删除前按组织和创建者清除两张表中的引用。
+		for _, table := range []string{"portfolios", "portfolio_photos"} {
+			if err := tx.Exec("UPDATE "+table+" SET tag_ids = array_remove(tag_ids, ?::uuid), updated_at = CURRENT_TIMESTAMP WHERE orgid = ? AND user_id = ? AND ?::uuid = ANY(tag_ids)", tagID.String(), scope.OrgID, userID, tagID.String()).Error; err != nil {
+				return persistenceError(err)
+			}
+		}
 		if err := tx.Delete(&tag).Error; err != nil {
 			return persistenceError(err)
 		}

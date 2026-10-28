@@ -47,7 +47,7 @@ type ParsedKey struct {
 	Date      time.Time
 	UUID      uuid.UUID
 	Extension string
-	// Public 只用于反馈图片专属命名空间；公共与私有文件实际保存在不同目录。
+	// Public 表示公共文件命名空间；公共与私有文件实际保存在不同目录。
 	Public bool
 }
 
@@ -72,7 +72,7 @@ func (manager *Manager) Store(ctx context.Context, storeType, originalFilename s
 	return manager.store(ctx, storeType, originalFilename, source, maxBytes, false)
 }
 
-// StorePublic 仅供反馈图片使用公共 key，并将字节写入独立目录，避免给私有 key 加前缀即可公开读取。
+// StorePublic 供反馈及作品集图片使用公共 key，并将字节写入独立目录，避免给私有 key 加前缀即可公开读取。
 func (manager *Manager) StorePublic(ctx context.Context, storeType, originalFilename string, source io.Reader, maxBytes int64) (string, error) {
 	return manager.store(ctx, storeType, originalFilename, source, maxBytes, true)
 }

@@ -43,3 +43,9 @@ type PortfolioProject struct {
 
 // TableName 固定作品集策划关联表名称。
 func (PortfolioProject) TableName() string { return "portfolio_projects" }
+
+// PortfolioCover 是作者作品集首图的轻量数据库投影。
+type PortfolioCover struct {
+	PortfolioID uuid.UUID `gorm:"column:portfolio_id"`
+	ImageKey    string    `gorm:"column:image_key"`
+}

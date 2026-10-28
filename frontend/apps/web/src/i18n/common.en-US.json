@@ -70,5 +70,6 @@
     "body": "You saved {count} images today. Your goal is {target}. Keep collecting inspiration.",
     "go": "Add images",
     "later": "Later"
-  }
+  },
+  "portfolios": "Portfolios"
 }

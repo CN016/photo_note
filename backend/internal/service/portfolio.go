@@ -29,11 +29,12 @@ func NewPortfolioService(repository PortfolioRepository) *PortfolioService {
 
 // PortfolioView 不包含内部数据库 ID、用户 ID 或分享令牌摘要。
 type PortfolioView struct {
-	BusinessID   uuid.UUID `json:"business_id"`
-	Title        string    `json:"title"`
-	Description  string    `json:"description"`
-	TagIDs       []string  `json:"tag_ids"`
-	ShareEnabled bool      `json:"share_enabled"`
+	BusinessID    uuid.UUID `json:"business_id"`
+	Title         string    `json:"title"`
+	Description   string    `json:"description"`
+	TagIDs        []string  `json:"tag_ids"`
+	ShareEnabled  bool      `json:"share_enabled"`
+	CoverImageKey string    `json:"cover_image_key,omitempty"`
 }
 
 // PortfolioInput 是创建作品集的用户可写字段。
@@ -54,8 +55,26 @@ func (s *PortfolioService) List(ctx context.Context, user uuid.UUID) ([]Portfoli
 		return nil, err
 	}
 	views := make([]PortfolioView, 0, len(items))
+	ids := make([]uuid.UUID, 0, len(items))
 	for _, item := range items {
-		views = append(views, portfolioView(item))
+		ids = append(ids, item.BusinessID)
+	}
+	covers := map[uuid.UUID]string{}
+	if reader, ok := s.repository.(interface {
+		ListPortfolioCovers(context.Context, uuid.UUID, []uuid.UUID) ([]model.PortfolioCover, error)
+	}); ok {
+		rows, err := reader.ListPortfolioCovers(ctx, user, ids)
+		if err != nil {
+			return nil, err
+		}
+		for _, row := range rows {
+			covers[row.PortfolioID] = row.ImageKey
+		}
+	}
+	for _, item := range items {
+		view := portfolioView(item)
+		view.CoverImageKey = covers[item.BusinessID]
+		views = append(views, view)
 	}
 	return views, nil
 }
@@ -169,4 +188,45 @@ func (s *PortfolioService) Projects(ctx context.Context, user, id uuid.UUID) ([]
 		ids = append(ids, item.ProjectID)
 	}
 	return ids, nil
+}
+
+// PortfolioTagView 是可在分享页面展示的标签标识和名称。
+type PortfolioTagView struct {
+	BusinessID uuid.UUID `json:"business_id"`
+	Content    string    `json:"content"`
+}
+type portfolioTagReader interface {
+	PortfolioTagLabels(context.Context, uuid.UUID, []uuid.UUID) ([]model.Tag, error)
+}
+
+// PublicTags 只将当前作品集和其照片已使用的标签对公开访客展示。
+func (s *PortfolioService) PublicTags(ctx context.Context, user uuid.UUID, portfolio PortfolioView, photos []PortfolioPhotoView) ([]PortfolioTagView, error) {
+	repo, ok := s.repository.(portfolioTagReader)
+	if !ok {
+		return nil, fault.NotFound()
+	}
+	ids := []uuid.UUID{}
+	seen := map[uuid.UUID]bool{}
+	add := func(values []string) {
+		for _, value := range values {
+			id, err := uuid.Parse(value)
+			if err == nil && !seen[id] {
+				seen[id] = true
+				ids = append(ids, id)
+			}
+		}
+	}
+	add(portfolio.TagIDs)
+	for _, photo := range photos {
+		add(photo.TagIDs)
+	}
+	tags, err := repo.PortfolioTagLabels(ctx, user, ids)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]PortfolioTagView, 0, len(tags))
+	for _, tag := range tags {
+		out = append(out, PortfolioTagView{BusinessID: tag.BusinessID, Content: tag.Content})
+	}
+	return out, nil
 }

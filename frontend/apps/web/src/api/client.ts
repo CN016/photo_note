@@ -1,6 +1,6 @@
 import { ApiError, type ApiEnvelope, type ApiErrorEnvelope, type AuthResponse, type ConsoleConfigRecord, type ConsoleFeedbackRecord, type ConsoleInspirationRecord, type ConsoleUserRecord, type InspirationImageMetadata, type InspirationRecord, type InspirationStatistics, type LedgerFields, type LedgerImportItem, type LedgerImportResult, type LedgerRecord, type NoticeConfig, type NoticeConfigList, type NoticeDelivery, type NotificationPage, type PageResult, type PlanFields, type PlanRecord, type ProjectRecord, type ProjectSaveInput, type ProjectSummary, type ScheduleBooking, type ScheduleBookingReceipt, type ScheduleFields, type ScheduleOccurrence, type SchedulePublicSlot, type ScheduleShare, type TagRecord, type TokenPair, type UserProfile } from './types'
 import { API_REQUEST_ORIGIN } from './config'
-import type { Environment, Organization, OrganizationMember } from './types'
+import type { Environment, Organization, OrganizationMember, PortfolioRecord, PortfolioPhoto, PortfolioInput } from './types'
 import type { InspirationLibraryFilters, InspirationGoalStatus, InspirationFacet } from './types'
 
 /** V1 业务路由统一加版本前缀；环境变量只提供服务主机。 */
@@ -184,6 +184,22 @@ async function requestBlob(path: string, retry = true, cache: RequestCache = 'de
 }
 
 export const api = {
+  /** 作品集接口与灵感图库独立；归属由会话确定。 */
+  portfolios() { return request<{items: PortfolioRecord[]}>('/portfolios') },
+  portfolio(id: string) { return request<PortfolioRecord>(`/portfolios/${encodeURIComponent(id)}`) },
+  createPortfolio(input: PortfolioInput) { return request<PortfolioRecord>('/portfolios', {method:'POST',body:JSON.stringify({title:input.title,description:input.description,tag_ids:input.tag_ids})}) },
+  savePortfolio(id: string, input: PortfolioInput) { return request<PortfolioRecord>(`/portfolios/${encodeURIComponent(id)}`, {method:'PATCH',body:JSON.stringify(input)}) },
+  deletePortfolio(id: string) { return request(`/portfolios/${encodeURIComponent(id)}`, {method:'DELETE'}) },
+  portfolioProjects(id: string) { return request<{items:string[]}>(`/portfolios/${encodeURIComponent(id)}/projects`) },
+  portfolioPhotos(id: string) { return request<{items:PortfolioPhoto[]}>(`/portfolios/${encodeURIComponent(id)}/photos`) },
+  uploadPortfolioPhoto(id: string, file: File) { const body = new FormData(); body.append('file',file); return request<PortfolioPhoto>(`/portfolios/${encodeURIComponent(id)}/photos`,{method:'POST',body}) },
+  copyPortfolioPhoto(id: string, inspirationID: string) { return request<PortfolioPhoto>(`/portfolios/${encodeURIComponent(id)}/photos/copy`,{method:'POST',body:JSON.stringify({inspiration_id:inspirationID})}) },
+  updatePortfolioPhoto(id: string, photo: PortfolioPhoto) { return request<PortfolioPhoto>(`/portfolios/${encodeURIComponent(id)}/photos/${encodeURIComponent(photo.business_id)}`,{method:'PATCH',body:JSON.stringify({title:photo.title,tag_ids:photo.tag_ids,sort_order:photo.sort_order})}) },
+  deletePortfolioPhoto(id: string, photo: string) { return request(`/portfolios/${encodeURIComponent(id)}/photos/${encodeURIComponent(photo)}`,{method:'DELETE'}) },
+  createPortfolioShare(id: string) { return request<{token:string}>(`/portfolios/${encodeURIComponent(id)}/share`,{method:'POST'}) },
+  revokePortfolioShare(id: string) { return request(`/portfolios/${encodeURIComponent(id)}/share`,{method:'DELETE'}) },
+  publicPortfolio(token: string) { return request<{portfolio:PortfolioRecord;photos:PortfolioPhoto[];tags:{business_id:string;content:string}[]}>(`/public-portfolios/${encodeURIComponent(token)}`,{},false) },
+  portfolioPhotoURL(key: string) { return `${API_BASE}/public-portfolio-images/${encodeURIComponent(key)}` },
   /** 空间切换由跨标签页协调器调用，单次比较会话代次，禁止旧页面更换当前租户。 */
   environments() { return request<{ items: Environment[] }>('/environments') },
   switchEnvironment(orgid: number, expectedVersion: number, switchID: string) {

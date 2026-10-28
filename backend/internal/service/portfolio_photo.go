@@ -72,6 +72,11 @@ func (s *PortfolioPhotoService) List(ctx context.Context, user, id uuid.UUID) ([
 
 // Upload 校验图片字节并保存公开副本，元数据提取失败不会阻止照片上传。
 func (s *PortfolioPhotoService) Upload(ctx context.Context, user, id uuid.UUID, name string, content []byte) (PortfolioPhotoView, error) {
+	return s.upload(ctx, user, id, name, content, nil)
+}
+
+// upload 在独立公开副本中保留来源属性快照。
+func (s *PortfolioPhotoService) upload(ctx context.Context, user, id uuid.UUID, name string, content []byte, snapshot *model.InspirationImageMetadata) (PortfolioPhotoView, error) {
 	scope, err := tenant.Require(ctx)
 	if err != nil {
 		return PortfolioPhotoView{}, err
@@ -92,9 +97,11 @@ func (s *PortfolioPhotoService) Upload(ctx context.Context, user, id uuid.UUID, 
 	if utf8.RuneCountInString(name) > 255 {
 		return PortfolioPhotoView{}, fault.InvalidField("title", "标题过长")
 	}
-	metadata, parseErr := ReadExifToolMetadata(ctx, content)
-	if parseErr != nil {
-		metadata = model.InspirationImageMetadata{}
+	metadata := model.InspirationImageMetadata{}
+	if snapshot != nil {
+		metadata = *snapshot
+	} else if parsed, parseErr := ReadExifToolMetadata(ctx, content); parseErr == nil {
+		metadata = parsed
 	}
 	raw, err := json.Marshal(metadata)
 	if err != nil {
@@ -134,4 +141,100 @@ func (s *PortfolioPhotoService) Delete(ctx context.Context, user, portfolioID, p
 		}
 		return err
 	})
+}
+
+// PortfolioPhotoInput 为照片标题、标签和排序提供完整更新。
+type PortfolioPhotoInput struct {
+	Title     string      `json:"title"`
+	TagIDs    []uuid.UUID `json:"tag_ids"`
+	SortOrder int64       `json:"sort_order"`
+}
+type portfolioPhotoUpdater interface {
+	UpdatePortfolioPhoto(context.Context, uuid.UUID, uuid.UUID, uuid.UUID, string, []uuid.UUID, int64) (model.PortfolioPhoto, error)
+}
+
+// Update 校验可写字段并在存储层核验所有标签归属。
+func (s *PortfolioPhotoService) Update(ctx context.Context, user, portfolioID, photoID uuid.UUID, input PortfolioPhotoInput) (PortfolioPhotoView, error) {
+	input.Title = strings.TrimSpace(input.Title)
+	if utf8.RuneCountInString(input.Title) > 255 {
+		return PortfolioPhotoView{}, fault.InvalidField("title", "标题过长")
+	}
+	seen := map[uuid.UUID]bool{}
+	for _, id := range input.TagIDs {
+		if id == uuid.Nil || seen[id] {
+			return PortfolioPhotoView{}, fault.InvalidField("tag_ids", "标签无效或重复")
+		}
+		seen[id] = true
+	}
+	repo, ok := s.repository.(portfolioPhotoUpdater)
+	if !ok {
+		return PortfolioPhotoView{}, fault.NotFound()
+	}
+	photo, err := repo.UpdatePortfolioPhoto(ctx, user, portfolioID, photoID, input.Title, input.TagIDs, input.SortOrder)
+	if err != nil {
+		return PortfolioPhotoView{}, err
+	}
+	return portfolioPhotoView(photo), nil
+}
+
+type portfolioDeleter interface {
+	DeletePortfolio(context.Context, uuid.UUID, uuid.UUID, func(string) error) error
+}
+
+// DeletePortfolio 删除整个作品集，文件清理失败时保留记录供重试。
+func (s *PortfolioPhotoService) DeletePortfolio(ctx context.Context, user, id uuid.UUID) error {
+	repo, ok := s.repository.(portfolioDeleter)
+	if !ok {
+		return fault.NotFound()
+	}
+	return repo.DeletePortfolio(ctx, user, id, func(key string) error {
+		err := s.files.Delete(ctx, key)
+		if errors.Is(err, filestore.ErrFileNotFound) {
+			return nil
+		}
+		return err
+	})
+}
+
+type portfolioInspirationReader interface {
+	FindInspirationByBusinessID(context.Context, uuid.UUID, uuid.UUID) (model.Inspiration, error)
+}
+type portfolioFileReader interface {
+	Open(string) (io.ReadCloser, int64, string, error)
+}
+
+// CopyInspiration 验证灵感图及其私有文件归属，复制已保存图片并保留其拍摄属性快照。
+func (s *PortfolioPhotoService) CopyInspiration(ctx context.Context, user, portfolioID, inspirationID uuid.UUID) (PortfolioPhotoView, error) {
+	repo, ok := s.repository.(portfolioInspirationReader)
+	if !ok {
+		return PortfolioPhotoView{}, fault.NotFound()
+	}
+	files, ok := s.files.(portfolioFileReader)
+	if !ok {
+		return PortfolioPhotoView{}, fault.NotFound()
+	}
+	scope, err := tenant.Require(ctx)
+	if err != nil {
+		return PortfolioPhotoView{}, err
+	}
+	if scope.UserID != user {
+		return PortfolioPhotoView{}, fault.NotFound()
+	}
+	if _, err = s.repository.FindPortfolio(ctx, user, portfolioID); err != nil {
+		return PortfolioPhotoView{}, err
+	}
+	original, err := repo.FindInspirationByBusinessID(ctx, user, inspirationID)
+	if err != nil {
+		return PortfolioPhotoView{}, err
+	}
+	reader, _, _, err := OpenFile(ctx, files, original.ImageKey)
+	if err != nil {
+		return PortfolioPhotoView{}, err
+	}
+	defer reader.Close()
+	content, err := io.ReadAll(io.LimitReader(reader, s.maxBytes+1))
+	if err != nil {
+		return PortfolioPhotoView{}, err
+	}
+	return s.upload(ctx, user, portfolioID, original.FileName, content, &original.ImageMetadata)
 }

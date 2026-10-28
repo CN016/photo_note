@@ -3,7 +3,7 @@ import { computed, onBeforeUnmount, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { ElNotification } from 'element-plus'
-import { Calendar, Clock, Files, House, List, Picture, Setting, User } from '@element-plus/icons-vue'
+import { Calendar, Clock, Files, House, List, Picture, PictureFilled, Setting, User } from '@element-plus/icons-vue'
 import { useAuthStore } from '../stores/auth'
 import { useAppShellStore } from '../stores/appShell'
 import BrandMark from './BrandMark.vue'
@@ -60,6 +60,7 @@ async function signOut() {
 
 function active(path: string): boolean {
   if (path === '/inspirations') return route.path === '/inspirations' || route.path.startsWith('/inspirations/')
+  if (path === '/portfolios') return route.path === '/portfolios' || route.path.startsWith('/portfolios/')
   if (path === '/projects') return route.path === '/projects' || route.path.startsWith('/projects/')
   return route.path === path
 }
@@ -74,6 +75,7 @@ function active(path: string): boolean {
     </RouterLink>
     <nav class="desktop-nav">
       <RouterLink class="nav-item" :class="{ active: active('/inspirations') }" to="/inspirations"><el-icon aria-hidden="true"><Picture /></el-icon>{{ t('common.inspirations') }}</RouterLink>
+      <RouterLink class="nav-item" :class="{ active: active('/portfolios') }" to="/portfolios"><el-icon aria-hidden="true"><PictureFilled /></el-icon>{{ t('common.portfolios') }}</RouterLink>
       <RouterLink class="nav-item" :class="{ active: active('/projects') }" to="/projects"><el-icon aria-hidden="true"><Files /></el-icon>{{ t('common.projects') }}</RouterLink>
       <RouterLink class="nav-item" :class="{ active: active('/ledger') }" to="/ledger"><el-icon aria-hidden="true"><Clock /></el-icon>{{ t('common.ledger') }}</RouterLink>
       <RouterLink class="nav-item" :class="{ active: active('/schedule') }" to="/schedule"><el-icon aria-hidden="true"><Calendar /></el-icon>{{ t('common.schedule') }}</RouterLink>
@@ -93,6 +95,7 @@ function active(path: string): boolean {
     <nav class="mobile-nav" :aria-label="t('common.navigation')">
       <RouterLink class="mobile-nav-item" :class="{ active: active('/workbench') }" to="/workbench" :aria-label="t('common.workbench')"><el-icon aria-hidden="true"><House /></el-icon><small>{{ t('common.mobileWorkbench') }}</small></RouterLink>
       <RouterLink class="mobile-nav-item" :class="{ active: active('/inspirations') }" to="/inspirations"><el-icon aria-hidden="true"><Picture /></el-icon><small>{{ t('common.inspirations') }}</small></RouterLink>
+      <RouterLink class="mobile-nav-item" :class="{ active: active('/portfolios') }" to="/portfolios"><el-icon aria-hidden="true"><PictureFilled /></el-icon><small>{{ t('common.portfolios') }}</small></RouterLink>
       <RouterLink class="mobile-nav-item" :class="{ active: active('/projects') }" to="/projects"><el-icon aria-hidden="true"><Files /></el-icon><small>{{ t('common.mobileProjects') }}</small></RouterLink>
       <RouterLink class="mobile-nav-item" :class="{ active: active('/ledger') }" to="/ledger"><el-icon aria-hidden="true"><Clock /></el-icon><small>{{ t('common.mobileLedger') }}</small></RouterLink>
       <RouterLink class="mobile-nav-item" :class="{ active: active('/profile') }" to="/profile"><el-icon aria-hidden="true"><User /></el-icon><small>{{ t('common.mobileProfile') }}</small></RouterLink>

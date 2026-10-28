@@ -56,6 +56,7 @@ declare module 'vue' {
     InspirationThumbnail: typeof import('./src/components/InspirationThumbnail.vue')['default']
     LanguageSwitcher: typeof import('./src/components/LanguageSwitcher.vue')['default']
     PlanCoverImage: typeof import('./src/components/PlanCoverImage.vue')['default']
+    PortfolioGallery: typeof import('./src/components/PortfolioGallery.vue')['default']
     ProjectAttachmentPreview: typeof import('./src/components/ProjectAttachmentPreview.vue')['default']
     ProjectCoverImage: typeof import('./src/components/ProjectCoverImage.vue')['default']
     RouterLink: typeof import('vue-router')['RouterLink']

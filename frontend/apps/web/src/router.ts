@@ -18,6 +18,9 @@ export const router = createRouter({
     { path: '/register', name: 'register', component: () => import('./views/RegisterPage.vue'), meta: { public: true } },
     { path: '/maintenance', name: 'maintenance', component: () => import('./views/BackendMaintenancePage.vue'), meta: { public: true, maintenance: true } },
     { path: '/book/:shareToken', name: 'public-booking', component: () => import('./views/PublicBookingPage.vue'), meta: { public: true } },
+    { path: '/p/:shareToken', name: 'public-portfolio', component: () => import('./views/PublicPortfolioPage.vue'), meta: { public: true } },
+    { path: '/portfolios', name: 'portfolios', component: () => import('./views/PortfolioPage.vue') },
+    { path: '/portfolios/:id', name: 'portfolio-detail', component: () => import('./views/PortfolioPage.vue') },
     { path: '/workbench', name: 'workbench', component: () => import('./views/WorkbenchPage.vue') },
     { path: '/inspirations', name: 'gallery', component: () => import('./views/GalleryPage.vue') },
     { path: '/inspirations/statistics', name: 'inspiration-statistics', component: () => import('./views/InspirationStatisticsPage.vue') },
@@ -55,7 +58,7 @@ router.beforeEach(async to => {
   if (!backendAvailable && to.name === 'maintenance') return true
   const auth = useAuthStore()
   await auth.initialize()
-  if (to.meta.public && auth.user && to.name !== 'public-booking') return defaultAuthenticatedRoute()
+  if (to.meta.public && auth.user && to.name !== 'public-booking' && to.name !== 'public-portfolio') return defaultAuthenticatedRoute()
   if (!to.meta.public && !auth.user) return '/login'
   if (to.name === 'atelier-console' || to.name === 'platform-edit-inspiration') {
     try {

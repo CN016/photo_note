@@ -26,24 +26,26 @@ func (store *PostgresStore) UpdatePortfolio(ctx context.Context, user, id uuid.U
 		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("user_id = ? AND business_id = ?", user, id).First(&item).Error; err != nil {
 			return persistenceError(err)
 		}
+
 		if len(tags) > 0 {
-			var count int64
-			if err := tx.Model(&model.Tag{}).Where("user_id = ? AND business_id IN ?", user, tags).Count(&count).Error; err != nil {
+			var rows []model.Tag
+			if err := tx.Clauses(clause.Locking{Strength: "SHARE"}).Select("business_id").Where("user_id = ? AND business_id IN ?", user, tags).Find(&rows).Error; err != nil {
 				return persistenceError(err)
 			}
-			if count != int64(len(tags)) {
+			if len(rows) != len(tags) {
 				return fault.InvalidField("tag_ids", "标签不存在或不属于当前用户")
 			}
 		}
 		if len(projects) > 0 {
-			var count int64
-			if err := tx.Model(&model.Project{}).Where("user_id = ? AND business_id IN ? AND deleted_at IS NULL", user, projects).Count(&count).Error; err != nil {
+			var rows []model.Project
+			if err := tx.Clauses(clause.Locking{Strength: "SHARE"}).Select("business_id").Where("user_id = ? AND business_id IN ? AND deleted_at IS NULL", user, projects).Find(&rows).Error; err != nil {
 				return persistenceError(err)
 			}
-			if count != int64(len(projects)) {
+			if len(rows) != len(projects) {
 				return fault.InvalidField("project_ids", "策划不存在或不属于当前用户")
 			}
 		}
+
 		tagStrings := make(pq.StringArray, 0, len(tags))
 		for _, tag := range tags {
 			tagStrings = append(tagStrings, tag.String())

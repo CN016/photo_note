@@ -138,7 +138,7 @@ func downloadFileHandler(files fileStorage) gin.HandlerFunc {
 	}
 }
 
-// publicFeedbackImageHandler 无需 token 读取反馈专用 public key；普通 key、无效 key 和非图片内容统一拒绝。
+// publicFeedbackImageHandler 无需 token 读取 public 图片；普通 key、无效 key 和非图片内容统一拒绝。
 func publicFeedbackImageHandler(files fileStorage) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		if files == nil {

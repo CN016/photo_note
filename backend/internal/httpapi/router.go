@@ -112,6 +112,8 @@ func Router(dependencies Dependencies) *gin.Engine {
 	api.GET("/configs/public", publicConfigsHandler(dependencies.PublicConfigs))
 	api.POST("/feedback", optionalAuthenticationMiddleware(dependencies.Tokens), personalAccountScopeMiddleware(scopeResolver), feedbackHandler(dependencies))
 	api.GET("/public-feedback-images/:storekey", publicFeedbackImageHandler(dependencies.Files))
+	// 作品集公开副本沿用同一真实位图校验及独立 public 目录。
+	api.GET("/public-portfolio-images/:storekey", publicFeedbackImageHandler(dependencies.Files))
 	if dependencies.PortfolioShares != nil && dependencies.Portfolios != nil && dependencies.PortfolioPhotos != nil {
 		api.GET("/public-portfolios/:share_token", publicPortfolioHandler(dependencies.PortfolioShares, dependencies.Portfolios, dependencies.PortfolioPhotos))
 	}
@@ -183,7 +185,10 @@ func Router(dependencies Dependencies) *gin.Engine {
 		protected.GET("/portfolios/:business_id/projects", portfolioProjectsHandler(dependencies.Portfolios))
 	}
 	if dependencies.PortfolioPhotos != nil {
+		protected.DELETE("/portfolios/:business_id", portfolioDeleteHandler(dependencies.PortfolioPhotos))
 		protected.GET("/portfolios/:business_id/photos", portfolioPhotosHandler(dependencies.PortfolioPhotos))
+		protected.POST("/portfolios/:business_id/photos/copy", portfolioCopyHandler(dependencies.PortfolioPhotos))
+		protected.PATCH("/portfolios/:business_id/photos/:photo_id", portfolioPhotoUpdateHandler(dependencies.PortfolioPhotos))
 		protected.POST("/portfolios/:business_id/photos", portfolioUploadHandler(dependencies.PortfolioPhotos, dependencies.MaxUploadBytes))
 		protected.DELETE("/portfolios/:business_id/photos/:photo_id", portfolioPhotoDeleteHandler(dependencies.PortfolioPhotos))
 	}
