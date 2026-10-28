@@ -6,25 +6,25 @@ import (
 	"testing"
 )
 
-// TestPortfolioMetadataForPublic 验证公开白名单过滤敏感与未来新增字段。
+// TestPortfolioMetadataForPublic 验证作者授权后的完整属性及异常输入。
 func TestPortfolioMetadataForPublic(t *testing.T) {
-	raw := json.RawMessage(`{"focal_length_mm":35,"iso_speed":400,"gps_latitude":31,"camera_serial_number":"secret","extra":{"XMP:Secret":"secret"},"future_sensitive":"secret"}`)
+	raw := json.RawMessage(`{"focal_length_mm":35,"gps_latitude":31,"camera_serial_number":"serial","extra":{"maker":"value"}}`)
 	view, err := PortfolioMetadataForPublic(raw)
 	if err != nil {
 		t.Fatal(err)
 	}
-	encoded, err := json.Marshal(view)
-	if err != nil {
-		t.Fatal(err)
+	for _, fragment := range []string{"focal_length_mm", "gps_latitude", "camera_serial_number", "maker"} {
+		if !strings.Contains(string(view), fragment) {
+			t.Fatalf("公开属性缺失 %s: %s", fragment, view)
+		}
 	}
-	text := string(encoded)
-	if !strings.Contains(text, `"focal_length_mm":35`) || !strings.Contains(text, `"iso_speed":400`) {
-		t.Fatalf("拍摄参数缺失: %s", text)
+	view[0] = 'X'
+	if raw[0] != '{' {
+		t.Fatal("不得修改原始快照")
 	}
-	if strings.Contains(text, "secret") || strings.Contains(text, "gps") || strings.Contains(text, "extra") {
-		t.Fatalf("公开属性泄露: %s", text)
-	}
-	if _, err := PortfolioMetadataForPublic(json.RawMessage(`{invalid`)); err == nil {
-		t.Fatal("无效数据必须返回错误")
+	for _, invalid := range []string{"{invalid", "null", "[]"} {
+		if _, err := PortfolioMetadataForPublic(json.RawMessage(invalid)); err == nil {
+			t.Fatalf("无效对象 %s 必须返回错误", invalid)
+		}
 	}
 }
