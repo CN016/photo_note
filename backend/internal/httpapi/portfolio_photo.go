@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 	"github.com/photo-nini/backend/internal/domain/fault"
 	"github.com/photo-nini/backend/internal/service"
 	"net/http"
@@ -92,5 +93,31 @@ func publicPortfolioHandler(shares *service.PortfolioShareService, portfolios *s
 		}
 		c.Header("Cache-Control", "no-store")
 		writeData(c, http.StatusOK, gin.H{"portfolio": view, "photos": list})
+	}
+}
+
+// portfolioPhotoDeleteHandler 删除单张照片及其公开副本，失败时允许重试。
+func portfolioPhotoDeleteHandler(s *service.PortfolioPhotoService) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		claims, err := authContext(c)
+		if err != nil {
+			writeError(c, err)
+			return
+		}
+		id, err := parseBusinessID(c)
+		if err != nil {
+			writeError(c, err)
+			return
+		}
+		photo, err := uuid.Parse(c.Param("photo_id"))
+		if err != nil {
+			writeError(c, fault.InvalidField("photo_id", "照片 ID 无效"))
+			return
+		}
+		if err = s.Delete(c.Request.Context(), claims.UserBusinessID, id, photo); err != nil {
+			writeError(c, err)
+			return
+		}
+		writeData(c, http.StatusOK, gin.H{"deleted": true})
 	}
 }

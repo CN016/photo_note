@@ -179,10 +179,13 @@ func Router(dependencies Dependencies) *gin.Engine {
 		protected.GET("/portfolios", portfolioListHandler(dependencies.Portfolios))
 		protected.POST("/portfolios", portfolioCreateHandler(dependencies.Portfolios))
 		protected.GET("/portfolios/:business_id", portfolioGetHandler(dependencies.Portfolios))
+		protected.PATCH("/portfolios/:business_id", portfolioUpdateHandler(dependencies.Portfolios))
+		protected.GET("/portfolios/:business_id/projects", portfolioProjectsHandler(dependencies.Portfolios))
 	}
 	if dependencies.PortfolioPhotos != nil {
 		protected.GET("/portfolios/:business_id/photos", portfolioPhotosHandler(dependencies.PortfolioPhotos))
 		protected.POST("/portfolios/:business_id/photos", portfolioUploadHandler(dependencies.PortfolioPhotos, dependencies.MaxUploadBytes))
+		protected.DELETE("/portfolios/:business_id/photos/:photo_id", portfolioPhotoDeleteHandler(dependencies.PortfolioPhotos))
 	}
 	if dependencies.PortfolioShares != nil {
 		protected.POST("/portfolios/:business_id/share", portfolioShareCreateHandler(dependencies.PortfolioShares))

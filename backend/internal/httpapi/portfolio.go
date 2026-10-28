@@ -66,3 +66,52 @@ func portfolioGetHandler(portfolios *service.PortfolioService) gin.HandlerFunc {
 		writeData(c, http.StatusOK, item)
 	}
 }
+
+// portfolioUpdateHandler 更新作品集及作者自己的策划关联。
+func portfolioUpdateHandler(portfolios *service.PortfolioService) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		claims, err := authContext(c)
+		if err != nil {
+			writeError(c, err)
+			return
+		}
+		id, err := parseBusinessID(c)
+		if err != nil {
+			writeError(c, err)
+			return
+		}
+		var input service.PortfolioEditInput
+		if err = decodeJSON(c, &input); err != nil {
+			writeError(c, err)
+			return
+		}
+		item, err := portfolios.Update(c.Request.Context(), claims.UserBusinessID, id, input)
+		if err != nil {
+			writeError(c, err)
+			return
+		}
+		writeData(c, http.StatusOK, item)
+	}
+}
+
+// portfolioProjectsHandler 只向作者返回作品集关联的策划业务 UUID。
+func portfolioProjectsHandler(portfolios *service.PortfolioService) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		claims, err := authContext(c)
+		if err != nil {
+			writeError(c, err)
+			return
+		}
+		id, err := parseBusinessID(c)
+		if err != nil {
+			writeError(c, err)
+			return
+		}
+		ids, err := portfolios.Projects(c.Request.Context(), claims.UserBusinessID, id)
+		if err != nil {
+			writeError(c, err)
+			return
+		}
+		writeData(c, http.StatusOK, gin.H{"items": ids})
+	}
+}

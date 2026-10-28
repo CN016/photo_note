@@ -4,9 +4,11 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"github.com/google/uuid"
 	"github.com/lib/pq"
 	"github.com/photo-nini/backend/internal/domain/fault"
+	"github.com/photo-nini/backend/internal/filestore"
 	"github.com/photo-nini/backend/internal/imagecompress"
 	"github.com/photo-nini/backend/internal/model"
 	"github.com/photo-nini/backend/internal/tenant"
@@ -112,4 +114,24 @@ func (s *PortfolioPhotoService) Upload(ctx context.Context, user, id uuid.UUID, 
 		return PortfolioPhotoView{}, err
 	}
 	return portfolioPhotoView(item), nil
+}
+
+// PortfolioPhotoDeletionRepository 在持有照片行锁时完成文件清理和记录删除。
+type PortfolioPhotoDeletionRepository interface {
+	DeletePortfolioPhoto(context.Context, uuid.UUID, uuid.UUID, uuid.UUID, func(string) error) error
+}
+
+// Delete 保留删除失败的记录，已不存在的文件视为清理成功以支持事务失败后的重试。
+func (s *PortfolioPhotoService) Delete(ctx context.Context, user, portfolioID, photoID uuid.UUID) error {
+	repo, ok := s.repository.(PortfolioPhotoDeletionRepository)
+	if !ok {
+		return fault.NotFound()
+	}
+	return repo.DeletePortfolioPhoto(ctx, user, portfolioID, photoID, func(key string) error {
+		err := s.files.Delete(ctx, key)
+		if errors.Is(err, filestore.ErrFileNotFound) {
+			return nil
+		}
+		return err
+	})
 }
