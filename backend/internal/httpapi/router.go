@@ -60,6 +60,9 @@ type Dependencies struct {
 	Schedule              *service.ScheduleService
 	Plans                 *service.PlanService
 	Projects              *service.ProjectService
+	PortfolioShares       *service.PortfolioShareService
+	Portfolios            *service.PortfolioService
+	PortfolioPhotos       *service.PortfolioPhotoService
 	Notices               *service.NoticeService
 	TrustedProxyCIDRs     []string
 	ErrorLogs             *service.ErrorLogService
@@ -109,6 +112,9 @@ func Router(dependencies Dependencies) *gin.Engine {
 	api.GET("/configs/public", publicConfigsHandler(dependencies.PublicConfigs))
 	api.POST("/feedback", optionalAuthenticationMiddleware(dependencies.Tokens), personalAccountScopeMiddleware(scopeResolver), feedbackHandler(dependencies))
 	api.GET("/public-feedback-images/:storekey", publicFeedbackImageHandler(dependencies.Files))
+	if dependencies.PortfolioShares != nil && dependencies.Portfolios != nil && dependencies.PortfolioPhotos != nil {
+		api.GET("/public-portfolios/:share_token", publicPortfolioHandler(dependencies.PortfolioShares, dependencies.Portfolios, dependencies.PortfolioPhotos))
+	}
 	api.GET("/book/:share_token/slots", publicScheduleSlotsHandler(dependencies.Schedule))
 	api.POST("/book/:share_token/requests", scheduleBookingHandler(dependencies.Schedule))
 	v2 := router.Group("/api/v2")
@@ -169,6 +175,19 @@ func Router(dependencies Dependencies) *gin.Engine {
 	protected.PATCH("/plans/:business_id", patchPlanHandler(dependencies.Plans))
 	protected.POST("/plans/:business_id/complete", completePlanHandler(dependencies.Plans))
 	protected.DELETE("/plans/:business_id", deletePlanHandler(dependencies.Plans))
+	if dependencies.Portfolios != nil {
+		protected.GET("/portfolios", portfolioListHandler(dependencies.Portfolios))
+		protected.POST("/portfolios", portfolioCreateHandler(dependencies.Portfolios))
+		protected.GET("/portfolios/:business_id", portfolioGetHandler(dependencies.Portfolios))
+	}
+	if dependencies.PortfolioPhotos != nil {
+		protected.GET("/portfolios/:business_id/photos", portfolioPhotosHandler(dependencies.PortfolioPhotos))
+		protected.POST("/portfolios/:business_id/photos", portfolioUploadHandler(dependencies.PortfolioPhotos, dependencies.MaxUploadBytes))
+	}
+	if dependencies.PortfolioShares != nil {
+		protected.POST("/portfolios/:business_id/share", portfolioShareCreateHandler(dependencies.PortfolioShares))
+		protected.DELETE("/portfolios/:business_id/share", portfolioShareRevokeHandler(dependencies.PortfolioShares))
+	}
 	protected.GET("/projects", listProjectsHandler(dependencies.Projects))
 	protected.POST("/projects", createProjectHandler(dependencies.Projects))
 	protected.GET("/projects/:business_id", getProjectHandler(dependencies.Projects))
