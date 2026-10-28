@@ -2,4 +2,4 @@
 package version
 
 // Current 是当前后端应用的语义化版本；每批后端改动都按仓库根目录 AGENTS.md 递增。
-const Current = "4.3.0"
+const Current = "4.3.1"
