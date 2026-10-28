@@ -86,7 +86,7 @@
   "metadataGpsGroup": "GPS",
   "metadataImageId": "图像 ID",
   "metadataSourceFileSize": "原图大小（字节）",
-  "metadataSourceLastModified": "原图修改时间（浏览器读取）",
+  "metadataSourceLastModified": "原图修改时间",
   "metadataWidth": "宽度（像素）",
   "metadataHeight": "高度（像素）",
   "metadataHorizontalResolution": "水平分辨率（DPI）",

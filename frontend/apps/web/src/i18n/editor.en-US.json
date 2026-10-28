@@ -86,7 +86,7 @@
   "metadataGpsGroup": "GPS",
   "metadataImageId": "Image ID",
   "metadataSourceFileSize": "Original file size (bytes)",
-  "metadataSourceLastModified": "Original file modified (read by browser)",
+  "metadataSourceLastModified": "Original file modified",
   "metadataWidth": "Width (pixels)",
   "metadataHeight": "Height (pixels)",
   "metadataHorizontalResolution": "Horizontal resolution (DPI)",
