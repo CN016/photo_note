@@ -293,14 +293,18 @@ button.image-anchor:hover .image-anchor-label { background: rgb(20 22 23 / 64%);
 .color-metrics > div { display: grid; gap: 5px; padding: 10px; border-radius: var(--radius-control); background: var(--surface-soft); }
 .color-metrics dt { color: var(--muted); font-size: 9px; }
 .color-metrics dd { margin: 0; color: var(--ink); font-size: 13px; font-weight: 700; }
+.metadata-scroll { height: min(440px, 55vh); overflow: auto; overscroll-behavior: contain; padding-right: 6px; }
+.metadata-scroll:focus-visible { outline: 2px solid var(--el-color-primary); outline-offset: 2px; }
 .metadata-group { padding-top: 12px; }
 .metadata-group h3 { margin: 0 0 8px; color: var(--muted); font-size: 11px; font-weight: 700; }
 .image-metadata-list { display: grid; gap: 7px; margin: 0; }
-.image-metadata-list > div { display: grid; grid-template-columns: minmax(112px, .75fr) minmax(0, 1fr); gap: 10px; align-items: start; }
-.image-metadata-list dt { color: var(--muted); font-size: 11px; }
+.image-metadata-list > div { display: grid; grid-template-columns: minmax(0, .85fr) minmax(0, 1fr); gap: 10px; align-items: start; }
+.image-metadata-list dt { overflow-wrap: anywhere; min-width: 0; color: var(--muted); font-size: 11px; }
 .image-metadata-list dd { margin: 0; color: var(--ink); font-size: 12px; overflow-wrap: anywhere; }
+.metadata-map-link { display: inline-block; margin-top: 12px; color: var(--el-color-primary); font-size: 12px; }
 .metadata-extra { margin-top: 12px; color: var(--muted); font-size: 11px; }
 .metadata-extra summary { cursor: pointer; user-select: none; }
+.metadata-extra pre { margin: 6px 0 0; white-space: pre-wrap; overflow-wrap: anywhere; font: inherit; }
 .metadata-extra .image-metadata-list { margin-top: 10px; }
 .profile-retry-row { display: flex; justify-content: flex-start; margin-top: 5px; }
 .detail-note-list { display: grid; gap: 8px; margin: 0; padding: 0; list-style: none; }

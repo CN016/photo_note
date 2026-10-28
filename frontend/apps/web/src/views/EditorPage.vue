@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import ContentZoom from '../components/ContentZoom.vue'
+import { friendlyExtra, formatMetadataValue as formatImageMetadataValue, rawMetadataValue, gpsMapUrl } from './imageMetadataDisplay'
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, shallowRef } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { onBeforeRouteLeave, useRoute, useRouter } from 'vue-router'
@@ -131,7 +132,8 @@ const imageMetadataSections = computed(() => {
       ['gps_altitude_m', 'editor.metadataGpsAltitude'], ['gps_timestamp', 'editor.metadataGpsTimestamp'],
     ] },
   ]
-  return sections.map(section => ({
+  const additional = friendlyExtra(metadata.extra ?? {}, t, locale.value)
+  const mapped = sections.map(section => ({
     ...section,
     rows: section.fields.flatMap(([key, label]) => {
       const value = metadata[key as keyof InspirationImageMetadata]
@@ -139,21 +141,17 @@ const imageMetadataSections = computed(() => {
       return [{ key, label: t(label), value: formatMetadataValue(key, value) }]
     }),
   })).filter(section => section.rows.length > 0)
+  if (additional.length) mapped.push({ title: t('editor.metadataAdditionalGroup'), fields: [], rows: additional })
+  return mapped
 })
 const imageMetadataExtraEntries = computed(() => Object.entries(record.value?.image_metadata?.extra ?? {})
   .sort(([left], [right]) => left.localeCompare(right))
-  .map(([key, value]) => ({ key, value: formatMetadataValue(key, value) })))
+  .map(([key, value]) => ({ key, value: rawMetadataValue(value), complex: typeof value === 'object' || rawMetadataValue(value).length > 100 })))
+const imageGpsMapUrl = computed(() => gpsMapUrl(record.value?.image_metadata?.gps_latitude, record.value?.image_metadata?.gps_longitude))
 const hasImageMetadata = computed(() => imageMetadataSections.value.length > 0 || imageMetadataExtraEntries.value.length > 0)
 
 function formatMetadataValue(key: string, value: unknown): string {
-  if (Array.isArray(value)) return value.map(item => formatMetadataValue(key, item)).join(', ')
-  if (value && typeof value === 'object') return JSON.stringify(value)
-  if (typeof value === 'boolean') return t(value ? 'editor.metadataYes' : 'editor.metadataNo')
-  if (key === 'source_last_modified_at' && typeof value === 'string') {
-    const date = new Date(value)
-    if (Number.isFinite(date.getTime())) return new Intl.DateTimeFormat(locale.value, { dateStyle: 'medium', timeStyle: 'short' }).format(date)
-  }
-  return String(value)
+  return formatImageMetadataValue(key, value, t, locale.value)
 }
 
 const canUndo = computed(() => { historyRevision.value; return history?.canUndo ?? false })
@@ -976,18 +974,21 @@ onBeforeUnmount(() => {
 
           <section v-if="!isEditing && hasImageMetadata" class="control-section image-metadata-section" :aria-label="t('editor.metadataPanelTitle')">
             <div class="section-title-row"><h2>{{ t('editor.metadataPanelTitle') }}</h2></div>
+            <div class="metadata-scroll" tabindex="0" :aria-label="t('editor.metadataPanelTitle')">
             <div v-for="group in imageMetadataSections" :key="group.title" class="metadata-group">
               <h3>{{ group.title }}</h3>
               <dl class="image-metadata-list">
                 <div v-for="row in group.rows" :key="row.key"><dt>{{ row.label }}</dt><dd>{{ row.value }}</dd></div>
               </dl>
             </div>
+            <a v-if="imageGpsMapUrl" class="metadata-map-link" :href="imageGpsMapUrl" target="_blank" rel="noopener noreferrer">{{ t('editor.metadataOpenMap') }}</a>
             <details v-if="imageMetadataExtraEntries.length" class="metadata-extra">
               <summary>{{ t('editor.metadataExtra') }} ({{ imageMetadataExtraEntries.length }})</summary>
               <dl class="image-metadata-list">
-                <div v-for="entry in imageMetadataExtraEntries" :key="entry.key"><dt>{{ entry.key }}</dt><dd>{{ entry.value }}</dd></div>
+                <div v-for="entry in imageMetadataExtraEntries" :key="entry.key"><dt>{{ entry.key }}</dt><dd><details v-if="entry.complex"><summary>{{ t('editor.metadataRawValue') }}</summary><pre>{{ entry.value }}</pre></details><template v-else>{{ entry.value }}</template></dd></div>
               </dl>
             </details>
+            </div>
           </section>
 
           <section class="control-section anchor-size-section">
