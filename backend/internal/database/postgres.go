@@ -97,6 +97,9 @@ func checkSchema(ctx context.Context, connection *gorm.DB) error {
 		"organizations":               &model.Organization{},
 		"organization_members":        &model.OrganizationMember{},
 		"file_ownerships":             &model.FileOwnership{},
+		"portfolios":                  &model.Portfolio{},
+		"portfolio_photos":            &model.PortfolioPhoto{},
+		"portfolio_projects":          &model.PortfolioProject{},
 	} {
 		if !connection.WithContext(ctx).Migrator().HasTable(table) {
 			if name == "ledger_records" {
