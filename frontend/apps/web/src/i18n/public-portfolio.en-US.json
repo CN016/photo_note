@@ -37,7 +37,7 @@
   "masonry": "Masonry",
   "statistics": "Shooting analysis",
   "coverage": "Photos with shooting data: {count} / {total}",
-  "focal": "Focal length",
+  "focal": "Focal length (mm)",
   "aperture": "Aperture",
   "shutter": "Shutter",
   "iso": "ISO",
@@ -119,5 +119,7 @@
     "extra": "Other recognized properties"
   },
   "openMap": "View location on map (new window)",
-  "rawDetails": "View raw value"
+  "rawDetails": "View raw value",
+  "newTagPlaceholder": "New tag name",
+  "addTag": "Add tag"
 }

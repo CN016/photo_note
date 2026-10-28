@@ -37,7 +37,7 @@
   "masonry": "瀑布流",
   "statistics": "拍摄参数分析",
   "coverage": "有拍摄参数的照片：{count} / {total}",
-  "focal": "焦距",
+  "focal": "焦距（毫米）",
   "aperture": "光圈",
   "shutter": "快门",
   "iso": "ISO",
@@ -119,5 +119,7 @@
     "extra": "其他识别属性"
   },
   "openMap": "在地图中查看位置（新窗口）",
-  "rawDetails": "查看原始值"
+  "rawDetails": "查看原始值",
+  "newTagPlaceholder": "新标签名称",
+  "addTag": "新增标签"
 }

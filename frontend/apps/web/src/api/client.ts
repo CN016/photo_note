@@ -272,6 +272,8 @@ export const api = {
   inspirationBrowseSummary(from: string,to: string) { return request<Record<string,InspirationFacet[]>>(`/inspirations/browse-summary?${new URLSearchParams({date_from:from,date_to:to})}`) },
   acknowledgeInspirationReminder(day: string) { return request<{acknowledged:boolean}>('/inspirations/daily-goal/reminder/ack',{method:'POST',body:JSON.stringify({day})}) },
   retryInspirationProcessing(id: string) { return request<{queued:boolean}>(`/inspirations/${encodeURIComponent(id)}/processing/retry`,{method:'POST'}) },
+  /** 在当前空间中创建可供作品集和灵感库共用的标签。 */
+  createTag(content: string) { return request<TagRecord>('/tags', {method:'POST', body:JSON.stringify({content})}) },
   /** 按当前用户和可选名称搜索分页标签；page_size 最大为服务端允许的 100 条。 */
   tags(page = 1, pageSize = 20, query = '') {
     const params = new URLSearchParams({ page: String(page), page_size: String(pageSize) })
