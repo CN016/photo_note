@@ -121,5 +121,11 @@
   "openMap": "在地图中查看位置（新窗口）",
   "rawDetails": "查看原始值",
   "newTagPlaceholder": "新标签名称",
-  "addTag": "新增标签"
+  "addTag": "新增标签",
+  "retry": "重试",
+  "search": "搜索",
+  "downloadQR": "下载二维码",
+  "clearFilters": "清除筛选",
+  "noPortfolioResults": "没有匹配的作品集",
+  "addSelected": "添加所选（{count}）"
 }

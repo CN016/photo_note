@@ -121,5 +121,11 @@
   "openMap": "View location on map (new window)",
   "rawDetails": "View raw value",
   "newTagPlaceholder": "New tag name",
-  "addTag": "Add tag"
+  "addTag": "Add tag",
+  "retry": "Retry",
+  "search": "Search",
+  "downloadQR": "Download QR code",
+  "clearFilters": "Clear filters",
+  "noPortfolioResults": "No matching portfolios",
+  "addSelected": "Add selected ({count})"
 }
