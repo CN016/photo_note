@@ -6,6 +6,8 @@ import (
 	"github.com/photo-nini/backend/internal/domain/fault"
 	"github.com/photo-nini/backend/internal/model"
 	"github.com/photo-nini/backend/internal/tenant"
+	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 // ListPortfolios 按可信空间和创建者读取作品集。
@@ -45,7 +47,18 @@ func (store *PostgresStore) CreatePortfolio(ctx context.Context, item *model.Por
 	if scope.UserID != item.UserID {
 		return fault.NotFound()
 	}
-	return persistenceError(store.db.WithContext(ctx).Create(item).Error)
+	return store.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if len(item.TagIDs) > 0 {
+			var tags []model.Tag
+			if err := tx.Clauses(clause.Locking{Strength: "SHARE"}).Select("business_id").Where("user_id = ? AND business_id IN ?", item.UserID, []string(item.TagIDs)).Find(&tags).Error; err != nil {
+				return persistenceError(err)
+			}
+			if len(tags) != len(item.TagIDs) {
+				return fault.InvalidField("tag_ids", "标签不存在或不属于当前用户")
+			}
+		}
+		return persistenceError(tx.Create(item).Error)
+	})
 }
 
 // PortfolioTagLabels 仅返回作品集中实际使用且仍由当前作者拥有的标签名称。

@@ -78,9 +78,6 @@ func (store *PostgresStore) UpdatePortfolioPhoto(ctx context.Context, user, port
 	}
 	var photo model.PortfolioPhoto
 	err = store.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("user_id = ? AND portfolio_id = ? AND business_id = ?", user, portfolioID, photoID).First(&photo).Error; err != nil {
-			return persistenceError(err)
-		}
 
 		if len(tags) > 0 {
 			var rows []model.Tag
@@ -90,6 +87,10 @@ func (store *PostgresStore) UpdatePortfolioPhoto(ctx context.Context, user, port
 			if len(rows) != len(tags) {
 				return fault.InvalidField("tag_ids", "标签不存在或不属于当前用户")
 			}
+		}
+
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("user_id = ? AND portfolio_id = ? AND business_id = ?", user, portfolioID, photoID).First(&photo).Error; err != nil {
+			return persistenceError(err)
 		}
 
 		values := pq.StringArray{}

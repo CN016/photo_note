@@ -218,7 +218,7 @@ func (store *PostgresStore) DeleteTagAndCleanInspirations(ctx context.Context, u
 	}
 	return store.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		var tag model.Tag
-		if err := tx.Where("user_id = ? AND business_id = ?", userID, tagID).First(&tag).Error; err != nil {
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("user_id = ? AND business_id = ?", userID, tagID).First(&tag).Error; err != nil {
 			return persistenceError(err)
 		}
 		if err := tx.Exec(`

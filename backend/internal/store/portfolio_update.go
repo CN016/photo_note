@@ -23,9 +23,6 @@ func (store *PostgresStore) UpdatePortfolio(ctx context.Context, user, id uuid.U
 	}
 	var item model.Portfolio
 	err = store.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("user_id = ? AND business_id = ?", user, id).First(&item).Error; err != nil {
-			return persistenceError(err)
-		}
 
 		if len(tags) > 0 {
 			var rows []model.Tag
@@ -44,6 +41,10 @@ func (store *PostgresStore) UpdatePortfolio(ctx context.Context, user, id uuid.U
 			if len(rows) != len(projects) {
 				return fault.InvalidField("project_ids", "策划不存在或不属于当前用户")
 			}
+		}
+
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("user_id = ? AND business_id = ?", user, id).First(&item).Error; err != nil {
+			return persistenceError(err)
 		}
 
 		tagStrings := make(pq.StringArray, 0, len(tags))

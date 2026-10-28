@@ -3,8 +3,10 @@ package store
 import (
 	"context"
 	"errors"
+	"gorm.io/gorm/clause"
 	"os"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/lib/pq"
@@ -107,6 +109,46 @@ func TestPortfolioPostgresScope(t *testing.T) {
 	}
 	if _, err := repo.FindPortfolioByShareHash(context.Background(), hash); err == nil {
 		t.Fatal("撤销分享后仍可读取")
+	}
+	// 模拟标签删除持锁期间并发创建：创建必须等待并在标签删除后拒绝。
+	concurrentTag := model.Tag{BaseModel: model.BaseModel{BusinessID: uuid.New()}, UserID: user, Content: "concurrent-" + uuid.NewString()[:8]}
+	if err := repo.CreateTag(orgA, &concurrentTag); err != nil {
+		t.Fatal(err)
+	}
+	tx := db.WithContext(orgA).Begin()
+	if tx.Error != nil {
+		t.Fatal(tx.Error)
+	}
+	var locked model.Tag
+	if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("user_id = ? AND business_id = ?", user, concurrentTag.BusinessID).First(&locked).Error; err != nil {
+		tx.Rollback()
+		t.Fatal(err)
+	}
+	created := make(chan error, 1)
+	go func() {
+		candidate := model.Portfolio{BaseModel: model.BaseModel{BusinessID: uuid.New()}, UserID: user, Title: "concurrent", TagIDs: pq.StringArray{concurrentTag.BusinessID.String()}}
+		created <- repo.CreatePortfolio(orgA, &candidate)
+	}()
+	select {
+	case err := <-created:
+		tx.Rollback()
+		t.Fatalf("创建未等待标签锁: %v", err)
+	case <-time.After(150 * time.Millisecond):
+	}
+	if err := tx.Delete(&locked).Error; err != nil {
+		tx.Rollback()
+		t.Fatal(err)
+	}
+	if err := tx.Commit().Error; err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case err := <-created:
+		if err == nil {
+			t.Fatal("标签删除后不应创建带失效标签的作品集")
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("创建等待锁超时")
 	}
 	photo := model.PortfolioPhoto{BaseModel: model.BaseModel{BusinessID: uuid.New()}, UserID: user, PortfolioID: item.BusinessID, ImageKey: "public-key", TagIDs: pq.StringArray{}, ImageMetadata: model.JSONB(`{}`)}
 	if err := repo.CreatePortfolioPhoto(orgA, &photo); err != nil {
