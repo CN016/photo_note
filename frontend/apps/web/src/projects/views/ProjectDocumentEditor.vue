@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import ContentZoom from '../../components/ContentZoom.vue'
-import { computed, markRaw, shallowRef, watch, onMounted, onBeforeUnmount } from 'vue'
+import { computed, markRaw, shallowRef, watch, onMounted, onBeforeUnmount, provide, ref } from 'vue'
 import { Extension, getSchema, type Editor } from '@tiptap/core'
 import { Plugin } from '@tiptap/pm/state'
 import StarterKit from '@tiptap/starter-kit'
@@ -23,13 +23,18 @@ import { useI18n } from 'vue-i18n'
 import { isDocumentCompatible } from '../documentCompatibility'
 import { FontSize, InspirationImage, ProjectAttachment } from '../projectExtensions'
 import { useColorTheme } from '../../theme'
+import ProjectImageViewer from './ProjectImageViewer.vue'
+import { projectReadContext } from '../projectReadContext'
 
 /** 项目正文适配层：开源组件负责编辑交互，资源上传和持久化始终交回业务页面。 */
-const props = defineProps<{ document: Record<string, unknown> }>()
+const props = defineProps<{ document: Record<string, unknown>; readOnly: boolean }>()
 const emit = defineEmits<{ ready: [editor: Editor]; incompatible: []; change: []; insertInspiration: []; uploadAttachment: []; uploadMedia: []; pasteFiles: [files: File[]] }>()
 const { t, locale } = useI18n({ useScope: 'global' })
 const theme = useColorTheme()
 const editor = shallowRef<Editor>()
+const viewerPosition = ref<number | null>(null)
+// 节点视图通过注入打开同一策划的图片浏览器，位置区分重复引用的图片。
+provide(projectReadContext, { readOnly: computed(() => props.readOnly), openImage: position => { viewerPosition.value = position } })
 const language = computed(() => locale.value === 'en-US' ? 'en-US' : 'zh-CN')
 const toolbar: ToolbarConfig = [
   ['undo', 'redo'], ['heading', 'fontSize'], ['bold', 'italic', 'underline', 'strike', 'color', 'highlight'],
@@ -49,6 +54,7 @@ const extensions = markRaw([
     addProseMirrorPlugins() {
       return [new Plugin({ props: { handlePaste: (_view, event) => {
         // 只接管剪贴板真实文件，文本和编辑器内部内容继续走原生粘贴管线。
+        if (props.readOnly) return false
         const files = Array.from(event.clipboardData?.files ?? [])
         if (!files.length) return false
         emit('pasteFiles', files)
@@ -103,11 +109,11 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <ContentZoom selector=".tvp-content-wrap"><div class="project-document-editor">
+  <ContentZoom selector=".tvp-content-wrap"><div class="project-document-editor" :class="{ 'is-readonly': props.readOnly }">
     <el-alert v-if="!compatible" :title="t('projects.documentIncompatible')" type="error" :closable="false" />
     <ProEditorElementPlus v-else :model-value="props.document" output="json" :extensions="extensions" :toolbar="toolbar"
       :toolbar-options="{ fontSizes: ['12px', '14px', '16px', '18px', '20px', '24px', '30px', '36px', '48px'] }"
-      :editor-behavior-options="{ image: { allowUrl: false } }"
+      :editor-behavior-options="{ image: { allowUrl: false } }" :readonly="props.readOnly"
       :locale="language" :dark="theme === 'dark'" :autosave="false" :draft="false" :show-word-count="false"
       @update:model-value="emit('change')">
       <template #toolbar-before>
@@ -116,9 +122,10 @@ onBeforeUnmount(() => {
         <el-tooltip :content="t('projects.toolbar.uploadAttachment')"><el-button :aria-label="t('projects.toolbar.uploadAttachment')" text @click="emit('uploadAttachment')"><el-icon><Paperclip /></el-icon></el-button></el-tooltip>
       </template>
     </ProEditorElementPlus>
-    <DragHandle v-if="editor" :editor="editor" class="project-block-drag-handle">
+    <DragHandle v-if="editor && !props.readOnly" :editor="editor" class="project-block-drag-handle">
       <el-tooltip :content="t('projects.moveBlock')"><span :aria-label="t('projects.moveBlock')"><el-icon><Rank /></el-icon></span></el-tooltip>
     </DragHandle>
+    <ProjectImageViewer v-if="editor && viewerPosition !== null" :editor="editor" :position="viewerPosition" @close="viewerPosition = null" />
   </div></ContentZoom>
 </template>
 
@@ -126,6 +133,7 @@ onBeforeUnmount(() => {
 /* 仅适配主题和版心；列表、任务项及工具栏结构沿用上游组件样式。 */
 .project-document-editor { position: relative; }
 .project-document-editor :deep(.tvp-editor) { overflow: visible; border-color: var(--line); border-radius: var(--radius-card); background: var(--surface); }
+.project-document-editor.is-readonly :deep(.tvp-toolbar) { display: none; }
 .project-document-editor :deep(.tvp-toolbar) { position: sticky; top: 0; z-index: 8; border-radius: var(--radius-card) var(--radius-card) 0 0; background: var(--surface); }
 .project-document-editor :deep(.tvp-content-wrap) { overflow: visible; max-height: none; }
 .project-document-editor :deep(.tvp-content) { padding: 32px clamp(24px, 5vw, 72px) 70px; }

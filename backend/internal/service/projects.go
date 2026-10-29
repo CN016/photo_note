@@ -48,6 +48,8 @@ func NewProjectService(repository ProjectRepository, files ProjectFileReader, ma
 
 // ProjectSave 是创建和自动保存共用的完整文档快照；更新时 revision 必须与服务端一致。
 type ProjectSave struct {
+	// nil 表示旧客户端未提供，更新时保留已有设置。
+	DefaultReadOnly       *bool           `json:"default_read_only"`
 	Title                 string          `json:"title"`
 	CoverEmoji            string          `json:"cover_emoji"`
 	CoverImageKey         string          `json:"cover_image_key"`
@@ -59,6 +61,7 @@ type ProjectSave struct {
 
 // ProjectView 只暴露项目业务字段和关联资源，不返回自增 ID、所属用户或索引字段。
 type ProjectView struct {
+	DefaultReadOnly       bool            `json:"default_read_only"`
 	BusinessID            uuid.UUID       `json:"business_id"`
 	Title                 string          `json:"title"`
 	CoverEmoji            string          `json:"cover_emoji"`
@@ -73,14 +76,15 @@ type ProjectView struct {
 
 // ProjectSummary 用于项目卡片列表，避免分页响应下载每个文档的完整 JSONB 正文。
 type ProjectSummary struct {
-	BusinessID    uuid.UUID `json:"business_id"`
-	Title         string    `json:"title"`
-	CoverEmoji    string    `json:"cover_emoji"`
-	CoverImageKey string    `json:"cover_image_key"`
-	CoverFileName string    `json:"cover_file_name"`
-	Revision      int64     `json:"revision"`
-	CreatedAt     string    `json:"created_at"`
-	UpdatedAt     string    `json:"updated_at"`
+	DefaultReadOnly bool      `json:"default_read_only"`
+	BusinessID      uuid.UUID `json:"business_id"`
+	Title           string    `json:"title"`
+	CoverEmoji      string    `json:"cover_emoji"`
+	CoverImageKey   string    `json:"cover_image_key"`
+	CoverFileName   string    `json:"cover_file_name"`
+	Revision        int64     `json:"revision"`
+	CreatedAt       string    `json:"created_at"`
+	UpdatedAt       string    `json:"updated_at"`
 }
 
 // ProjectAttachmentView 是项目授权范围内可预览的附件元数据。
@@ -124,6 +128,9 @@ func (service *ProjectService) Create(ctx context.Context, userID uuid.UUID, inp
 	if err != nil {
 		return ProjectView{}, err
 	}
+	if input.DefaultReadOnly != nil {
+		project.DefaultReadOnly = *input.DefaultReadOnly
+	}
 	project.BaseModel.BusinessID = uuid.New()
 	project.UserID = userID
 	project.Revision = 1
@@ -147,6 +154,9 @@ func (service *ProjectService) Update(ctx context.Context, userID, projectID uui
 		"cover_image_key": project.CoverImageKey, "cover_file_name": project.CoverFileName,
 		"document_schema_version": project.DocumentSchemaVersion, "document": project.Document,
 		"search_text": project.SearchText, "search_grams": project.SearchGrams,
+	}
+	if input.DefaultReadOnly != nil {
+		updates["default_read_only"] = *input.DefaultReadOnly
 	}
 	updated, err := service.repository.UpdateProject(ctx, userID, projectID, input.Revision, updates, inspirations, attachments)
 	if err != nil {
@@ -406,11 +416,11 @@ func safeProjectFileName(name string) string {
 }
 
 func projectView(item model.Project) ProjectView {
-	return ProjectView{BusinessID: item.BusinessID, Title: item.Title, CoverEmoji: item.CoverEmoji, CoverImageKey: item.CoverImageKey, CoverFileName: item.CoverFileName, DocumentSchemaVersion: item.DocumentSchemaVersion, Document: json.RawMessage(item.Document), Revision: item.Revision, CreatedAt: item.CreatedAt.UTC().Format("2006-01-02T15:04:05Z07:00"), UpdatedAt: item.UpdatedAt.UTC().Format("2006-01-02T15:04:05Z07:00")}
+	return ProjectView{DefaultReadOnly: item.DefaultReadOnly, BusinessID: item.BusinessID, Title: item.Title, CoverEmoji: item.CoverEmoji, CoverImageKey: item.CoverImageKey, CoverFileName: item.CoverFileName, DocumentSchemaVersion: item.DocumentSchemaVersion, Document: json.RawMessage(item.Document), Revision: item.Revision, CreatedAt: item.CreatedAt.UTC().Format("2006-01-02T15:04:05Z07:00"), UpdatedAt: item.UpdatedAt.UTC().Format("2006-01-02T15:04:05Z07:00")}
 }
 
 func projectSummary(item model.Project) ProjectSummary {
-	return ProjectSummary{BusinessID: item.BusinessID, Title: item.Title, CoverEmoji: item.CoverEmoji, CoverImageKey: item.CoverImageKey, CoverFileName: item.CoverFileName, Revision: item.Revision, CreatedAt: item.CreatedAt.UTC().Format("2006-01-02T15:04:05Z07:00"), UpdatedAt: item.UpdatedAt.UTC().Format("2006-01-02T15:04:05Z07:00")}
+	return ProjectSummary{DefaultReadOnly: item.DefaultReadOnly, BusinessID: item.BusinessID, Title: item.Title, CoverEmoji: item.CoverEmoji, CoverImageKey: item.CoverImageKey, CoverFileName: item.CoverFileName, Revision: item.Revision, CreatedAt: item.CreatedAt.UTC().Format("2006-01-02T15:04:05Z07:00"), UpdatedAt: item.UpdatedAt.UTC().Format("2006-01-02T15:04:05Z07:00")}
 }
 
 func normalizeProjectText(value string) string {

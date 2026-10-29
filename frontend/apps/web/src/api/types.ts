@@ -293,6 +293,8 @@ export interface PlanRecord extends PlanFields {
 
 /** 项目是独立文档资源，正文使用版本化 ProseMirror JSON，附件由正文节点引用。 */
 export interface ProjectRecord {
+  /** 默认阅读模式，仅为界面偏好，不影响访问权限。 */
+  default_read_only: boolean
   business_id: string
   title: string
   cover_emoji: string
@@ -310,6 +312,7 @@ export type ProjectSummary = Omit<ProjectRecord, 'document' | 'document_schema_v
 
 /** 项目自动保存提交完整快照，并携带当前修订号执行乐观并发控制。 */
 export interface ProjectSaveInput {
+  default_read_only?: boolean
   title: string
   cover_emoji: string
   cover_image_key: string

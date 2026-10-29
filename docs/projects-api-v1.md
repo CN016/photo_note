@@ -20,11 +20,14 @@
   "cover_emoji": "✨",
   "cover_image_key": "",
   "cover_file_name": "",
+  "default_read_only": false,
   "document_schema_version": 1,
   "document": { "type": "doc", "content": [{ "type": "paragraph" }] },
   "revision": 1
 }
 ```
+
+`default_read_only` 表示默认打开阅读模式，用户可切换编辑；它不改变访问权限。创建时省略默认为 `false`，更新时省略保留原值，以兼容旧客户端；详情和列表会返回该字段。
 
 图片封面要求 `cover_emoji` 为空；emoji 封面要求 `cover_image_key` 为空。创建请求忽略 `revision`，服务端从 1 开始。更新必须传入最近一次读取或保存返回的修订号；旧修订会收到 HTTP 409，客户端应重新加载后再编辑。
 

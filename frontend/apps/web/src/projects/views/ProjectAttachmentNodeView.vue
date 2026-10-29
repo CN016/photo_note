@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, defineAsyncComponent, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, inject, defineAsyncComponent, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { NodeViewWrapper, type NodeViewProps } from '@tiptap/vue-3'
 import { ArrowLeft, ArrowRight, BottomRight, Delete, Rank } from '@element-plus/icons-vue'
 import { useI18n } from 'vue-i18n'
@@ -7,9 +7,17 @@ import { useRoute } from 'vue-router'
 import { useResourceResize } from '../resourceResize'
 import { useResourceMovement } from '../resourceMovement'
 import { api } from '../../api/client'
+import { projectReadContext } from '../projectReadContext'
 
 const ProjectAttachmentPreview = defineAsyncComponent(() => import('../../components/ProjectAttachmentPreview.vue'))
 const props = defineProps<NodeViewProps>()
+const readContext = inject(projectReadContext, null)
+const readOnly = computed(() => readContext?.readOnly.value ?? false)
+/** 阅读模式单击打开浏览器；其他节点继续使用既有附件预览。 */
+function openReadImage() {
+  const position = props.getPos()
+  if (readOnly.value && isImage.value && typeof position === 'number') readContext?.openImage(position)
+}
 const { canMoveBefore, canMoveAfter, move, touchDragging, startBlockTouch, startHandleTouch, selectResource, touchDevice } = useResourceMovement(props)
 const route = useRoute()
 const { t } = useI18n({ useScope: 'global' })
@@ -77,19 +85,19 @@ onBeforeUnmount(() => { requestVersion += 1; disposePlayer(); if (url.value) URL
     class="project-resource-node attachment-node"
     :class="{ 'is-selected': selected, 'is-corner-resizing': cornerResizing, 'is-touch-dragging': touchDragging }"
     :style="{ width: `calc(${displayWidth}% - 12px)` }"
-    :draggable="!touchDevice"
+    :draggable="!readOnly && !touchDevice"
     contenteditable="false"
-    @mousedown="selectResource" @click="selectResource" @contextmenu.prevent
-    @touchstart="startBlockTouch"
-    @dblclick.prevent.stop="openPreview"
+    @mousedown="!readOnly && selectResource($event)" @click="readOnly && isImage ? openReadImage() : readOnly ? (!isVideo && openPreview()) : selectResource($event)" @contextmenu.prevent
+    @touchstart="!readOnly && startBlockTouch($event)"
+    @dblclick.prevent.stop="!readOnly && openPreview()"
   >
     <div
       class="attachment-frame"
       role="button"
       tabindex="0"
       :aria-label="t('projects.openAttachmentDetails', { name: fileName })"
-      @keydown.enter.stop.prevent="openPreview"
-      @keydown.space.stop.prevent="openPreview"
+      @keydown.enter.stop.prevent="readOnly && isImage ? openReadImage() : openPreview()"
+      @keydown.space.stop.prevent="readOnly && isImage ? openReadImage() : openPreview()"
     >
       <video v-if="url && isVideo" ref="videoElement" class="video-js vjs-default-skin" playsinline controls preload="metadata"></video>
       <img v-else-if="url && isImage" class="attachment-inline-image" :src="url" :alt="fileName" draggable="false" />
@@ -98,7 +106,7 @@ onBeforeUnmount(() => { requestVersion += 1; disposePlayer(); if (url.value) URL
         <span><strong>{{ fileName }}</strong><small>{{ loading ? t('common.loading') : failed ? t('projects.unsupportedPreview') : t('projects.openAttachmentDetails', { name: fileName }) }}</small></span>
       </div>
     </div>
-    <el-tooltip v-if="selected" :content="t('projects.resizeMedia')" placement="bottom">
+    <el-tooltip v-if="selected && !readOnly" :content="t('projects.resizeMedia')" placement="bottom">
       <button class="resource-resize-handle" type="button" contenteditable="false" draggable="false"
         :aria-label="t('projects.resizeMedia')" @pointerdown.stop.prevent="startCornerResize"
         @pointermove.stop.prevent="moveCornerResize" @pointerup.stop.prevent="finishCornerResize"
@@ -107,7 +115,7 @@ onBeforeUnmount(() => { requestVersion += 1; disposePlayer(); if (url.value) URL
         <el-icon><BottomRight /></el-icon>
       </button>
     </el-tooltip>
-    <div v-if="selected" class="resource-controls" contenteditable="false" draggable="false" role="toolbar" :aria-label="t('projects.resourceActions')" @dblclick.stop>
+    <div v-if="selected && !readOnly" class="resource-controls" contenteditable="false" draggable="false" role="toolbar" :aria-label="t('projects.resourceActions')" @dblclick.stop>
       <div class="resource-size-presets">
         <el-tooltip :content="t('projects.smallMediaHint')"><el-button size="small" :type="smallMode ? 'primary' : 'default'" :aria-pressed="smallMode" @pointerdown.prevent @click.stop="setSizePreset(true)">{{ t('projects.smallMedia') }}</el-button></el-tooltip>
         <el-tooltip :content="t('projects.originalMediaHint')"><el-button size="small" :type="originalMode ? 'primary' : 'default'" :aria-pressed="originalMode" @pointerdown.prevent @click.stop="setSizePreset(false)">{{ t('projects.originalMedia') }}</el-button></el-tooltip>

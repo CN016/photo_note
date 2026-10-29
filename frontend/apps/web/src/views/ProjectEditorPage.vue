@@ -28,6 +28,7 @@ const loadFailed = ref(false)
 const savingState = ref<'saved' | 'unsaved' | 'saving' | 'error'>('saved')
 const pickerOpen = ref(false)
 const documentIncompatible = ref(false)
+const readOnly = ref(false)
 const mediaInput = ref<HTMLInputElement | null>(null)
 const attachmentInput = ref<HTMLInputElement | null>(null)
 const maxUploadBytes = ref(fallbackProjectUploadLimit)
@@ -35,7 +36,7 @@ let saveTimer: number | undefined
 let changeVersion = 0
 let saveFlight: Promise<boolean> | null = null
 let hydrating = true
-let uploadingAttachments = 0
+const uploadingAttachments = ref(0)
 
 // 仅在加载项目时更新初始正文，保存响应不能覆盖请求期间产生的新编辑。
 const initialDocument = shallowRef<Record<string, unknown>>({ type: 'doc', content: [{ type: 'paragraph' }] })
@@ -48,7 +49,7 @@ function editorReady(instance: Editor) {
 
 function saveInput(): ProjectSaveInput {
   return {
-    title: title.value.trim(), cover_emoji: coverEmoji.value, cover_image_key: coverImageKey.value,
+    default_read_only: readOnly.value, title: title.value.trim(), cover_emoji: coverEmoji.value, cover_image_key: coverImageKey.value,
     cover_file_name: coverFileName.value, document_schema_version: 1,
     document: editor.value?.getJSON() ?? { type: 'doc', content: [{ type: 'paragraph' }] },
     revision: project.value?.revision ?? 1,
@@ -97,6 +98,7 @@ async function loadProject() {
     const result = await api.project(projectID.value)
     project.value = result
     initialDocument.value = result.document
+    readOnly.value = result.default_read_only ?? false
     title.value = result.title
     coverEmoji.value = result.cover_emoji
     coverImageKey.value = result.cover_image_key
@@ -108,6 +110,12 @@ async function loadProject() {
 
 async function loadUploadLimit() {
   maxUploadBytes.value = await projectUploadLimit()
+}
+
+/** 切换模式同时保存为下次打开默认值；正文保存仍受修订号保护。 */
+function switchMode() {
+  readOnly.value = !readOnly.value
+  scheduleSave()
 }
 
 function insertInspiration(item: InspirationRecord) {
@@ -128,7 +136,7 @@ async function uploadFiles(event: Event) {
 
 /** 剪贴板和文件选择共用校验与上传流程；无扩展名的剪贴板图片按 MIME 补全文件名。 */
 async function importFiles(files: File[]) {
-  uploadingAttachments += 1
+  uploadingAttachments.value += 1
   try {
   let hasNewAttachments = false
   for (const source of files) {
@@ -154,7 +162,7 @@ async function importFiles(files: File[]) {
   }
   // 新附件需要先进入项目关联清单，之后项目授权预览接口才能读取；此处提前提交一次正文快照。
   if (hasNewAttachments) await saveNow()
-  } finally { uploadingAttachments -= 1 }
+  } finally { uploadingAttachments.value -= 1 }
 }
 
 const clipboardImageExtensions: Record<string, string> = { 'image/png': 'png', 'image/jpeg': 'jpg', 'image/webp': 'webp', 'image/heic': 'heic', 'image/heif': 'heif', 'image/gif': 'gif' }
@@ -175,7 +183,7 @@ onBeforeUnmount(() => { if (saveTimer) window.clearTimeout(saveTimer) })
 onBeforeRouteLeave(async () => {
   // 整条导入链包括解码与多次上传，不能只等待单个 HTTP 请求。
   if (documentIncompatible.value) return true
-  if (uploadingAttachments > 0 || loading.value) return false
+  if (uploadingAttachments.value > 0 || loading.value) return false
   while (saveTimer || savingState.value === 'unsaved' || savingState.value === 'saving' || savingState.value === 'error') {
     if (saveFlight) await saveFlight
     else if (!await saveNow()) return false
@@ -195,14 +203,16 @@ onBeforeRouteLeave(async () => {
         <el-button class="project-back" text :icon="ArrowLeft" @click="router.push('/projects')">{{ t('projects.back') }}</el-button>
         <div class="project-title-area">
           <ProjectCoverImage :storekey="coverImageKey" :emoji="coverEmoji" :label="title" />
-          <el-input v-model="title" :disabled="documentIncompatible" class="project-title-input" maxlength="120" :placeholder="t('projects.editorTitlePlaceholder')" />
+          <el-input v-model="title" :disabled="documentIncompatible || readOnly" class="project-title-input" maxlength="120" :placeholder="t('projects.editorTitlePlaceholder')" />
         </div>
+        <el-button :disabled="documentIncompatible || uploadingAttachments > 0" @click="switchMode">{{ readOnly ? t('projects.switchToEdit') : t('projects.switchToRead') }}</el-button>
         <span class="project-save-status" :class="`is-${savingState}`" role="status">{{ saveLabel }}</span>
       </header>
 
       <ProjectDocumentEditor
         :key="projectID"
         :document="initialDocument"
+        :read-only="readOnly"
         @ready="editorReady"
         @incompatible="documentIncompatible = true"
         @change="scheduleSave"

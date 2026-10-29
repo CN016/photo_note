@@ -478,11 +478,13 @@ func (PlanReminder) TableName() string { return "plan_reminders" }
 // Project 保存当前用户的版本化富文本项目、封面和短中文搜索索引。
 type Project struct {
 	BaseModel
-	UserID                uuid.UUID      `gorm:"column:user_id;type:uuid;not null;index:ix_projects_user_updated,priority:1"`
-	Title                 string         `gorm:"column:title;type:varchar(120);not null"`
-	CoverEmoji            string         `gorm:"column:cover_emoji;type:varchar(32);not null;default:''"`
-	CoverImageKey         string         `gorm:"column:cover_image_key;type:text;not null;default:''"`
-	CoverFileName         string         `gorm:"column:cover_file_name;type:text;not null;default:''"`
+	UserID        uuid.UUID `gorm:"column:user_id;type:uuid;not null;index:ix_projects_user_updated,priority:1"`
+	Title         string    `gorm:"column:title;type:varchar(120);not null"`
+	CoverEmoji    string    `gorm:"column:cover_emoji;type:varchar(32);not null;default:''"`
+	CoverImageKey string    `gorm:"column:cover_image_key;type:text;not null;default:''"`
+	CoverFileName string    `gorm:"column:cover_file_name;type:text;not null;default:''"`
+	// DefaultReadOnly 仅记录默认阅读模式，不作为资源访问权限。
+	DefaultReadOnly       bool           `gorm:"column:default_read_only;not null;default:false"`
 	DocumentSchemaVersion int16          `gorm:"column:document_schema_version;type:smallint;not null;default:1"`
 	Document              JSONB          `gorm:"column:document;type:jsonb;not null"`
 	SearchText            string         `gorm:"column:search_text;type:text;not null;default:''" json:"-"`

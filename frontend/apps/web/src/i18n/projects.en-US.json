@@ -92,5 +92,10 @@
     "matches": "Matches", "thumbnails": "Thumbnails", "fullscreen": "Fullscreen", "exitFullscreen": "Exit fullscreen",
     "download": "Download original", "sheets": "Sheets", "selectedRange": "Selected range", "loading": "Loading document…",
     "close": "Close", "noMatches": "No matches found"
-  }
+  },
+  "switchToEdit": "Edit mode",
+  "switchToRead": "Reading mode",
+  "previousImage": "Previous image",
+  "nextImage": "Next image",
+  "imageLoadFailed": "Unable to load image"
 }
