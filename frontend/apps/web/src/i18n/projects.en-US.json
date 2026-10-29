@@ -97,5 +97,8 @@
   "switchToRead": "Reading mode",
   "previousImage": "Previous image",
   "nextImage": "Next image",
-  "imageLoadFailed": "Unable to load image"
+  "imageLoadFailed": "Unable to load image",
+  "uploadProgress": "Current file upload progress",
+  "uploadPendingLeave": "Wait for uploads to finish, or retry or remove failed files before leaving.",
+  "uploadStage": { "queued": "Waiting to upload…", "preparing": "Preparing image…", "original": "Uploading original…", "file": "Uploading file…", "processing": "Processing image…", "working": "Uploading image copy…", "creating": "Saving to inspiration library…", "sending": "Uploading", "waiting": "Sent; waiting for server…", "failed": "Upload failed. Retry or remove it." }
 }

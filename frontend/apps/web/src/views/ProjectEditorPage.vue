@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, shallowRef, shallowReactive, watch } from 'vue'
 import { onBeforeRouteLeave, useRoute, useRouter } from 'vue-router'
 import type { Editor } from '@tiptap/core'
 import { ElMessage } from 'element-plus'
@@ -9,14 +9,15 @@ import { useI18n } from 'vue-i18n'
 import AppHeader from '../components/AppHeader.vue'
 import ProjectCoverImage from '../components/ProjectCoverImage.vue'
 import ProjectInspirationPicker from '../projects/views/ProjectInspirationPicker.vue'
-import { api } from '../api/client'
+import { api, getSessionInfo } from '../api/client'
+import { addUploadPlaceholders, hasUploadPlaceholder, removeUploadPlaceholder, replaceUploadPlaceholder } from '../projects/uploadPlaceholders'
 import type { InspirationRecord, ProjectRecord, ProjectSaveInput } from '../api/types'
 import { createProjectInspiration } from '../projects/createProjectInspiration'
 import { fallbackProjectUploadLimit, projectUploadLimit } from '../projects/projectUploadLimit'
 
 const route = useRoute()
 const router = useRouter()
-const { t } = useI18n({ useScope: 'global' })
+const { t, locale } = useI18n({ useScope: 'global' })
 const projectID = computed(() => String(route.params.id || ''))
 const project = ref<ProjectRecord | null>(null)
 const title = ref('')
@@ -134,11 +135,97 @@ async function uploadFiles(event: Event) {
   await importFiles(files)
 }
 
-/** 剪贴板和文件选择共用校验与上传流程；无扩展名的剪贴板图片按 MIME 补全文件名。 */
-async function importFiles(files: File[]) {
-  uploadingAttachments.value += 1
+type UploadStage = 'queued' | 'preparing' | 'original' | 'file' | 'processing' | 'working' | 'creating' | 'sending' | 'waiting' | 'failed'
+type UploadJob = {
+  id: string; file: File; scope: string; projectID: string; element: HTMLElement; status: HTMLElement
+  progress: HTMLProgressElement; retry: HTMLButtonElement; remove: HTMLButtonElement; previewURL: string
+  stage: UploadStage; busy: boolean; done: Promise<void>; complete: () => void
+}
+const uploadJobs = shallowReactive(new Map<string, UploadJob>())
+/** 将账户和空间代次绑定到整条异步上传链，不能把旧文件重试到新空间。 */
+function uploadScope(): string {
+  const info = getSessionInfo()
+  return info ? `${info.session_id}:${info.orgid}:${info.session_version}` : ''
+}
+function checkUploadScope(job: UploadJob) {
+  if (!job.scope || uploadScope() !== job.scope || projectID.value !== job.projectID) throw new Error('space_changed')
+}
+function discardUpload(job: UploadJob) {
+  if (job.busy) return
+  uploadJobs.delete(job.id)
+  job.complete()
+  if (editor.value) removeUploadPlaceholder(editor.value, job.id)
+  if (job.previewURL) URL.revokeObjectURL(job.previewURL)
+}
+/** 状态和进度属于临时 UI，不写入策划 JSON；百分比仅表示当前上传请求已发送的字节。 */
+function setUploadStage(job: UploadJob, stage: UploadStage) {
+  job.stage = stage
+  job.status.textContent = t(`projects.uploadStage.${stage}`)
+  job.progress.hidden = stage !== 'original' && stage !== 'working' && stage !== 'file'
+  job.progress.removeAttribute('value')
+  job.retry.hidden = stage !== 'failed'
+  job.remove.hidden = stage !== 'failed'
+}
+function createUploadJob(file: File): UploadJob {
+  const element = document.createElement('div'); element.className = 'project-upload-placeholder'; element.contentEditable = 'false'
+  const previewURL = /^image\/(png|jpeg|webp|gif)$/.test(file.type) ? URL.createObjectURL(file) : ''
+  if (previewURL) { const img = document.createElement('img'); img.src = previewURL; img.alt = ''; element.append(img) }
+  const content = document.createElement('div'); content.className = 'project-upload-content'
+  const name = document.createElement('strong'); name.className = 'project-upload-name'; name.textContent = file.name
+  const status = document.createElement('span'); status.className = 'project-upload-status'; status.setAttribute('role', 'status')
+  const progress = document.createElement('progress'); progress.className = 'project-upload-progress'; progress.max = 100; progress.setAttribute('aria-label', t('projects.uploadProgress'))
+  const actions = document.createElement('div'); actions.className = 'project-upload-actions'
+  const retry = document.createElement('button'); retry.type = 'button'; retry.textContent = t('common.retry')
+  const remove = document.createElement('button'); remove.type = 'button'; remove.textContent = t('projects.removeBlock')
+  actions.append(retry, remove); content.append(name, status, progress, actions); element.append(content)
+  let complete = () => {}
+  const done = new Promise<void>(resolve => { complete = resolve })
+  const id = typeof crypto.randomUUID === 'function' ? crypto.randomUUID() : `upload-${Date.now()}-${Math.random().toString(36).slice(2)}`
+  const job: UploadJob = { id, file, scope: uploadScope(), projectID: projectID.value, element, status, progress, retry, remove, previewURL, stage: 'queued', busy: false, done, complete }
+  retry.addEventListener('click', () => { void runUpload(job) })
+  remove.addEventListener('click', () => discardUpload(job))
+  setUploadStage(job, 'queued')
+  return job
+}
+/** 逐文件执行原有上传链，完成时仅替换对应占位块；失败保留文件供用户重试或移除。 */
+async function runUpload(job: UploadJob) {
+  if (job.busy || !uploadJobs.has(job.id)) return
+  job.busy = true; uploadingAttachments.value += 1
   try {
-  let hasNewAttachments = false
+    checkUploadScope(job)
+    const extension = extOf(job.file.name)
+    const report = (loaded: number, total: number) => {
+      if (total > 0) { const value = Math.min(100, Math.floor(loaded * 100 / total)); job.progress.value = value; job.stage = value === 100 ? 'waiting' : 'sending'; job.status.textContent = value === 100 ? t('projects.uploadStage.waiting') : `${t('projects.uploadStage.sending')} ${value}%` }
+    }
+    let content: { type: string; attrs: Record<string, unknown> }
+    if (imageExtensions.has(extension)) {
+      const inspiration = await createProjectInspiration(job.file, { stage: stage => setUploadStage(job, stage), progress: report, checkScope: () => checkUploadScope(job) })
+      checkUploadScope(job)
+      content = { type: 'inspirationImage', attrs: { src: `inspiration://${inspiration.business_id}`, width: 100, layout: 'original' } }
+    } else {
+      setUploadStage(job, 'file')
+      const uploaded = await api.uploadWithProgress(job.file, job.file.name, report)
+      checkUploadScope(job)
+      content = { type: 'projectAttachment', attrs: { storekey: uploaded.storekey, fileName: job.file.name, contentType: job.file.type || mimeByExtension[extension] || 'application/octet-stream', fileSize: job.file.size, width: 100, layout: 'original' } }
+    }
+    if (!uploadJobs.has(job.id)) return
+    if (!editor.value || !replaceUploadPlaceholder(editor.value, job.id, content)) throw new Error('placeholder_missing')
+    uploadJobs.delete(job.id)
+    job.complete()
+    if (job.previewURL) URL.revokeObjectURL(job.previewURL)
+    // 附件预览依赖项目关联关系，插入后及时保存正文快照。
+    if (content.type === 'projectAttachment') await saveNow()
+  } catch {
+    if (uploadJobs.has(job.id) && editor.value && hasUploadPlaceholder(editor.value, job.id)) setUploadStage(job, 'failed')
+    else { uploadJobs.delete(job.id); job.complete(); if (job.previewURL) URL.revokeObjectURL(job.previewURL) }
+  }
+  finally { job.busy = false; uploadingAttachments.value -= 1 }
+}
+
+/** 所有有效文件立即产生各自的占位块，随后依次上传，保持粘贴顺序。 */
+async function importFiles(files: File[]) {
+  if (!editor.value || readOnly.value) return
+  const jobs: UploadJob[] = []
   for (const source of files) {
     const suffix = clipboardImageExtensions[source.type]
     const file = !imageExtensions.has(extOf(source.name)) && !supportedExtensions.has(extOf(source.name)) && suffix && (!source.name || !source.name.includes('.'))
@@ -146,23 +233,15 @@ async function importFiles(files: File[]) {
     const extension = extOf(file.name)
     if (!imageExtensions.has(extension) && !supportedExtensions.has(extension)) { ElMessage.error(t('projects.fileTypeError')); continue }
     if (file.size > maxUploadBytes.value) { ElMessage.error(t('projects.fileTooLarge')); continue }
-    try {
-      if (imageExtensions.has(extension)) {
-        const inspiration = await createProjectInspiration(file)
-        insertInspiration(inspiration)
-        continue
-      }
-      const uploaded = await api.upload(file, file.name)
-      const contentType = file.type || mimeByExtension[extension] || 'application/octet-stream'
-      editor.value?.chain().focus().insertContent({
-        type: 'projectAttachment', attrs: { storekey: uploaded.storekey, fileName: file.name, contentType, fileSize: file.size, width: 100, layout: 'original' },
-      }).run()
-      hasNewAttachments = true
-    } catch { ElMessage.error(t('projects.saveError')) }
+    const job = createUploadJob(file); uploadJobs.set(job.id, job); jobs.push(job)
   }
-  // 新附件需要先进入项目关联清单，之后项目授权预览接口才能读取；此处提前提交一次正文快照。
-  if (hasNewAttachments) await saveNow()
-  } finally { uploadingAttachments.value -= 1 }
+  if (!jobs.length) return
+  addUploadPlaceholders(editor.value, jobs.map(job => ({ id: job.id, element: job.element, onDiscard: () => {
+    // 编辑正文删除占位位置时，释放内存并阻止迟到结果重新插入。
+    if (!uploadJobs.has(job.id)) return
+    uploadJobs.delete(job.id); job.complete(); if (job.previewURL) URL.revokeObjectURL(job.previewURL)
+  } })))
+  for (const job of jobs) { await runUpload(job); await job.done }
 }
 
 const clipboardImageExtensions: Record<string, string> = { 'image/png': 'png', 'image/jpeg': 'jpg', 'image/webp': 'webp', 'image/heic': 'heic', 'image/heif': 'heif', 'image/gif': 'gif' }
@@ -175,15 +254,26 @@ const mimeByExtension: Record<string, string> = {
 
 const saveLabel = computed(() => ({ saved: t('projects.saved'), saving: t('projects.saving'), unsaved: t('projects.unsaved'), error: t('projects.saveError') })[savingState.value])
 
+// 上传块不进入 Vue 模板，切换语言时同步刷新其可见文案。
+watch(locale, () => {
+  for (const job of uploadJobs.values()) {
+    job.retry.textContent = t('common.retry'); job.remove.textContent = t('projects.removeBlock')
+    job.progress.setAttribute('aria-label', t('projects.uploadProgress'))
+    job.status.textContent = job.stage === 'sending' ? `${t('projects.uploadStage.sending')} ${job.progress.value}%` : t(`projects.uploadStage.${job.stage}`)
+  }
+})
+
 // 同步观察使加载期间的标题赋值仍受 hydrating 保护，打开旧文档不会触发无意义保存。
 watch(title, () => scheduleSave(), { flush: 'sync' })
 watch(projectID, () => { if (projectID.value) void loadProject() })
-onMounted(() => { void loadProject(); void loadUploadLimit() })
-onBeforeUnmount(() => { if (saveTimer) window.clearTimeout(saveTimer) })
+function warnPendingUploads(event: BeforeUnloadEvent) { if (uploadJobs.size) { event.preventDefault(); event.returnValue = '' } }
+onMounted(() => { window.addEventListener('beforeunload', warnPendingUploads); void loadProject(); void loadUploadLimit() })
+onBeforeUnmount(() => { window.removeEventListener('beforeunload', warnPendingUploads); if (saveTimer) window.clearTimeout(saveTimer); for (const job of uploadJobs.values()) { job.complete(); if (job.previewURL) URL.revokeObjectURL(job.previewURL) }
+  uploadJobs.clear() })
 onBeforeRouteLeave(async () => {
   // 整条导入链包括解码与多次上传，不能只等待单个 HTTP 请求。
   if (documentIncompatible.value) return true
-  if (uploadingAttachments.value > 0 || loading.value) return false
+  if (uploadingAttachments.value > 0 || uploadJobs.size > 0 || loading.value) { ElMessage.warning(t('projects.uploadPendingLeave')); return false }
   while (saveTimer || savingState.value === 'unsaved' || savingState.value === 'saving' || savingState.value === 'error') {
     if (saveFlight) await saveFlight
     else if (!await saveNow()) return false
@@ -205,7 +295,7 @@ onBeforeRouteLeave(async () => {
           <ProjectCoverImage :storekey="coverImageKey" :emoji="coverEmoji" :label="title" />
           <el-input v-model="title" :disabled="documentIncompatible || readOnly" class="project-title-input" maxlength="120" :placeholder="t('projects.editorTitlePlaceholder')" />
         </div>
-        <el-button :disabled="documentIncompatible || uploadingAttachments > 0" @click="switchMode">{{ readOnly ? t('projects.switchToEdit') : t('projects.switchToRead') }}</el-button>
+        <el-button :disabled="documentIncompatible || uploadingAttachments > 0 || uploadJobs.size > 0" @click="switchMode">{{ readOnly ? t('projects.switchToEdit') : t('projects.switchToRead') }}</el-button>
         <span class="project-save-status" :class="`is-${savingState}`" role="status">{{ saveLabel }}</span>
       </header>
 

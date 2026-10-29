@@ -157,6 +157,44 @@ async function request<T>(path: string, init: RequestInit = {}, auth = true, ret
   return envelope.data
 }
 
+/** 带实际字节进度的文件上传，沿用会话代次、空间切换与令牌单次刷新规则。 */
+async function uploadWithProgress(file: Blob, filename: string, progress: (loaded: number, total: number) => void, retry = true, expected = sessionStamp()): Promise<{ storekey: string }> {
+  assertSession(expected, true)
+  if (requestsPaused) throw new ApiError('space_switch_pending', 'space_switch_pending', 409)
+  const body = new FormData()
+  body.append('file', file, filename)
+  pendingRequests += 1
+  let result: { status: number; text: string }
+  try {
+    result = await new Promise((resolve, reject) => {
+      const xhr = new XMLHttpRequest()
+      xhr.open('POST', `${API_BASE}/files`)
+      if (accessToken) xhr.setRequestHeader('Authorization', `Bearer ${accessToken}`)
+      xhr.upload.onprogress = event => { if (event.lengthComputable) progress(event.loaded, event.total) }
+      xhr.onload = () => resolve({ status: xhr.status, text: xhr.responseText })
+      xhr.onerror = xhr.onabort = () => reject(new ApiError('network', 'network', 0))
+      xhr.send(body)
+    })
+  } finally { pendingRequests -= 1 }
+  assertSession(expected, true)
+  if (result.status === 401 && retry) {
+    const token = await rotateRefreshToken()
+    assertSession(expected, true)
+    if (token) return uploadWithProgress(file, filename, progress, false, expected)
+    throw new ApiError('unauthorized', 'unauthorized', 401)
+  }
+  let envelope: ApiEnvelope<{ storekey: string }> & ApiErrorEnvelope
+  try { envelope = JSON.parse(result.text) } catch { throw new ApiError('invalid_response', 'invalid_response', result.status) }
+  if (result.status < 200 || result.status >= 300) {
+    const code = envelope.error?.code ?? `http_${result.status}`
+    if (code === 'environment_unavailable') { clearTokens(); authLossHandler?.() }
+    throw new ApiError(code, envelope.error?.message ?? code, result.status, envelope.error?.details)
+  }
+  assertSession(expected, true)
+  if (!envelope.data?.storekey) throw new ApiError('invalid_response', 'invalid_response', result.status)
+  return envelope.data
+}
+
 /** 二进制文件流保持 Blob 类型、沿用统一的令牌恢复流程，并允许头像读取指定 HTTP 缓存策略。 */
 async function requestBlob(path: string, retry = true, cache: RequestCache = 'default', expected = sessionStamp()): Promise<Blob> {
   assertSession(expected, true)
@@ -288,6 +326,7 @@ export const api = {
     body.append('file', file, filename)
     return request<{ storekey: string }>('/files', { method: 'POST', body })
   },
+  uploadWithProgress,
   /** 带鉴权下载文件字节，不将 storekey 拼成公开 URL；可选 cache 用于显式绕过旧头像缓存。 */
   thumbnail(storekey: string): Promise<Blob> { return requestBlob(`/files/${encodeURIComponent(storekey)}/thumbnail`) },
   async download(storekey: string, options: { cache?: RequestCache } = {}): Promise<Blob> {

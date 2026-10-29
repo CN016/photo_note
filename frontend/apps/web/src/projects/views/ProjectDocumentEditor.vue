@@ -25,6 +25,7 @@ import { FontSize, InspirationImage, ProjectAttachment } from '../projectExtensi
 import { useColorTheme } from '../../theme'
 import ProjectImageViewer from './ProjectImageViewer.vue'
 import { projectReadContext } from '../projectReadContext'
+import { ProjectUploadPlaceholders } from '../uploadPlaceholders'
 
 /** 项目正文适配层：开源组件负责编辑交互，资源上传和持久化始终交回业务页面。 */
 const props = defineProps<{ document: Record<string, unknown>; readOnly: boolean }>()
@@ -48,7 +49,7 @@ const extensions = markRaw([
   TaskList, TaskItem.configure({ nested: true, a11y: { checkboxLabel: node => node.textContent || t('projects.toolbar.taskList') } }),
   Table.configure({ resizable: true }), TableRow, TableHeader, TableCell,
   Placeholder.configure({ placeholder: () => t('projects.editorPlaceholder') }),
-  FontSize, InspirationImage, ProjectAttachment,
+  FontSize, InspirationImage, ProjectAttachment, ProjectUploadPlaceholders,
   Extension.create({
     name: 'projectEditorBridge',
     addProseMirrorPlugins() {
@@ -130,6 +131,15 @@ onBeforeUnmount(() => {
 </template>
 
 <style scoped>
+/* 上传装饰不进入文档：图片区、状态和操作始终显示在粘贴位置。 */
+.project-document-editor :deep(.project-upload-placeholder) { display: flex; align-items: center; gap: 12px; width: min(100%, 520px); margin: 12px 0; padding: 12px; border: 1px solid var(--line); border-radius: var(--radius-control); background: var(--surface-muted); }
+.project-document-editor :deep(.project-upload-placeholder img) { width: 64px; height: 64px; flex: 0 0 64px; object-fit: cover; border-radius: 5px; }
+.project-document-editor :deep(.project-upload-content) { display: grid; flex: 1; min-width: 0; gap: 6px; }
+.project-document-editor :deep(.project-upload-name) { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.project-document-editor :deep(.project-upload-status) { font-size: 12px; color: var(--muted); }
+.project-document-editor :deep(.project-upload-progress) { width: 100%; accent-color: var(--accent); }
+.project-document-editor :deep(.project-upload-actions) { display: flex; gap: 8px; }
+.project-document-editor :deep(.project-upload-actions button) { padding: 5px 10px; border: 1px solid var(--line); border-radius: var(--radius-control); background: var(--surface); color: var(--ink); cursor: pointer; }
 /* 仅适配主题和版心；列表、任务项及工具栏结构沿用上游组件样式。 */
 .project-document-editor { position: relative; }
 .project-document-editor :deep(.tvp-editor) { overflow: visible; border-color: var(--line); border-radius: var(--radius-card); background: var(--surface); }

@@ -97,5 +97,8 @@
   "switchToRead": "阅读模式",
   "previousImage": "上一张图片",
   "nextImage": "下一张图片",
-  "imageLoadFailed": "图片加载失败"
+  "imageLoadFailed": "图片加载失败",
+  "uploadProgress": "当前文件上传进度",
+  "uploadPendingLeave": "请等待上传完成，或重试、移除失败的文件后离开。",
+  "uploadStage": { "queued": "等待上传…", "preparing": "正在准备图片…", "original": "正在上传原图…", "file": "正在上传文件…", "processing": "正在处理图片…", "working": "正在上传图片副本…", "creating": "正在保存到灵感库…", "sending": "正在上传", "waiting": "已发送，等待服务器处理…", "failed": "上传失败，请重试或移除。" }
 }
