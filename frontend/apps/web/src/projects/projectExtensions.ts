@@ -1,7 +1,7 @@
 import { Node, mergeAttributes } from '@tiptap/core'
 import { FontSize as NativeFontSize } from '@tiptap/extension-text-style'
 import { VueNodeViewRenderer } from '@tiptap/vue-3'
-import { stopResourceEditorEvent, usesTouchResourceDrag } from './resourceTouchInteraction'
+import { stopResourceEditorEvent } from './resourceTouchInteraction'
 import InspirationImageNodeView from './views/InspirationImageNodeView.vue'
 import ProjectAttachmentNodeView from './views/ProjectAttachmentNodeView.vue'
 
@@ -27,8 +27,8 @@ export const InspirationImage = Node.create({
   name: 'inspirationImage',
   group: 'block',
   atom: true,
-  // 触屏由自定义长按手势接管，禁止 ProseMirror 强制给节点恢复原生 draggable。
-  draggable: !usesTouchResourceDrag(),
+  // 鼠标与触摸手势统一自行处理，禁止浏览器原生拖放覆盖节点移动。
+  draggable: false,
   selectable: true,
   addAttributes() { return { src: { default: null }, width: { default: 100 }, layout: { default: 'original' } } },
   parseHTML() { return [{ tag: 'figure[data-inspiration]' }] },
@@ -43,8 +43,8 @@ export const ProjectAttachment = Node.create({
   name: 'projectAttachment',
   group: 'block',
   atom: true,
-  // 触屏由自定义长按手势接管，禁止 ProseMirror 强制给节点恢复原生 draggable。
-  draggable: !usesTouchResourceDrag(),
+  // 鼠标与触摸手势统一自行处理，禁止浏览器原生拖放覆盖节点移动。
+  draggable: false,
   selectable: true,
   addAttributes() {
     return {

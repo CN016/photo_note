@@ -15,10 +15,9 @@ import { TableRow } from '@tiptap/extension-table-row'
 import { TableHeader } from '@tiptap/extension-table-header'
 import { TableCell } from '@tiptap/extension-table-cell'
 import Placeholder from '@tiptap/extension-placeholder'
-import { DragHandle } from '@tiptap/extension-drag-handle-vue-3'
 import { ProEditorElementPlus, type ToolbarConfig } from 'tiptap-vue-pro-element-plus'
 import 'tiptap-vue-pro-element-plus/style.css'
-import { Paperclip, Picture, Rank, UploadFilled } from '@element-plus/icons-vue'
+import { Paperclip, Picture, UploadFilled } from '@element-plus/icons-vue'
 import { useI18n } from 'vue-i18n'
 import { isDocumentCompatible } from '../documentCompatibility'
 import { FontSize, InspirationImage, ProjectAttachment } from '../projectExtensions'
@@ -123,9 +122,6 @@ onBeforeUnmount(() => {
         <el-tooltip :content="t('projects.toolbar.uploadAttachment')"><el-button :aria-label="t('projects.toolbar.uploadAttachment')" text @click="emit('uploadAttachment')"><el-icon><Paperclip /></el-icon></el-button></el-tooltip>
       </template>
     </ProEditorElementPlus>
-    <DragHandle v-if="editor && !props.readOnly" :editor="editor" class="project-block-drag-handle">
-      <el-tooltip :content="t('projects.moveBlock')"><span :aria-label="t('projects.moveBlock')"><el-icon><Rank /></el-icon></span></el-tooltip>
-    </DragHandle>
     <ProjectImageViewer v-if="editor && viewerPosition !== null" :editor="editor" :position="viewerPosition" @close="viewerPosition = null" />
   </div></ContentZoom>
 </template>
@@ -160,13 +156,11 @@ onBeforeUnmount(() => {
 .project-document-editor :deep(.resource-resize-handle) { position: absolute; right: -8px; bottom: -8px; z-index: 6; display: grid; width: 26px; height: 26px; place-items: center; padding: 2px; border: 1px solid var(--accent); border-radius: 6px; background: var(--surface); color: var(--accent); cursor: nwse-resize; touch-action: none; }
 .project-document-editor :deep(.resource-resize-handle:focus-visible) { outline: 3px solid var(--focus); outline-offset: 2px; }
 @media (pointer: coarse) { .project-document-editor :deep(.resource-resize-handle) { width: 44px; height: 44px; right: -12px; bottom: -12px; } }
-.project-block-drag-handle { z-index: 12; display: grid; width: 28px; height: 32px; place-items: center; border-radius: var(--radius-control); background: var(--surface); color: var(--muted); cursor: grab; }
 @media (max-width: 768px) {
   .project-document-editor :deep(.tvp-content) { padding: 20px 16px 180px; }
   /* 横向滚动保留全部格式按钮，插图与附件入口优先显示；固定层随可视视口避让键盘。 */
   .project-document-editor :deep(.tvp-toolbar) { position: fixed; inset: auto 0 var(--project-keyboard-bottom, 0px); z-index: 30; display: flex; flex-wrap: nowrap; overflow-x: auto; max-width: 100vw; border-radius: 12px 12px 0 0; padding-bottom: env(safe-area-inset-bottom); }
   .project-document-editor :deep(.tvp-toolbar > *) { flex-shrink: 0; }
-  .project-block-drag-handle { display: none; }
   .project-document-editor :deep(.tvp-toolbar .el-button) { min-width: 44px; min-height: 44px; }
 }
 /* 拖动镜像和落点挂到 body，避免编辑器 DOM 重绘/滚动遮挡反馈。 */

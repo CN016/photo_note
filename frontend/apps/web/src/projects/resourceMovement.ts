@@ -5,7 +5,7 @@ import { useI18n } from 'vue-i18n'
 import { resourceDropSide, usesTouchResourceDrag } from './resourceTouchInteraction'
 import { moveResourceTransaction, moveResourceToPositionTransaction } from './resourceMovementTransaction'
 
-/** 媒体的键盘与触屏排序：仅在同一父容器内移动完整节点，保留属性与单次撤销事务。 */
+/** 媒体的鼠标、键盘与触屏排序：仅在同一父容器内移动完整节点，保留属性与单次撤销事务。 */
 export function useResourceMovement(props: NodeViewProps) {
   const { t } = useI18n({ useScope: 'global' })
   const revision = ref(0)
@@ -41,10 +41,13 @@ export function useResourceMovement(props: NodeViewProps) {
   let ghost: HTMLElement | null = null
   let indicator: HTMLElement | null = null
   let scrollFrame = 0
+  let mouseActive = false
+  let suppressClick = false
 
   /** 同步撤去正文焦点，不调用会异步清空 DOM 选区的 blur 命令，避免节点选择闪退。 */
   function blurText() { props.editor.view.dom.blur() }
   function selectResource(event: Event) {
+    if (event.type === 'click' && suppressClick) { suppressClick = false; event.preventDefault(); event.stopPropagation(); return }
     if ((event.target as HTMLElement).closest('button,input,video,.resource-controls,.resource-resize-handle')) return
     if (event.cancelable) event.preventDefault()
     event.stopPropagation()
@@ -59,6 +62,13 @@ export function useResourceMovement(props: NodeViewProps) {
     const view = props.editor.view
     const source = props.getPos()
     if (typeof source !== 'number') return
+    // 编辑区域以外释放不应误命中最近块，避免拖到侧栏时意外改序。
+    const editorRect = view.dom.getBoundingClientRect()
+    if (x < editorRect.left || x > editorRect.right || y < editorRect.top || y > editorRect.bottom) {
+      targetPosition = null
+      if (indicator) indicator.hidden = true
+      return
+    }
     const origin = view.state.doc.resolve(source)
     const parentStart = origin.start()
     let offset = 0
@@ -108,7 +118,7 @@ export function useResourceMovement(props: NodeViewProps) {
     scrollFrame = requestAnimationFrame(autoScroll)
   }
   function activateDrag() {
-    if (!sourceElement || touchID === null) return
+    if (!sourceElement || (touchID === null && !mouseActive)) return
     blurText()
     dragging.value = true
     const rect = sourceElement.getBoundingClientRect()
@@ -150,7 +160,43 @@ export function useResourceMovement(props: NodeViewProps) {
     hold = setTimeout(activateDrag, 350)
   }
   function startBlockTouch(event: TouchEvent) { beginTouch(event, false) }
-  function startHandleTouch(event: TouchEvent) { beginTouch(event, true) }
+  /** PC 左键按住媒体后移动超过阈值才进入拖动，短点击和双击仍使用原有选择与查看逻辑。 */
+  function startMouseDrag(event: MouseEvent) {
+    if (event.button !== 0 || !props.editor.isEditable) return
+    const target = event.target as HTMLElement
+    if (target.closest('button,input,video,.resource-controls,.resource-resize-handle')) return
+    cancelTouchDrag()
+    selectResource(event)
+    sourceElement = target.closest('.project-resource-node')
+    if (!sourceElement) return
+    mouseActive = true
+    startX = lastX = event.clientX; startY = lastY = event.clientY
+    document.addEventListener('mousemove', moveMouse, true)
+    document.addEventListener('mouseup', endMouse, true)
+    window.addEventListener('blur', cancelTouchDrag)
+  }
+  function moveMouse(event: MouseEvent) {
+    if (!mouseActive) return
+    lastX = event.clientX; lastY = event.clientY
+    if (!dragging.value && Math.hypot(lastX - startX, lastY - startY) >= 5) activateDrag()
+    if (dragging.value) { event.preventDefault(); event.stopPropagation(); updateDrag() }
+  }
+  function endMouse(event: MouseEvent) {
+    if (!mouseActive || event.button !== 0) return
+    lastX = event.clientX; lastY = event.clientY
+    if (dragging.value) updateDrag()
+    const source = props.getPos(); const target = targetPosition; const moved = dragging.value
+    cancelTouchDrag()
+    if (!moved) return
+    event.preventDefault(); event.stopPropagation()
+    suppressClick = true
+    // 若浏览器没有派发 click，不影响下一次正常选择。
+    window.setTimeout(() => { suppressClick = false }, 0)
+    if (typeof source === 'number' && target !== null) {
+      const tr = moveResourceToPositionTransaction(props.editor.state, source, target)
+      if (tr) props.editor.view.dispatch(tr)
+    }
+  }
   function moveTouch(event: TouchEvent) {
     const touch = Array.from(event.touches).find(item => item.identifier === touchID)
     if (!touch) { cancelTouchDrag(); return }
@@ -182,6 +228,9 @@ export function useResourceMovement(props: NodeViewProps) {
   function cancelTouchDrag() {
     clearTimeout(hold)
     cancelAnimationFrame(scrollFrame)
+    document.removeEventListener('mousemove', moveMouse, true)
+    document.removeEventListener('mouseup', endMouse, true)
+    mouseActive = false
     document.removeEventListener('touchmove', moveTouch, true)
     document.removeEventListener('touchend', endTouch, true)
     document.removeEventListener('touchcancel', cancelTouchDrag, true)
@@ -191,6 +240,6 @@ export function useResourceMovement(props: NodeViewProps) {
     dragging.value = false
   }
   onBeforeUnmount(cancelTouchDrag)
-  return { touchDevice, touchDragging: dragging, startBlockTouch, startHandleTouch, selectResource,
+  return { touchDevice, touchDragging: dragging, startBlockTouch, startMouseDrag, selectResource,
     canMoveBefore: computed(() => !!boundary.value?.before), canMoveAfter: computed(() => !!boundary.value?.after), move }
 }

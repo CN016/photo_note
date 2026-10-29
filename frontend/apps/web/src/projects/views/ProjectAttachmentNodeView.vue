@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, inject, defineAsyncComponent, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { NodeViewWrapper, type NodeViewProps } from '@tiptap/vue-3'
-import { ArrowLeft, ArrowRight, BottomRight, Delete, Rank } from '@element-plus/icons-vue'
+import { ArrowLeft, ArrowRight, BottomRight, Delete } from '@element-plus/icons-vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute } from 'vue-router'
 import { useResourceResize } from '../resourceResize'
@@ -18,7 +18,7 @@ function openReadImage() {
   const position = props.getPos()
   if (readOnly.value && isImage.value && typeof position === 'number') readContext?.openImage(position)
 }
-const { canMoveBefore, canMoveAfter, move, touchDragging, startBlockTouch, startHandleTouch, selectResource, touchDevice } = useResourceMovement(props)
+const { canMoveBefore, canMoveAfter, move, touchDragging, startBlockTouch, startMouseDrag, selectResource } = useResourceMovement(props)
 const route = useRoute()
 const { t } = useI18n({ useScope: 'global' })
 const url = ref('')
@@ -83,11 +83,11 @@ onBeforeUnmount(() => { requestVersion += 1; disposePlayer(); if (url.value) URL
 <template>
   <NodeViewWrapper
     class="project-resource-node attachment-node"
-    :class="{ 'is-selected': selected, 'is-corner-resizing': cornerResizing, 'is-touch-dragging': touchDragging }"
+    :class="{ 'is-selected': selected, 'is-corner-resizing': cornerResizing, 'is-touch-dragging': touchDragging, 'is-readonly': readOnly }"
     :style="{ width: `calc(${displayWidth}% - 12px)` }"
-    :draggable="!readOnly && !touchDevice"
+    :draggable="false"
     contenteditable="false"
-    @mousedown="!readOnly && selectResource($event)" @click="readOnly && isImage ? openReadImage() : readOnly ? (!isVideo && openPreview()) : selectResource($event)" @contextmenu.prevent
+    @mousedown="!readOnly && startMouseDrag($event)" @click="readOnly && isImage ? openReadImage() : readOnly ? (!isVideo && openPreview()) : selectResource($event)" @contextmenu.prevent
     @touchstart="!readOnly && startBlockTouch($event)"
     @dblclick.prevent.stop="!readOnly && openPreview()"
   >
@@ -120,9 +120,6 @@ onBeforeUnmount(() => { requestVersion += 1; disposePlayer(); if (url.value) URL
         <el-tooltip :content="t('projects.smallMediaHint')"><el-button size="small" :type="smallMode ? 'primary' : 'default'" :aria-pressed="smallMode" @pointerdown.prevent @click.stop="setSizePreset(true)">{{ t('projects.smallMedia') }}</el-button></el-tooltip>
         <el-tooltip :content="t('projects.originalMediaHint')"><el-button size="small" :type="originalMode ? 'primary' : 'default'" :aria-pressed="originalMode" @pointerdown.prevent @click.stop="setSizePreset(false)">{{ t('projects.originalMedia') }}</el-button></el-tooltip>
       </div>
-      <el-tooltip :content="t('projects.moveBlock')" placement="top">
-        <span class="resource-drag-handle" @touchstart.stop="startHandleTouch" data-drag-handle :draggable="!touchDevice" :aria-label="t('projects.moveBlock')"><el-icon><Rank /></el-icon></span>
-      </el-tooltip>
       <el-tooltip :content="t('projects.moveBefore')"><el-button text :disabled="!canMoveBefore" :aria-label="t('projects.moveBefore')" @pointerdown.prevent @click.stop="move(-1)"><el-icon><ArrowLeft /></el-icon></el-button></el-tooltip>
       <el-tooltip :content="t('projects.moveAfter')"><el-button text :disabled="!canMoveAfter" :aria-label="t('projects.moveAfter')" @pointerdown.prevent @click.stop="move(1)"><el-icon><ArrowRight /></el-icon></el-button></el-tooltip>
       <el-tooltip :content="t('projects.width')" placement="top">
@@ -153,7 +150,8 @@ onBeforeUnmount(() => { requestVersion += 1; disposePlayer(); if (url.value) URL
 
 <style scoped>
 /* 界面表面与控件使用全局主题令牌；图片、文档和用户自选封面颜色保持原数据。 */
-.project-resource-node { position: relative; box-sizing: border-box; display: inline-block; max-width: calc(100% - 12px); margin: 6px; vertical-align: top; outline: none; transition: width 150ms ease; }
+.project-resource-node { position: relative; box-sizing: border-box; display: inline-block; max-width: calc(100% - 12px); margin: 6px; vertical-align: top; outline: none; cursor: grab; transition: width 150ms ease; }
+.project-resource-node.is-readonly { cursor: pointer; }
 .project-resource-node.is-selected .attachment-frame { outline: 2px solid var(--accent); outline-offset: 2px; }
 .attachment-frame { display: grid; min-height: 64px; overflow: hidden; place-items: center; border: 1px solid var(--line); border-radius: var(--radius-control); background: var(--surface-muted); cursor: inherit; }
 .attachment-inline-image { display: block; width: 100%; height: auto; max-height: 70vh; object-fit: contain; }
@@ -167,18 +165,16 @@ onBeforeUnmount(() => { requestVersion += 1; disposePlayer(); if (url.value) URL
 .resource-controls .el-button { width: 28px; height: 28px; margin: 0; padding: 4px; }
 .resource-size-presets { display: flex; width: 100%; align-items: center; justify-content: center; gap: 6px; }
 .resource-size-presets .el-button { width: auto; padding: 0 10px; font-size: 11px; flex: 0 0 auto; }
-.resource-drag-handle { display: grid; width: 28px; height: 28px; flex: 0 0 28px; place-items: center; border: 0; border-radius: var(--radius-control); background: transparent; color: var(--muted); cursor: grab; }
 .resource-width { display: flex; align-items: center; gap: 7px; color: var(--muted); font-size: 11px; }
 .resource-width input { width: 110px; margin: 0; accent-color: var(--accent); cursor: ew-resize; touch-action: pan-y; }
 .resource-width > span { min-width: 34px; text-align: right; }
 /* 手机上将资源操作固定在编辑工具栏上方，避免窄图片的浮动按钮超出屏幕。 */
 @media (max-width: 768px) {
   .resource-controls { position: fixed; width: auto; transform: none; inset: auto 12px calc(var(--project-keyboard-bottom, 0px) + 64px + env(safe-area-inset-bottom)); min-height: 54px; justify-content: center; gap: 6px; padding: 4px; }
-  .resource-controls .el-button, .resource-drag-handle { width: 44px; height: 44px; min-height: 44px; flex: 0 0 44px; }
+  .resource-controls .el-button { width: 44px; height: 44px; min-height: 44px; flex: 0 0 44px; }
   .resource-size-presets .el-button { width: auto; flex: 0 0 auto; padding: 0 12px; }
   .resource-width { min-height: 44px; }
   .resource-width input { width: 88px; height: 44px; }
 }
-.resource-drag-handle { touch-action: none; }
 .is-touch-dragging { outline: 3px dashed var(--accent); opacity: .7; }
 </style>
