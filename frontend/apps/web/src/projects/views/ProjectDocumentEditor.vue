@@ -2,6 +2,7 @@
 import ContentZoom from '../../components/ContentZoom.vue'
 import { computed, markRaw, shallowRef, watch, onMounted, onBeforeUnmount } from 'vue'
 import { Extension, getSchema, type Editor } from '@tiptap/core'
+import { Plugin } from '@tiptap/pm/state'
 import StarterKit from '@tiptap/starter-kit'
 import { BackgroundColor, TextStyle } from '@tiptap/extension-text-style'
 import Color from '@tiptap/extension-color'
@@ -25,7 +26,7 @@ import { useColorTheme } from '../../theme'
 
 /** 项目正文适配层：开源组件负责编辑交互，资源上传和持久化始终交回业务页面。 */
 const props = defineProps<{ document: Record<string, unknown> }>()
-const emit = defineEmits<{ ready: [editor: Editor]; incompatible: []; change: []; insertInspiration: []; uploadAttachment: []; uploadMedia: [] }>()
+const emit = defineEmits<{ ready: [editor: Editor]; incompatible: []; change: []; insertInspiration: []; uploadAttachment: []; uploadMedia: []; pasteFiles: [files: File[]] }>()
 const { t, locale } = useI18n({ useScope: 'global' })
 const theme = useColorTheme()
 const editor = shallowRef<Editor>()
@@ -45,6 +46,15 @@ const extensions = markRaw([
   FontSize, InspirationImage, ProjectAttachment,
   Extension.create({
     name: 'projectEditorBridge',
+    addProseMirrorPlugins() {
+      return [new Plugin({ props: { handlePaste: (_view, event) => {
+        // 只接管剪贴板真实文件，文本和编辑器内部内容继续走原生粘贴管线。
+        const files = Array.from(event.clipboardData?.files ?? [])
+        if (!files.length) return false
+        emit('pasteFiles', files)
+        return true
+      } } })]
+    },
     onCreate() {
       editor.value = this.editor
       emit('ready', this.editor)

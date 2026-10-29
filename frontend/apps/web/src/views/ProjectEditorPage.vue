@@ -120,13 +120,21 @@ const imageExtensions = new Set(['jpg', 'jpeg', 'png', 'webp', 'heic', 'heif'])
 
 /** 常见静态图片沿用灵感图压缩、元数据和引用流程；视频、GIF、Office、PDF 保持原文件作为附件。 */
 async function uploadFiles(event: Event) {
-  uploadingAttachments += 1
-  try {
   const input = event.target as HTMLInputElement
   const files = Array.from(input.files ?? [])
-  let hasNewAttachments = false
   input.value = ''
-  for (const file of files) {
+  await importFiles(files)
+}
+
+/** 剪贴板和文件选择共用校验与上传流程；无扩展名的剪贴板图片按 MIME 补全文件名。 */
+async function importFiles(files: File[]) {
+  uploadingAttachments += 1
+  try {
+  let hasNewAttachments = false
+  for (const source of files) {
+    const suffix = clipboardImageExtensions[source.type]
+    const file = !imageExtensions.has(extOf(source.name)) && !supportedExtensions.has(extOf(source.name)) && suffix && (!source.name || !source.name.includes('.'))
+      ? new File([source], `${source.name || 'clipboard'}.${suffix}`, { type: source.type, lastModified: source.lastModified }) : source
     const extension = extOf(file.name)
     if (!imageExtensions.has(extension) && !supportedExtensions.has(extension)) { ElMessage.error(t('projects.fileTypeError')); continue }
     if (file.size > maxUploadBytes.value) { ElMessage.error(t('projects.fileTooLarge')); continue }
@@ -148,6 +156,8 @@ async function uploadFiles(event: Event) {
   if (hasNewAttachments) await saveNow()
   } finally { uploadingAttachments -= 1 }
 }
+
+const clipboardImageExtensions: Record<string, string> = { 'image/png': 'png', 'image/jpeg': 'jpg', 'image/webp': 'webp', 'image/heic': 'heic', 'image/heif': 'heif', 'image/gif': 'gif' }
 
 const mimeByExtension: Record<string, string> = {
   gif: 'image/gif', mp4: 'video/mp4', webm: 'video/webm', ogv: 'video/ogg', pdf: 'application/pdf',
@@ -199,6 +209,7 @@ onBeforeRouteLeave(async () => {
         @insert-inspiration="pickerOpen = true"
         @upload-attachment="attachmentInput?.click()"
         @upload-media="mediaInput?.click()"
+        @paste-files="importFiles"
       />
       <input ref="mediaInput" class="hidden-file-input" type="file" multiple accept="image/*,video/*" @change="uploadFiles" />
       <input ref="attachmentInput" class="hidden-file-input" type="file" multiple accept=".pdf,.doc,.docx,.xls,.xlsx" @change="uploadFiles" />
