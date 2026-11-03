@@ -187,39 +187,39 @@ onBeforeUnmount(() => { requestVersion += 1; if (url.value) URL.revokeObjectURL(
 
 <style scoped>
 /* 界面表面与控件使用全局主题令牌；图片、文档和用户自选封面颜色保持原数据。 */
-.project-resource-node { position: relative; box-sizing: border-box; display: inline-block; max-width: calc(100% - 12px); margin: 6px; vertical-align: top; outline: none; cursor: grab; transition: width 150ms ease; }
+.project-resource-node { position: relative; box-sizing: border-box; display: inline-block; max-width: calc(100% - 12px); margin: 8px; vertical-align: top; outline: none; cursor: grab; transition: width 150ms ease; }
 .project-resource-node:active { cursor: grabbing; }
 .project-resource-node.is-readonly { cursor: pointer; }
 .project-resource-node.is-selected .project-resource-frame { outline: 2px solid var(--accent); outline-offset: 2px; }
 .project-resource-frame { display: grid; min-height: 80px; margin: 0; overflow: hidden; justify-items: center; border: 1px solid var(--line); border-radius: var(--radius-control); background: var(--surface-muted); cursor: inherit; }
 .project-resource-frame img { display: block; width: 100%; height: auto; max-height: 70vh; object-fit: contain; }
-.resource-placeholder { align-self: center; padding: 18px; color: var(--muted); font-size: 12px; text-align: center; }
-.resource-controls { position: absolute; top: -8px; right: 0; transform: translateY(-100%); z-index: 12; display: flex; flex-wrap: wrap; width: max-content; max-width: calc(100vw - 24px); min-height: 34px; align-items: center; gap: 6px; padding: 3px 6px; border: 1px solid var(--line); border-radius: var(--radius-control); background: var(--surface-overlay); box-shadow: var(--shadow); cursor: default; }
+.resource-placeholder { align-self: center; padding: 20px; color: var(--muted); font-size: 12px; text-align: center; }
+.resource-controls { position: absolute; top: -8px; right: 0; transform: translateY(-100%); z-index: 12; display: flex; flex-wrap: wrap; width: max-content; max-width: calc(100vw - 24px); min-height: 34px; align-items: center; gap: 8px; padding: 3px 8px; border: 1px solid var(--line); border-radius: var(--radius-control); background: var(--surface-overlay); box-shadow: var(--shadow); cursor: default; }
 .resource-controls .el-button { width: 28px; height: 28px; margin: 0; padding: 4px; }
-.resource-size-presets { display: flex; width: 100%; align-items: center; justify-content: center; gap: 6px; }
-.resource-size-presets .el-button { width: auto; padding: 0 10px; font-size: 11px; flex: 0 0 auto; }
-.resource-width { display: flex; align-items: center; gap: 7px; color: var(--muted); font-size: 11px; }
+.resource-size-presets { display: flex; width: 100%; align-items: center; justify-content: center; gap: 8px; }
+.resource-size-presets .el-button { width: auto; padding: 0 12px; font-size: 12px; flex: 0 0 auto; }
+.resource-width { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 12px; }
 .resource-width input { width: 110px; margin: 0; accent-color: var(--accent); cursor: ew-resize; touch-action: pan-y; }
 .resource-width > span { min-width: 34px; text-align: right; }
 .inspiration-details { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(220px, .8fr); gap: 20px; align-items: start; }
 .inspiration-detail-image { display: grid; min-height: 220px; max-height: 65vh; place-items: center; overflow: hidden; border-radius: var(--radius-control); background: var(--surface-muted); }
 .inspiration-detail-image img { display: block; max-width: 100%; max-height: 65vh; object-fit: contain; }
-.inspiration-detail-content { display: grid; align-content: start; gap: 14px; min-width: 0; }
+.inspiration-detail-content { display: grid; align-content: start; gap: 16px; min-width: 0; }
 .inspiration-detail-content h3 { margin: 0; overflow-wrap: anywhere; color: var(--ink); font-size: 15px; }
-.inspiration-detail-row { display: grid; gap: 6px; color: var(--muted); font-size: 12px; }
-.inspiration-detail-row strong { color: var(--ink); font-weight: 600; }
-.inspiration-detail-tags { display: flex; flex-wrap: wrap; gap: 5px; }
+.inspiration-detail-row { display: grid; gap: 8px; color: var(--muted); font-size: 12px; }
+.inspiration-detail-row strong { color: var(--ink); font-weight: 500; }
+.inspiration-detail-tags { display: flex; flex-wrap: wrap; gap: 4px; }
 .inspiration-edit-button { justify-self: start; margin-top: 4px; }
-.inspiration-detail-state { padding: 42px 12px; color: var(--muted); text-align: center; }
+.inspiration-detail-state { padding: 44px 12px; color: var(--muted); text-align: center; }
 .inspiration-detail-state.is-error { color: var(--danger); }
 @media (max-width: 768px) {
   /* 资源条与底部编辑工具栏错层，44px 操作区域无需挤入图片自身宽度。 */
-  .resource-controls { position: fixed; width: auto; transform: none; inset: auto 12px calc(var(--project-keyboard-bottom, 0px) + 64px + env(safe-area-inset-bottom)); min-height: 54px; justify-content: center; gap: 6px; padding: 4px; }
+  .resource-controls { position: fixed; width: auto; transform: none; inset: auto 12px calc(var(--project-keyboard-bottom, 0px) + 64px + env(safe-area-inset-bottom)); min-height: 54px; justify-content: center; gap: 8px; padding: 4px; }
   .resource-controls .el-button { width: 44px; height: 44px; min-height: 44px; flex: 0 0 44px; }
   .resource-size-presets .el-button { width: auto; flex: 0 0 auto; padding: 0 12px; }
   .resource-width { min-height: 44px; }
   .resource-width input { width: 88px; height: 44px; }
-  .inspiration-details { grid-template-columns: 1fr; gap: 14px; }
+  .inspiration-details { grid-template-columns: 1fr; gap: 16px; }
   .inspiration-detail-image { min-height: 150px; }
 }
 .is-touch-dragging { outline: 3px dashed var(--accent); opacity: .7; }

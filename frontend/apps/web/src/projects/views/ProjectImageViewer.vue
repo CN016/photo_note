@@ -73,13 +73,13 @@ onBeforeUnmount(() => { requestVersion += 1; window.removeEventListener('keydown
 <style scoped>
 .viewer-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .viewer-header span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.viewer-body { display: flex; align-items: center; justify-content: center; gap: 10px; height: calc(100dvh - 100px); }
+.viewer-body { display: flex; align-items: center; justify-content: center; gap: 12px; height: calc(100dvh - 100px); }
 .viewer-arrow { flex: 0 0 auto; width: 44px; height: 44px; }
 .viewer-stage { display: grid; min-width: 0; flex: 1; place-items: center; }
 .viewer-image { position: relative; max-width: 100%; line-height: 0; }
 .viewer-image img { display: block; max-width: 100%; max-height: calc(100dvh - 120px); object-fit: contain; }
 .viewer-anchor { position: absolute; z-index: 1; width: 12px; height: 12px; border: 2px solid white; border-radius: 50%; background: var(--accent); transform: translate(-50%, -50%); line-height: 1.3; }
-.viewer-anchor span { position: absolute; left: 12px; top: -8px; max-width: min(220px, 35vw); padding: 4px 7px; border-radius: 5px; background: var(--surface); color: var(--ink); font-size: 12px; overflow-wrap: anywhere; }
+.viewer-anchor span { position: absolute; left: 12px; top: -8px; max-width: min(220px, 35vw); padding: 4px 8px; border-radius: 5px; background: var(--surface); color: var(--ink); font-size: 12px; overflow-wrap: anywhere; }
 .viewer-anchor.label-left span { left: auto; right: 12px; }
 .viewer-anchor.label-up span { top: auto; bottom: -8px; }
 @media (max-width: 600px) { .viewer-body { gap: 2px; } .viewer-arrow { width: 40px; } }

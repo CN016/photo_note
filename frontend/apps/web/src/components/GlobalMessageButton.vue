@@ -37,14 +37,14 @@ const unreadCount = computed(() => appShell.unreadCount)
 .global-message-actions { display: flex; flex: 0 0 auto; align-items: center; gap: 8px; }
 .global-message-link { position: relative; display: grid; width: 40px; height: 40px; place-items: center; border: 1px solid var(--line); border-radius: 50%; background: var(--surface); box-shadow: var(--soft-shadow); color: var(--ink-soft); font-size: 18px; text-decoration: none; }
 .global-message-link:hover, .global-message-link:focus-visible { border-color: var(--accent); color: var(--accent-hover); }
-.global-message-count { position: absolute; top: -5px; right: -6px; display: grid; min-width: 17px; height: 17px; place-items: center; padding: 0 4px; border: 2px solid var(--surface); border-radius: 99px; background: var(--danger); color: var(--on-accent); font-size: 9px; font-weight: 750; line-height: 1; }
+.global-message-count { position: absolute; top: -5px; right: -6px; display: grid; min-width: 17px; height: 17px; place-items: center; padding: 0 4px; border: 2px solid var(--surface); border-radius: 99px; background: var(--danger); color: var(--on-accent); font-size: 12px; font-weight: 600; line-height: 1; }
 @media (min-width: 769px) {
   .global-message-bar { position: fixed; z-index: 40; top: 0; right: 0; left: 226px; display: flex; height: 48px; align-items: center; justify-content: flex-end; padding: 0 16px; pointer-events: none; }
   .global-message-link { width: 36px; height: 36px; pointer-events: auto; }
 }
 @media (max-width: 768px) {
   /* 侧栏偏好在手机上隐藏，顶栏提供可发现的主题、语言与消息入口，并保留返回工作台的品牌链接。 */
-  .global-message-bar { position: sticky; z-index: 40; top: 0; display: flex; min-height: 60px; align-items: center; justify-content: space-between; gap: 10px; padding: 8px 12px; border-bottom: 1px solid var(--line); background: var(--surface); }
+  .global-message-bar { position: sticky; z-index: 40; top: 0; display: flex; min-height: 60px; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 12px; border-bottom: 1px solid var(--line); background: var(--surface); }
   .global-message-brand { display: flex; min-width: 0; flex: 1 1 auto; align-items: center; gap: 8px; color: var(--ink); text-decoration: none; }
   .global-message-brand strong { overflow: hidden; font-size: 13px; text-overflow: ellipsis; white-space: nowrap; }
   .mobile-header-preferences { display: flex; align-items: center; gap: 4px; }

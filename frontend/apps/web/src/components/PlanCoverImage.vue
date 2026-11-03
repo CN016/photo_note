@@ -74,5 +74,5 @@ onBeforeUnmount(() => {
 .plan-cover-image { display: grid; width: 68px; height: 68px; flex: 0 0 68px; overflow: hidden; place-items: center; border-radius: 8px; background: var(--surface-muted, #f1f3f7); color: var(--muted, #7a8293); }
 .plan-cover-image img { width: 100%; height: 100%; object-fit: cover; }
 .plan-cover-fallback { display: grid; justify-items: center; gap: 3px; font-size: 18px; }
-.plan-cover-fallback small { max-width: 60px; overflow: hidden; font-size: 9px; text-overflow: ellipsis; white-space: nowrap; }
+.plan-cover-fallback small { max-width: 60px; overflow: hidden; font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
 </style>

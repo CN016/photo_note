@@ -35,7 +35,9 @@ function options(): EChartsCoreOption {
   const theme = palette()
   const counts = props.items.map(item => item.count)
   const total = counts.reduce((sum, value) => sum + value, 0)
-  const data = props.items.map((item, index) => ({ name: props.labels[index] || item.value, value: item.count, itemStyle: { color: theme.colors[index % theme.colors.length] } }))
+  // 单组数量比较使用同一强调色；饼图和矩形树图保留分类颜色以区分类别。
+  const categorical = ['pie', 'donut', 'rose', 'treemap'].includes(props.mode)
+  const data = props.items.map((item, index) => ({ name: props.labels[index] || item.value, value: item.count, itemStyle: { color: categorical ? theme.colors[index % theme.colors.length] : theme.accent } }))
   const number = new Intl.NumberFormat(locale.value)
   const percent = new Intl.NumberFormat(locale.value, { style: 'percent', maximumFractionDigits: 1 })
   const tooltip = { trigger: 'item', formatter: (entry: { name?: string; value?: number; data?: { value?: number } }) => {
@@ -59,7 +61,7 @@ function options(): EChartsCoreOption {
     return { ...base, grid: { left: 38, right: 18, top: 18, bottom: horizontal ? 14 : 36, containLabel: true }, xAxis: horizontal ? valueAxis : axis, yAxis: horizontal ? { ...axis, data: [...names].reverse() } : valueAxis, series: horizontal ? { type: 'bar', data: [...counts].reverse(), itemStyle: { color: theme.accent }, barMaxWidth: 18 } : series }
   }
   if (props.mode === 'treemap') return { ...base, series: [{ type: 'treemap', data, roam: false, breadcrumb: { show: false }, label: { show: true, overflow: 'truncate', color: '#fff' }, itemStyle: { borderColor: '#fff', borderWidth: 2 } }] }
-  if (props.mode === 'radar') return { ...base, tooltip: { trigger: 'item', formatter: () => props.labels.map((name, index) => `${escapeHTML(name)}: ${number.format(counts[index])}`).join('<br>') }, radar: { indicator: props.labels.map(name => ({ name, max: Math.max(1, ...counts) })), axisName: { color: theme.muted, fontSize: 10 }, splitNumber: 3 }, series: [{ type: 'radar', data: [{ value: counts, name: props.labels.join(' / ') }], areaStyle: { opacity: .23 }, symbolSize: 6 }] }
+  if (props.mode === 'radar') return { ...base, tooltip: { trigger: 'item', formatter: () => props.labels.map((name, index) => `${escapeHTML(name)}: ${number.format(counts[index])}`).join('<br>') }, radar: { indicator: props.labels.map(name => ({ name, max: Math.max(1, ...counts) })), axisName: { color: theme.muted, fontSize: 12 }, splitNumber: 3 }, series: [{ type: 'radar', data: [{ value: counts, name: props.labels.join(' / ') }], areaStyle: { opacity: .23 }, symbolSize: 6 }] }
   if (props.mode === 'bar' || props.mode === 'column' || props.mode === 'scatter') {
     const horizontal = props.mode === 'bar'
     const axis = { type: 'category', data: horizontal ? [...props.labels].reverse() : props.labels, axisLabel: { color: theme.muted, hideOverlap: true, width: 92, overflow: 'truncate' }, axisTick: { show: false } }

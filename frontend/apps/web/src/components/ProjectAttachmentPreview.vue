@@ -72,8 +72,8 @@ onBeforeUnmount(() => { requestVersion += 1; void closeViewer() })
 
 <style>
 .project-preview-dialog { max-width: 1120px; height: 84vh; margin-bottom: 0; overflow: hidden; }
-.project-preview-dialog .el-dialog__body { height: calc(84vh - 68px); padding: 0 18px 18px; }
-.project-preview-dialog .el-dialog__header { margin-right: 0; padding: 12px 18px; }
+.project-preview-dialog .el-dialog__body { height: calc(84vh - 68px); padding: 0 20px 20px; }
+.project-preview-dialog .el-dialog__header { margin-right: 0; padding: 12px 20px; }
 .project-preview-dialog .el-dialog__headerbtn { display: none; }
 .preview-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .preview-heading strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -82,5 +82,5 @@ onBeforeUnmount(() => { requestVersion += 1; void closeViewer() })
 .preview-video video { display: block; width: 100%; height: 100%; max-height: 100%; object-fit: contain; }
 .preview-status { position: absolute; inset: 50% 0 auto; z-index: 2; color: var(--muted); text-align: center; pointer-events: none; }
 .preview-error { top: auto; bottom: 24px; color: var(--danger); }
-@media (max-width: 768px) { .project-preview-dialog { width: 94vw !important; height: 82vh; margin: 0 auto; } .project-preview-dialog .el-dialog__body { height: calc(82vh - 56px); padding: 0 10px 10px; } .preview-container { min-height: 320px; } }
+@media (max-width: 768px) { .project-preview-dialog { width: 94vw !important; height: 82vh; margin: 0 auto; } .project-preview-dialog .el-dialog__body { height: calc(82vh - 56px); padding: 0 12px 12px; } .preview-container { min-height: 320px; } }
 </style>

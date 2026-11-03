@@ -150,27 +150,27 @@ onBeforeUnmount(() => { requestVersion += 1; disposePlayer(); if (url.value) URL
 
 <style scoped>
 /* 界面表面与控件使用全局主题令牌；图片、文档和用户自选封面颜色保持原数据。 */
-.project-resource-node { position: relative; box-sizing: border-box; display: inline-block; max-width: calc(100% - 12px); margin: 6px; vertical-align: top; outline: none; cursor: grab; transition: width 150ms ease; }
+.project-resource-node { position: relative; box-sizing: border-box; display: inline-block; max-width: calc(100% - 12px); margin: 8px; vertical-align: top; outline: none; cursor: grab; transition: width 150ms ease; }
 .project-resource-node.is-readonly { cursor: pointer; }
 .project-resource-node.is-selected .attachment-frame { outline: 2px solid var(--accent); outline-offset: 2px; }
 .attachment-frame { display: grid; min-height: 64px; overflow: hidden; place-items: center; border: 1px solid var(--line); border-radius: var(--radius-control); background: var(--surface-muted); cursor: inherit; }
 .attachment-inline-image { display: block; width: 100%; height: auto; max-height: 70vh; object-fit: contain; }
 .attachment-frame :deep(.video-js) { width: 100%; max-height: 70vh; aspect-ratio: 16 / 9; }
-.attachment-file { display: flex; width: 100%; min-height: 64px; align-items: center; gap: 12px; padding: 14px; color: var(--ink); text-align: left; }
-.attachment-file-mark { display: grid; width: 43px; height: 43px; flex: 0 0 43px; place-items: center; border-radius: var(--radius-control); background: var(--accent-soft); color: var(--accent-hover); font-size: 11px; font-weight: 800; }
+.attachment-file { display: flex; width: 100%; min-height: 64px; align-items: center; gap: 12px; padding: 16px; color: var(--ink); text-align: left; }
+.attachment-file-mark { display: grid; width: 43px; height: 43px; flex: 0 0 43px; place-items: center; border-radius: var(--radius-control); background: var(--accent-soft); color: var(--accent-hover); font-size: 12px; font-weight: 600; }
 .attachment-file > span:last-child { display: grid; min-width: 0; gap: 4px; }
 .attachment-file strong { overflow: hidden; font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
-.attachment-file small { color: var(--muted); font-size: 10px; }
-.resource-controls { position: absolute; top: -8px; right: 0; transform: translateY(-100%); z-index: 12; display: flex; flex-wrap: wrap; width: max-content; max-width: calc(100vw - 24px); min-height: 34px; align-items: center; gap: 6px; padding: 3px 6px; border: 1px solid var(--line); border-radius: var(--radius-control); background: var(--surface-overlay); box-shadow: var(--shadow); cursor: default; }
+.attachment-file small { color: var(--muted); font-size: 12px; }
+.resource-controls { position: absolute; top: -8px; right: 0; transform: translateY(-100%); z-index: 12; display: flex; flex-wrap: wrap; width: max-content; max-width: calc(100vw - 24px); min-height: 34px; align-items: center; gap: 8px; padding: 3px 8px; border: 1px solid var(--line); border-radius: var(--radius-control); background: var(--surface-overlay); box-shadow: var(--shadow); cursor: default; }
 .resource-controls .el-button { width: 28px; height: 28px; margin: 0; padding: 4px; }
-.resource-size-presets { display: flex; width: 100%; align-items: center; justify-content: center; gap: 6px; }
-.resource-size-presets .el-button { width: auto; padding: 0 10px; font-size: 11px; flex: 0 0 auto; }
-.resource-width { display: flex; align-items: center; gap: 7px; color: var(--muted); font-size: 11px; }
+.resource-size-presets { display: flex; width: 100%; align-items: center; justify-content: center; gap: 8px; }
+.resource-size-presets .el-button { width: auto; padding: 0 12px; font-size: 12px; flex: 0 0 auto; }
+.resource-width { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 12px; }
 .resource-width input { width: 110px; margin: 0; accent-color: var(--accent); cursor: ew-resize; touch-action: pan-y; }
 .resource-width > span { min-width: 34px; text-align: right; }
 /* 手机上将资源操作固定在编辑工具栏上方，避免窄图片的浮动按钮超出屏幕。 */
 @media (max-width: 768px) {
-  .resource-controls { position: fixed; width: auto; transform: none; inset: auto 12px calc(var(--project-keyboard-bottom, 0px) + 64px + env(safe-area-inset-bottom)); min-height: 54px; justify-content: center; gap: 6px; padding: 4px; }
+  .resource-controls { position: fixed; width: auto; transform: none; inset: auto 12px calc(var(--project-keyboard-bottom, 0px) + 64px + env(safe-area-inset-bottom)); min-height: 54px; justify-content: center; gap: 8px; padding: 4px; }
   .resource-controls .el-button { width: 44px; height: 44px; min-height: 44px; flex: 0 0 44px; }
   .resource-size-presets .el-button { width: auto; flex: 0 0 auto; padding: 0 12px; }
   .resource-width { min-height: 44px; }

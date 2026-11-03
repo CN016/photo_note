@@ -320,15 +320,15 @@ onBeforeRouteLeave(async () => {
 
 <style scoped>
 /* 界面表面与控件使用全局主题令牌；图片、文档和用户自选封面颜色保持原数据。 */
-.project-editor-main { width: min(calc(100vw - 310px), 1120px); min-height: 100svh; margin-left: calc(226px + max(0px, (100vw - 1346px) / 2)); padding: 25px 0 90px; }
+.project-editor-main { width: min(calc(100vw - 310px), 1120px); min-height: 100svh; margin-left: calc(228px + max(0px, (100vw - 1348px) / 2)); padding: 24px 0 92px; }
 .project-editor-main.is-loading { display: grid; place-items: center; }
-.project-editor-header { display: flex; align-items: center; justify-content: space-between; gap: 14px; margin-bottom: 16px; }
+.project-editor-header { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 16px; }
 .project-back { flex: 0 0 auto; padding-left: 0; color: var(--muted); }
 .project-title-area { display: flex; min-width: 0; flex: 1; align-items: center; gap: 12px; }
 .project-title-area :deep(.project-cover-image) { width: 48px; height: 48px; flex-basis: 48px; font-size: 26px; }
 .project-title-input :deep(.el-input__wrapper) { padding: 0; background: transparent; box-shadow: none; }
-.project-title-input :deep(input) { height: 44px; color: var(--ink); font-size: clamp(20px, 3vw, 28px); font-weight: 700; }
-.project-save-status { flex: 0 0 auto; color: var(--muted); font-size: 11px; }
+.project-title-input :deep(input) { height: 44px; color: var(--ink); font-size: clamp(20px, 3vw, 28px); font-weight: 600; }
+.project-save-status { flex: 0 0 auto; color: var(--muted); font-size: 12px; }
 .project-save-status.is-error { color: var(--danger); }
 .project-save-status.is-saved { color: var(--success); }
 .hidden-file-input { display: none; }
@@ -336,12 +336,12 @@ onBeforeRouteLeave(async () => {
 .project-editor-error { color: var(--danger); }
 @media (max-width: 768px) {
   .project-app-header { display: none; }
-  .project-editor-main { width: 100%; margin: 0; padding: 16px 12px calc(94px + env(safe-area-inset-bottom)); }
-  .project-editor-header { flex-wrap: wrap; gap: 5px 10px; margin-bottom: 11px; }
-  .project-back { order: 0; width: 100%; justify-content: flex-start; font-size: 11px; }
+  .project-editor-main { width: 100%; margin: 0; padding: 16px 12px calc(96px + env(safe-area-inset-bottom)); }
+  .project-editor-header { flex-wrap: wrap; gap: 4px 12px; margin-bottom: 12px; }
+  .project-back { order: 0; width: 100%; justify-content: flex-start; font-size: 12px; }
   .project-title-area { order: 1; }
   .project-title-area :deep(.project-cover-image) { width: 38px; height: 38px; flex-basis: 38px; font-size: 22px; }
   .project-title-input :deep(input) { height: 38px; font-size: 20px; }
-  .project-save-status { order: 2; margin-left: auto; font-size: 9px; }
+  .project-save-status { order: 2; margin-left: auto; font-size: 12px; }
 }
 </style>

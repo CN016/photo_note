@@ -203,5 +203,5 @@ onBeforeUnmount(() => { tagsVersion += 1; window.clearInterval(processingTimer);
   </div>
 </template>
 <style scoped>
-.gallery-analysis{display:flex;justify-content:space-between;align-items:center;gap:6px;padding:0 12px 10px;color:var(--muted);font-size:11px}.gallery-analysis>span{display:flex;align-items:center;gap:7px}.gallery-analysis i{width:12px;height:12px;border-radius:50%;border:1px solid var(--line)}
+.gallery-analysis{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:0 12px 12px;color:var(--muted);font-size:12px}.gallery-analysis>span{display:flex;align-items:center;gap:8px}.gallery-analysis i{width:12px;height:12px;border-radius:50%;border:1px solid var(--line)}
 </style>

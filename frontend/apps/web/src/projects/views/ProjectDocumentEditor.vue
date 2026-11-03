@@ -130,19 +130,19 @@ onBeforeUnmount(() => {
 /* 上传装饰不进入文档：图片区、状态和操作始终显示在粘贴位置。 */
 .project-document-editor :deep(.project-upload-placeholder) { display: flex; align-items: center; gap: 12px; width: min(100%, 520px); margin: 12px 0; padding: 12px; border: 1px solid var(--line); border-radius: var(--radius-control); background: var(--surface-muted); }
 .project-document-editor :deep(.project-upload-placeholder img) { width: 64px; height: 64px; flex: 0 0 64px; object-fit: cover; border-radius: 5px; }
-.project-document-editor :deep(.project-upload-content) { display: grid; flex: 1; min-width: 0; gap: 6px; }
+.project-document-editor :deep(.project-upload-content) { display: grid; flex: 1; min-width: 0; gap: 8px; }
 .project-document-editor :deep(.project-upload-name) { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .project-document-editor :deep(.project-upload-status) { font-size: 12px; color: var(--muted); }
 .project-document-editor :deep(.project-upload-progress) { width: 100%; accent-color: var(--accent); }
 .project-document-editor :deep(.project-upload-actions) { display: flex; gap: 8px; }
-.project-document-editor :deep(.project-upload-actions button) { padding: 5px 10px; border: 1px solid var(--line); border-radius: var(--radius-control); background: var(--surface); color: var(--ink); cursor: pointer; }
+.project-document-editor :deep(.project-upload-actions button) { padding: 4px 12px; border: 1px solid var(--line); border-radius: var(--radius-control); background: var(--surface); color: var(--ink); cursor: pointer; }
 /* 仅适配主题和版心；列表、任务项及工具栏结构沿用上游组件样式。 */
 .project-document-editor { position: relative; }
 .project-document-editor :deep(.tvp-editor) { overflow: visible; border-color: var(--line); border-radius: var(--radius-card); background: var(--surface); }
 .project-document-editor.is-readonly :deep(.tvp-toolbar) { display: none; }
 .project-document-editor :deep(.tvp-toolbar) { position: sticky; top: 0; z-index: 8; border-radius: var(--radius-card) var(--radius-card) 0 0; background: var(--surface); }
 .project-document-editor :deep(.tvp-content-wrap) { overflow: visible; max-height: none; }
-.project-document-editor :deep(.tvp-content) { padding: 32px clamp(24px, 5vw, 72px) 70px; }
+.project-document-editor :deep(.tvp-content) { padding: 32px clamp(24px, 5vw, 72px) 72px; }
 /* 允许系统字体合成中文斜体，避免全站 font-synthesis:none 吞掉文档格式。 */
 .project-document-editor :deep(.ProseMirror) { min-height: 55vh; color: var(--ink); font-synthesis: style weight; }
 /* Tiptap 3.32 的 checkbox 后方为隐藏说明；保留说明并恢复原生框，避免上游旧版伪装样式隐藏勾选状态。 */
@@ -166,5 +166,5 @@ onBeforeUnmount(() => {
 /* 拖动镜像和落点挂到 body，避免编辑器 DOM 重绘/滚动遮挡反馈。 */
 :global(.project-resource-drag-ghost) { position: fixed; z-index: 2000; pointer-events: none; opacity: .7; border: 2px solid var(--accent); border-radius: 8px; background: var(--surface); box-shadow: var(--shadow); }
 :global(.project-resource-drag-ghost img) { display: block; max-width: 100%; max-height: 150px; object-fit: contain; }
-:global(.project-resource-drop-indicator) { position: fixed; z-index: 2001; pointer-events: none; background: var(--accent); color: var(--accent); font-size: 12px; font-weight: 700; white-space: nowrap; text-indent: 8px; line-height: 24px; }
+:global(.project-resource-drop-indicator) { position: fixed; z-index: 2001; pointer-events: none; background: var(--accent); color: var(--accent); font-size: 12px; font-weight: 600; white-space: nowrap; text-indent: 8px; line-height: 24px; }
 </style>

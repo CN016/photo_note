@@ -86,16 +86,16 @@ onBeforeUnmount(() => { requestVersion += 1; if (searchTimer) window.clearTimeou
 
 <style scoped>
 /* 界面表面与控件使用全局主题令牌；图片、文档和用户自选封面颜色保持原数据。 */
-.inspiration-picker-toolbar { display: flex; align-items: center; gap: 10px; }
+.inspiration-picker-toolbar { display: flex; align-items: center; gap: 12px; }
 .inspiration-picker-toolbar .el-input { flex: 1; }
 .picker-file-input { display: none; }
-.picker-create-hint { margin: 8px 0 13px; color: var(--muted); font-size: 11px; }
-.inspiration-picker-grid { display: grid; max-height: 54vh; overflow: auto; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 10px; padding: 2px; }
-.inspiration-picker-card { min-width: 0; padding: 5px; border: 1px solid var(--line); border-radius: var(--radius-control); background: var(--surface); color: var(--ink); text-align: left; cursor: pointer; }
+.picker-create-hint { margin: 8px 0 12px; color: var(--muted); font-size: 12px; }
+.inspiration-picker-grid { display: grid; max-height: 54vh; overflow: auto; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 12px; padding: 2px; }
+.inspiration-picker-card { min-width: 0; padding: 4px; border: 1px solid var(--line); border-radius: var(--radius-control); background: var(--surface); color: var(--ink); text-align: left; cursor: pointer; }
 .inspiration-picker-card:hover { border-color: var(--accent); }
-.inspiration-picker-card > span:last-child { display: block; overflow: hidden; padding: 6px 2px 2px; font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
+.inspiration-picker-card > span:last-child { display: block; overflow: hidden; padding: 8px 2px 2px; font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
 .picker-state { display: grid; min-height: 170px; place-items: center; color: var(--muted); }
-.picker-footer { display: flex; justify-content: space-between; align-items: center; color: var(--muted); font-size: 11px; }
+.picker-footer { display: flex; justify-content: space-between; align-items: center; color: var(--muted); font-size: 12px; }
 @media (max-width: 768px) { .picker-footer :deep(.el-button) { min-width: 44px; min-height: 44px; } }
 @media (max-width: 600px) { .inspiration-picker-toolbar { align-items: stretch; flex-direction: column; } .inspiration-picker-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
 </style>
