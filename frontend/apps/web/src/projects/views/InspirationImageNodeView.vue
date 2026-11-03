@@ -4,6 +4,7 @@ import { NodeViewWrapper, type NodeViewProps } from '@tiptap/vue-3'
 import { ArrowLeft, ArrowRight, BottomRight, Delete, Edit } from '@element-plus/icons-vue'
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
+import { useResourceContextMenu } from '../resourceContextMenu'
 import { useResourceResize } from '../resourceResize'
 import { useResourceMovement } from '../resourceMovement'
 import { api } from '../../api/client'
@@ -102,6 +103,15 @@ watch(inspirationID, () => {
 })
 onMounted(() => { void load() })
 onBeforeUnmount(() => { requestVersion += 1; if (url.value) URL.revokeObjectURL(url.value) })
+
+// 查看与详情沿用当前节点的授权数据，不向菜单暴露下载链接。
+useResourceContextMenu(props, {
+ readOnly: () => readOnly.value, image: () => true,
+ load: async () => api.download((await loadRecord()).image_key),
+ filename: () => record.value?.file_name || 'image.png',
+ view: () => { const position = props.getPos(); if (typeof position === 'number') readContext?.openImage(position) },
+ details: () => { void openDetails() }, size: setSizePreset,
+})
 </script>
 
 <template>
@@ -111,7 +121,7 @@ onBeforeUnmount(() => { requestVersion += 1; if (url.value) URL.revokeObjectURL(
     :style="{ width: `calc(${displayWidth}% - 12px)` }"
     :draggable="false"
     contenteditable="false"
-    @mousedown="!readOnly && startMouseDrag($event)" @click="readOnly ? openReadImage() : selectResource($event)" @contextmenu.prevent
+    @mousedown="!readOnly && startMouseDrag($event)" @click="readOnly ? openReadImage() : selectResource($event)"
     @touchstart="!readOnly && startBlockTouch($event)"
     @dblclick.prevent.stop="!readOnly && openDetails()"
   >

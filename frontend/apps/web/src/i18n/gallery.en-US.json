@@ -116,5 +116,8 @@
       "gray": "Gray"
     },
     "processingRule": "AI runs after a new image is saved, or during the daily scan for images not yet analyzed."
-  }
+  },
+  "relatedProjects": "Related projects",
+  "noRelatedProjects": "Not used in any project",
+  "relatedProjectsError": "Unable to load related projects"
 }

@@ -87,11 +87,26 @@
   "linkUrlInvalid": "请输入有效的 http、https 或 mailto 地址。",
   "width": "宽度",
   "viewer": {
-    "previous": "上一页", "next": "下一页", "page": "页", "of": "/", "zoomIn": "放大", "zoomOut": "缩小",
-    "fitWidth": "适合宽度", "fitPage": "适合页面", "search": "搜索", "searchPlaceholder": "搜索文档",
-    "matches": "匹配结果", "thumbnails": "缩略图", "fullscreen": "全屏", "exitFullscreen": "退出全屏",
-    "download": "下载原文件", "sheets": "工作表", "selectedRange": "选中区域", "loading": "正在读取文档…",
-    "close": "关闭", "noMatches": "没有匹配内容"
+    "previous": "上一页",
+    "next": "下一页",
+    "page": "页",
+    "of": "/",
+    "zoomIn": "放大",
+    "zoomOut": "缩小",
+    "fitWidth": "适合宽度",
+    "fitPage": "适合页面",
+    "search": "搜索",
+    "searchPlaceholder": "搜索文档",
+    "matches": "匹配结果",
+    "thumbnails": "缩略图",
+    "fullscreen": "全屏",
+    "exitFullscreen": "退出全屏",
+    "download": "下载原文件",
+    "sheets": "工作表",
+    "selectedRange": "选中区域",
+    "loading": "正在读取文档…",
+    "close": "关闭",
+    "noMatches": "没有匹配内容"
   },
   "switchToEdit": "编辑模式",
   "switchToRead": "阅读模式",
@@ -100,5 +115,17 @@
   "imageLoadFailed": "图片加载失败",
   "uploadProgress": "当前文件上传进度",
   "uploadPendingLeave": "请等待上传完成，或重试、移除失败的文件后离开。",
-  "uploadStage": { "queued": "等待上传…", "preparing": "正在准备图片…", "original": "正在上传原图…", "file": "正在上传文件…", "processing": "正在处理图片…", "working": "正在上传图片副本…", "creating": "正在保存到灵感库…", "sending": "正在上传", "waiting": "已发送，等待服务器处理…", "failed": "上传失败，请重试或移除。" }
+  "uploadStage": {
+    "queued": "等待上传…",
+    "preparing": "正在准备图片…",
+    "original": "正在上传原图…",
+    "file": "正在上传文件…",
+    "processing": "正在处理图片…",
+    "working": "正在上传图片副本…",
+    "creating": "正在保存到灵感库…",
+    "sending": "正在上传",
+    "waiting": "已发送，等待服务器处理…",
+    "failed": "上传失败，请重试或移除。"
+  },
+  "backToGallery": "返回灵感库"
 }

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { ArrowLeft, ArrowRight, Calendar, CollectionTag, Folder, Histogram, Picture, Setting, User } from '@element-plus/icons-vue'
 import { api } from '../api/client'
@@ -135,6 +135,11 @@ timer = window.setInterval(() => {
   void load()
 }, 30_000)
 onBeforeUnmount(() => { requestVersion += 1; window.clearInterval(timer) })
+/** 图库返回只恢复视图偏好，筛选条件仍由父页面控制，不恢复未提交的设置表单。 */
+defineExpose({
+  snapshot: () => ({ year: year.value, month: month.value, view: view.value }),
+  restore: async (state: { year: number; month: string; view: string }) => { year.value = state.year; month.value = state.month; view.value = state.view; await nextTick(); await load() },
+})
 </script>
 
 <template>

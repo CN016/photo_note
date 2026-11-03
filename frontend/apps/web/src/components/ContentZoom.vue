@@ -80,6 +80,14 @@ onBeforeUnmount(() => {
     }
   }
 })
+/** 页面来源快照只保存缩放数值和横向位置，不持有画布或图片资源。 */
+defineExpose({
+  snapshot: () => ({ scale, scroll: container?.scrollLeft ?? 0 }),
+  restore: (state: { scale: number; scroll: number }) => {
+    if (!enabled.value || !container || !content) return
+    scale = Math.max(1, Math.min(3, state.scale)); content.style.zoom = String(scale); container.scrollLeft = state.scroll
+  },
+})
 </script>
 
 <template>

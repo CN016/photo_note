@@ -6,6 +6,8 @@ import { ElMessage } from 'element-plus'
 import { ArrowLeft } from '@element-plus/icons-vue'
 import ProjectDocumentEditor from '../projects/views/ProjectDocumentEditor.vue'
 import { useI18n } from 'vue-i18n'
+import { useAuthStore } from '../stores/auth'
+import { gallerySnapshot } from '../context-menu/galleryNavigation'
 import AppHeader from '../components/AppHeader.vue'
 import ProjectCoverImage from '../components/ProjectCoverImage.vue'
 import ProjectInspirationPicker from '../projects/views/ProjectInspirationPicker.vue'
@@ -15,6 +17,7 @@ import type { InspirationRecord, ProjectRecord, ProjectSaveInput } from '../api/
 import { createProjectInspiration } from '../projects/createProjectInspiration'
 import { fallbackProjectUploadLimit, projectUploadLimit } from '../projects/projectUploadLimit'
 
+const auth = useAuthStore()
 const route = useRoute()
 const router = useRouter()
 const { t, locale } = useI18n({ useScope: 'global' })
@@ -50,7 +53,7 @@ function editorReady(instance: Editor) {
 
 function saveInput(): ProjectSaveInput {
   return {
-    default_read_only: readOnly.value, title: title.value.trim(), cover_emoji: coverEmoji.value, cover_image_key: coverImageKey.value,
+    default_read_only: route.query.from === 'gallery' && readOnly.value && !modeChanged ? project.value?.default_read_only : readOnly.value, title: title.value.trim(), cover_emoji: coverEmoji.value, cover_image_key: coverImageKey.value,
     cover_file_name: coverFileName.value, document_schema_version: 1,
     document: editor.value?.getJSON() ?? { type: 'doc', content: [{ type: 'paragraph' }] },
     revision: project.value?.revision ?? 1,
@@ -99,7 +102,7 @@ async function loadProject() {
     const result = await api.project(projectID.value)
     project.value = result
     initialDocument.value = result.document
-    readOnly.value = result.default_read_only ?? false
+    readOnly.value = route.query.from === 'gallery' && route.query.mode === 'read' ? true : result.default_read_only ?? false
     title.value = result.title
     coverEmoji.value = result.cover_emoji
     coverImageKey.value = result.cover_image_key
@@ -113,8 +116,17 @@ async function loadUploadLimit() {
   maxUploadBytes.value = await projectUploadLimit()
 }
 
-/** 切换模式同时保存为下次打开默认值；正文保存仍受修订号保护。 */
+/** 有效图库来源使用历史返回；直达或快照失效时回落策划列表。 */
+function goBack() {
+  const scope = `${auth.sessionID}:${auth.orgid}:${auth.sessionVersion}:${auth.user?.business_id ?? ''}`
+  const saved = gallerySnapshot(scope, String(route.query.returnKey || ''))
+  if (route.query.from === 'gallery' && saved && history.state.back === '/inspirations' && history.state.position === saved.position + 1) router.back()
+  else void router.push('/projects')
+}
+/** 临时阅读不保存模式；用户主动切换后才持久化，并继续使用修订号保护。 */
+let modeChanged = false
 function switchMode() {
+  modeChanged = true
   readOnly.value = !readOnly.value
   scheduleSave()
 }
@@ -290,7 +302,7 @@ onBeforeRouteLeave(async () => {
     <div v-else-if="loadFailed || !project" class="project-editor-state project-editor-error"><p>{{ t('projects.loadError') }}</p><el-button @click="loadProject">{{ t('common.retry') }}</el-button></div>
     <template v-else>
       <header class="project-editor-header">
-        <el-button class="project-back" text :icon="ArrowLeft" @click="router.push('/projects')">{{ t('projects.back') }}</el-button>
+        <el-button class="project-back" text :icon="ArrowLeft" @click="goBack">{{ t(route.query.from === 'gallery' ? 'projects.backToGallery' : 'projects.back') }}</el-button>
         <div class="project-title-area">
           <ProjectCoverImage :storekey="coverImageKey" :emoji="coverEmoji" :label="title" />
           <el-input v-model="title" :disabled="documentIncompatible || readOnly" class="project-title-input" maxlength="120" :placeholder="t('projects.editorTitlePlaceholder')" />

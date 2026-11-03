@@ -1,6 +1,13 @@
 <script setup lang="ts">
 import ContentZoom from '../components/ContentZoom.vue'
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { useRouter } from 'vue-router'
+import { registerMenu, openMenu, updateMenu, menuState, type MenuEntry } from '../context-menu/menu'
+import { clipboardAdapter } from '../../../../packages/platform-adapters'
+import { copyImage } from '../context-menu/clipboard'
+import { createLongPress } from '../context-menu/longPress'
+import { gallerySnapshot, saveGallerySnapshot, clearGallerySnapshot } from '../context-menu/galleryNavigation'
+import type { InspirationProjectSummary } from '../api/types'
 import { useI18n } from 'vue-i18n'
 import { ArrowRight, PictureFilled, Plus, Search } from '@element-plus/icons-vue'
 import AppHeader from '../components/AppHeader.vue'
@@ -12,6 +19,78 @@ import { api } from '../api/client'
 import { ApiError, type InspirationRecord, type TagRecord } from '../api/types'
 
 const { t, locale } = useI18n()
+const router = useRouter()
+const galleryRoot = ref<HTMLElement>()
+const libraryTools = ref<InstanceType<typeof InspirationLibraryTools>>()
+const contentZoom = ref<InstanceType<typeof ContentZoom>>()
+const scopeKey = () => `${auth.sessionID}:${auth.orgid}:${auth.sessionVersion}:${auth.user?.business_id ?? ''}`
+let restoring = false
+let alive = true
+let disposeMenu: (() => void) | undefined
+let touchedCard: HTMLElement | null = null
+let activeImage = ''
+let menuPage = 1
+let related: InspirationProjectSummary[] = []
+let relatedTotal = 0
+let associationVersion = 0
+const gesture = createLongPress((x, y) => {
+  const item = items.value.find(item => item.business_id === touchedCard?.dataset.inspirationCard)
+  if (item && touchedCard) showProjects(item, touchedCard, x, y)
+})
+/** 关联浮窗按需加载，菜单代次和会话范围共同阻止迟到响应串图。 */
+function showProjects(item: InspirationRecord, card: HTMLElement, x: number, y: number, pages = 1, scroll = 0) {
+  activeImage = item.business_id; related = []; menuPage = 0; relatedTotal = 0
+  const version = ++associationVersion, scope = scopeKey()
+  const id = openMenu(x, y, [{ label: t('common.loading'), disabled: true }], card, scroll)
+  const copy: MenuEntry = { label: t('contextMenu.copyImage'), disabled: !clipboardAdapter.canWriteImage(), run: () => copyImage(() => api.download(item.image_key)) }
+  const render = (pending = false, failed = false) => {
+    const entries: MenuEntry[] = [{ label: t('gallery.relatedProjects'), disabled: true }, ...related.map(project => ({ label: project.title || t('projects.editorTitlePlaceholder'), run: () => openRelated(project.business_id, x, y) }))]
+    if (!related.length && !pending && !failed) entries.push({ label: t('gallery.noRelatedProjects'), disabled: true })
+    if (pending) entries.push({ label: t('common.loading'), disabled: true })
+    else if (failed) entries.push({ label: t('gallery.relatedProjectsError'), disabled: true }, { label: t('common.retry'), stayOpen: true, run: () => load(menuPage + 1) })
+    else if (menuPage * 20 < relatedTotal) entries.push({ label: t('gallery.loadMore'), stayOpen: true, run: () => load(menuPage + 1) })
+    entries.push(copy)
+    updateMenu(id, entries, menuState.value?.scroll ?? scroll)
+  }
+  async function load(pageNumber: number): Promise<void> {
+    render(true)
+    try {
+      const result = await api.inspirationProjects(item.business_id, pageNumber)
+      if (version !== associationVersion || scope !== scopeKey() || menuState.value?.id !== id) return
+      related = Array.from(new Map((pageNumber === 1 ? result.items : [...related, ...result.items]).map(project => [project.business_id, project])).values())
+      relatedTotal = result.total; menuPage = result.page
+      if (menuPage < pages && menuPage * 20 < relatedTotal) { await load(menuPage + 1); return }
+      render()
+      if (pages > 1 || scroll) { const state = menuState.value; if (state?.id === id) updateMenu(id, state.items, scroll) }
+    } catch { if (version === associationVersion && scope === scopeKey()) render(false, true) }
+  }
+  void load(1)
+}
+/** 来源历史项与快照绑定，浏览器返回才恢复；普通重新进入图库不误用旧状态。 */
+function openRelated(projectID: string, x: number, y: number) {
+  const key = crypto.randomUUID()
+  history.replaceState({ ...history.state, galleryReturnKey: key }, '')
+  saveGallerySnapshot({ scope: scopeKey(), key, position: history.state.position, x, y,
+    search: searchQuery.value, tags: [...selectedTagIDs.value], match: tagMatch.value, sort: sort.value,
+    filters: JSON.parse(JSON.stringify(libraryFilters.value)), items: [...items.value], page: page.value, total: total.value,
+    scroll: window.scrollY, imageID: activeImage, menuPage, menuScroll: menuState.value?.scroll ?? 0,
+    toolsScroll: document.querySelector('.activity-scroll')?.scrollLeft ?? 0,
+    tools: libraryTools.value!.snapshot(), zoom: contentZoom.value!.snapshot() })
+  void router.push({ path: `/projects/${projectID}`, query: { from: 'gallery', returnKey: key, mode: 'read' } })
+}
+function touchStart(event: TouchEvent) {
+  if (event.touches.length !== 1) { gesture.cancel(); return }
+  touchedCard = (event.target as Element).closest<HTMLElement>('[data-inspiration-card]')
+  const touch = event.touches[0]
+  if (touchedCard && touch) gesture.start(touch.clientX, touch.clientY)
+}
+function touchMove(event: TouchEvent) {
+  const touch = event.touches[0]
+  if (event.touches.length !== 1 || !touch) gesture.cancel()
+  else gesture.move(touch.clientX, touch.clientY)
+}
+function interceptClick(event: MouseEvent) { if (gesture.consumeClick()) { event.preventDefault(); event.stopPropagation() } }
+
 const items = ref<InspirationRecord[]>([])
 const tags = ref<TagRecord[]>([])
 const searchQuery = ref('')
@@ -68,6 +147,7 @@ async function loadTags() {
 
 /** 筛选条件变化后短暂合并连续输入，并从第一页重新查询。 */
 watch([searchQuery, selectedTagIDs, tagMatch, sort, libraryFilters], () => {
+  if (restoring) return
   if (searchTimer !== undefined) window.clearTimeout(searchTimer)
   searchTimer = window.setTimeout(() => { void loadPage(1) }, 220)
 })
@@ -84,7 +164,7 @@ function resetFilters() {
 /** 重试只提交当前图片任务，等待后端确认后刷新列表，防止重复点击。 */
 
 watch(() => [auth.orgid, auth.user?.business_id, auth.sessionVersion], () => {
-  requestVersion += 1; items.value = []; total.value = 0; libraryFilters.value = {}; selectedTagIDs.value = []; tags.value = []
+  clearGallerySnapshot(); associationVersion += 1; requestVersion += 1; items.value = []; total.value = 0; libraryFilters.value = {}; selectedTagIDs.value = []; tags.value = []
   void loadPage(); void loadTags()
 })
 
@@ -108,14 +188,40 @@ function displayFileSize(bytes: number | null | undefined): string {
 
 /** 只在当前页有未完成任务且页面可见时刷新，异步结果不依赖用户手动切换筛选。 */
 const processingTimer = window.setInterval(() => { if (document.visibilityState === 'visible' && page.value === 1 && !loading.value && items.value.some(item => ['pending_compression','compressing','pending_analysis','analyzing'].includes(item.analysis_status || ''))) void loadPage() }, 30_000)
-onMounted(() => { void loadPage(); void loadTags() })
-onBeforeUnmount(() => { tagsVersion += 1; window.clearInterval(processingTimer); if (searchTimer !== undefined) window.clearTimeout(searchTimer); requestVersion += 1 })
+onMounted(async () => {
+  if (galleryRoot.value) disposeMenu = registerMenu(galleryRoot.value, event => {
+    const card = (event.target as Element).closest<HTMLElement>('[data-inspiration-card]')
+    const item = items.value.find(item => item.business_id === card?.dataset.inspirationCard)
+    if (!item || !card) return false
+    gesture.cancel(); showProjects(item, card, event.clientX, event.clientY); return true
+  })
+  window.addEventListener('scroll', gesture.cancel, true)
+  void loadTags()
+  const saved = gallerySnapshot(scopeKey(), history.state.galleryReturnKey)
+  if (!saved || saved.key !== history.state.galleryReturnKey || saved.position !== history.state.position) { void loadPage(); return }
+  restoring = true
+  searchQuery.value = saved.search; selectedTagIDs.value = saved.tags; tagMatch.value = saved.match
+  sort.value = saved.sort; libraryFilters.value = saved.filters; items.value = saved.items; page.value = saved.page; total.value = saved.total
+  await libraryTools.value?.restore(saved.tools)
+  if (!alive) return
+  await nextTick(); restoring = false
+  contentZoom.value?.restore(saved.zoom)
+  const activityScroll = document.querySelector('.activity-scroll')
+  if (activityScroll) activityScroll.scrollLeft = saved.toolsScroll
+  // 隐藏标签页会暂停 requestAnimationFrame；nextTick 后强制布局即可，不等待动画帧。
+  void galleryRoot.value?.offsetHeight
+  window.scrollTo(0, saved.scroll)
+  const card = galleryRoot.value?.querySelector<HTMLElement>(`[data-inspiration-card="${saved.imageID}"]`)
+  const item = items.value.find(item => item.business_id === saved.imageID)
+  if (item && card) showProjects(item, card, saved.x, saved.y, saved.menuPage, saved.menuScroll)
+})
+onBeforeUnmount(() => { alive = false; disposeMenu?.(); gesture.cancel(); associationVersion += 1; window.removeEventListener('scroll', gesture.cancel, true); tagsVersion += 1; window.clearInterval(processingTimer); if (searchTimer !== undefined) window.clearTimeout(searchTimer); requestVersion += 1 })
 </script>
 
 <template>
-  <div class="workspace-page">
+  <div ref="galleryRoot" class="workspace-page" @touchstart.passive="touchStart" @touchmove.passive="touchMove" @touchend="gesture.cancel" @touchcancel="gesture.cancel" @click.capture="interceptClick">
     <AppHeader />
-    <ContentZoom><main class="gallery-main">
+    <ContentZoom ref="contentZoom"><main class="gallery-main">
       <section class="gallery-intro">
         <div><p class="eyebrow">{{ t('common.product') }}</p><h1>{{ t('gallery.title') }}</h1><p class="gallery-subtitle">{{ t('gallery.subtitle') }}</p></div>
         <RouterLink custom to="/inspirations/new" v-slot="{ navigate }"><el-button class="primary-button add-button" type="primary" :aria-label="t('gallery.newImage')" :title="t('gallery.newImage')" @click="navigate"><el-icon aria-hidden="true"><Plus /></el-icon>{{ t('gallery.newImage') }}</el-button></RouterLink>
@@ -126,7 +232,7 @@ onBeforeUnmount(() => { tagsVersion += 1; window.clearInterval(processingTimer);
         <RouterLink class="gallery-subnav-link" to="/inspirations/statistics">{{ t('gallery.statisticsSection') }}</RouterLink>
       </nav>
 
-      <InspirationLibraryTools v-model:filters="libraryFilters" :revision="libraryRevision" :selected-tags="selectedTagIDs" @tag="id => selectedTagIDs = selectedTagIDs.includes(id) ? selectedTagIDs.filter(tag => tag !== id) : [...selectedTagIDs, id]" />
+      <InspirationLibraryTools ref="libraryTools" v-model:filters="libraryFilters" :revision="libraryRevision" :selected-tags="selectedTagIDs" @tag="id => selectedTagIDs = selectedTagIDs.includes(id) ? selectedTagIDs.filter(tag => tag !== id) : [...selectedTagIDs, id]" />
 
       <section class="gallery-tools" :aria-label="t('gallery.filters')">
         <el-input v-model="searchQuery" class="gallery-search" :aria-label="t('gallery.searchPlaceholder')" :placeholder="t('gallery.searchPlaceholder')" clearable>
@@ -151,7 +257,7 @@ onBeforeUnmount(() => { tagsVersion += 1; window.clearInterval(processingTimer);
       <div v-if="error" class="inline-error" role="alert"><span>{{ error }}</span><el-button text :disabled="loading" @click="loadPage(page)">{{ t('gallery.retry') }}</el-button></div>
 
       <section v-if="items.length" class="inspiration-grid" :aria-label="t('gallery.title')">
-        <article v-for="(item, index) in items" :key="item.business_id" class="inspiration-card" :style="{ '--card-index': index % 8 }">
+        <article v-for="(item, index) in items" :key="item.business_id" class="inspiration-card" tabindex="0" :data-inspiration-card="item.business_id" :style="{ '--card-index': index % 8 }">
           <RouterLink class="inspiration-link" :to="`/inspirations/${item.business_id}`" :aria-label="t('gallery.openImage', { name: item.file_name || t('gallery.untitled') })">
             <InspirationThumbnail :record="item" />
             <div class="card-caption">
@@ -204,4 +310,9 @@ onBeforeUnmount(() => { tagsVersion += 1; window.clearInterval(processingTimer);
 </template>
 <style scoped>
 .gallery-analysis{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:0 12px 12px;color:var(--muted);font-size:12px}.gallery-analysis>span{display:flex;align-items:center;gap:8px}.gallery-analysis i{width:12px;height:12px;border-radius:50%;border:1px solid var(--line)}
+</style>
+
+<style scoped>
+.inspiration-card { -webkit-touch-callout: none; }
+.inspiration-card img { -webkit-user-drag: none; }
 </style>

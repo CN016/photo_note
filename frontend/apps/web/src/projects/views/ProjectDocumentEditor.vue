@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { registerMenu } from '../../context-menu/menu'
+import { openProjectMenu } from '../contextMenu'
 import ContentZoom from '../../components/ContentZoom.vue'
 import { computed, markRaw, shallowRef, watch, onMounted, onBeforeUnmount, provide, ref } from 'vue'
 import { Extension, getSchema, type Editor } from '@tiptap/core'
@@ -32,6 +34,19 @@ const emit = defineEmits<{ ready: [editor: Editor]; incompatible: []; change: []
 const { t, locale } = useI18n({ useScope: 'global' })
 const theme = useColorTheme()
 const editor = shallowRef<Editor>()
+const root = ref<HTMLElement>()
+let disposeMenu: (() => void) | undefined
+onMounted(() => {
+  if (root.value) disposeMenu = registerMenu(root.value, event => {
+    if (!editor.value || !compatible.value || !(event.target as Element).closest('.ProseMirror,.tvp-content-wrap')) return false
+    if ((event.target as Element).closest('.project-upload-placeholder')) return false
+    openProjectMenu(editor.value, event, props.readOnly,
+      kind => kind === 'inspiration' ? emit('insertInspiration') : kind === 'media' ? emit('uploadMedia') : emit('uploadAttachment'),
+      files => emit('pasteFiles', files))
+    return true
+  })
+})
+onBeforeUnmount(() => disposeMenu?.())
 const viewerPosition = ref<number | null>(null)
 // 节点视图通过注入打开同一策划的图片浏览器，位置区分重复引用的图片。
 provide(projectReadContext, { readOnly: computed(() => props.readOnly), openImage: position => { viewerPosition.value = position } })
@@ -109,7 +124,7 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <ContentZoom selector=".tvp-content-wrap"><div class="project-document-editor" :class="{ 'is-readonly': props.readOnly }">
+  <ContentZoom selector=".tvp-content-wrap"><div ref="root" class="project-document-editor" :class="{ 'is-readonly': props.readOnly }">
     <el-alert v-if="!compatible" :title="t('projects.documentIncompatible')" type="error" :closable="false" />
     <ProEditorElementPlus v-else :model-value="props.document" output="json" :extensions="extensions" :toolbar="toolbar"
       :toolbar-options="{ fontSizes: ['12px', '14px', '16px', '18px', '20px', '24px', '30px', '36px', '48px'] }"

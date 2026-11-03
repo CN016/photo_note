@@ -472,3 +472,6 @@ export class ApiError extends Error {
 export interface PortfolioRecord { business_id: string; title: string; description: string; tag_ids: string[]; share_enabled: boolean; cover_image_key?: string }
 export interface PortfolioPhoto { business_id: string; image_key: string; title: string; tag_ids: string[]; sort_order: number; image_metadata: InspirationImageMetadata }
 export interface PortfolioInput { title: string; description: string; tag_ids: string[]; project_ids: string[] }
+
+/** 灵感图关联策划仅返回可见摘要，不携带正文及私有文件地址。 */
+export type InspirationProjectSummary = Pick<ProjectSummary, 'business_id' | 'title' | 'updated_at'>

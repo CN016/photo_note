@@ -116,5 +116,8 @@
       "gray": "灰"
     },
     "processingRule": "AI仅在首次新增后异步识别，或由每日定时任务补识别未处理图片。"
-  }
+  },
+  "relatedProjects": "关联策划",
+  "noRelatedProjects": "暂未用于策划",
+  "relatedProjectsError": "无法读取关联策划"
 }

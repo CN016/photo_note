@@ -1,6 +1,6 @@
 import { ApiError, type ApiEnvelope, type ApiErrorEnvelope, type AuthResponse, type ConsoleConfigRecord, type ConsoleFeedbackRecord, type ConsoleInspirationRecord, type ConsoleUserRecord, type InspirationImageMetadata, type InspirationRecord, type InspirationStatistics, type LedgerFields, type LedgerImportItem, type LedgerImportResult, type LedgerRecord, type NoticeConfig, type NoticeConfigList, type NoticeDelivery, type NotificationPage, type PageResult, type PlanFields, type PlanRecord, type ProjectRecord, type ProjectSaveInput, type ProjectSummary, type ScheduleBooking, type ScheduleBookingReceipt, type ScheduleFields, type ScheduleOccurrence, type SchedulePublicSlot, type ScheduleShare, type TagRecord, type TokenPair, type UserProfile } from './types'
 import { API_REQUEST_ORIGIN } from './config'
-import type { Environment, Organization, OrganizationMember, PortfolioRecord, PortfolioPhoto, PortfolioInput } from './types'
+import type { InspirationProjectSummary, Environment, Organization, OrganizationMember, PortfolioRecord, PortfolioPhoto, PortfolioInput } from './types'
 import type { InspirationLibraryFilters, InspirationGoalStatus, InspirationFacet } from './types'
 
 /** V1 业务路由统一加版本前缀；环境变量只提供服务主机。 */
@@ -466,6 +466,7 @@ export const api = {
   /** 删除计划并取消未发送提醒。 */
   deletePlan(id: string) { return request<void>(`/plans/${encodeURIComponent(id)}`, { method: 'DELETE' }) },
   /** 分页搜索当前用户的项目标题与正文。 */
+  inspirationProjects(id: string, page = 1) { return request<PageResult<InspirationProjectSummary>>(`/inspirations/${encodeURIComponent(id)}/projects?page=${page}&page_size=20`) },
   projects(page = 1, pageSize = 20, query = '') {
     const params = new URLSearchParams({ page: String(page), page_size: String(pageSize) })
     if (query.trim()) params.set('q', query.trim())

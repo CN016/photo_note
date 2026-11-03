@@ -4,6 +4,7 @@ import { NodeViewWrapper, type NodeViewProps } from '@tiptap/vue-3'
 import { ArrowLeft, ArrowRight, BottomRight, Delete } from '@element-plus/icons-vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute } from 'vue-router'
+import { useResourceContextMenu } from '../resourceContextMenu'
 import { useResourceResize } from '../resourceResize'
 import { useResourceMovement } from '../resourceMovement'
 import { api } from '../../api/client'
@@ -78,6 +79,15 @@ watch([url, isVideo], ([source, video]) => {
 }, { flush: 'post' })
 onMounted(() => { void load() })
 onBeforeUnmount(() => { requestVersion += 1; disposePlayer(); if (url.value) URL.revokeObjectURL(url.value) })
+
+// 附件菜单复用项目授权读取和既有预览组件，移除只作用于正文引用。
+useResourceContextMenu(props, {
+ readOnly: () => readOnly.value, image: () => isImage.value,
+ load: () => api.projectAttachmentContent(projectID.value, storekey.value),
+ filename: () => fileName.value,
+ view: () => { const position = props.getPos(); if (isImage.value && typeof position === 'number') readContext?.openImage(position); else openPreview() },
+ size: setSizePreset,
+})
 </script>
 
 <template>
@@ -87,7 +97,7 @@ onBeforeUnmount(() => { requestVersion += 1; disposePlayer(); if (url.value) URL
     :style="{ width: `calc(${displayWidth}% - 12px)` }"
     :draggable="false"
     contenteditable="false"
-    @mousedown="!readOnly && startMouseDrag($event)" @click="readOnly && isImage ? openReadImage() : readOnly ? (!isVideo && openPreview()) : selectResource($event)" @contextmenu.prevent
+    @mousedown="!readOnly && startMouseDrag($event)" @click="readOnly && isImage ? openReadImage() : readOnly ? (!isVideo && openPreview()) : selectResource($event)"
     @touchstart="!readOnly && startBlockTouch($event)"
     @dblclick.prevent.stop="!readOnly && openPreview()"
   >

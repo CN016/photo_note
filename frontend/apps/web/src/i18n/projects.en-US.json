@@ -87,11 +87,26 @@
   "linkUrlInvalid": "Enter a valid http, https, or mailto URL.",
   "width": "Width",
   "viewer": {
-    "previous": "Previous", "next": "Next", "page": "Page", "of": "of", "zoomIn": "Zoom in", "zoomOut": "Zoom out",
-    "fitWidth": "Fit width", "fitPage": "Fit page", "search": "Search", "searchPlaceholder": "Search document",
-    "matches": "Matches", "thumbnails": "Thumbnails", "fullscreen": "Fullscreen", "exitFullscreen": "Exit fullscreen",
-    "download": "Download original", "sheets": "Sheets", "selectedRange": "Selected range", "loading": "Loading document…",
-    "close": "Close", "noMatches": "No matches found"
+    "previous": "Previous",
+    "next": "Next",
+    "page": "Page",
+    "of": "of",
+    "zoomIn": "Zoom in",
+    "zoomOut": "Zoom out",
+    "fitWidth": "Fit width",
+    "fitPage": "Fit page",
+    "search": "Search",
+    "searchPlaceholder": "Search document",
+    "matches": "Matches",
+    "thumbnails": "Thumbnails",
+    "fullscreen": "Fullscreen",
+    "exitFullscreen": "Exit fullscreen",
+    "download": "Download original",
+    "sheets": "Sheets",
+    "selectedRange": "Selected range",
+    "loading": "Loading document…",
+    "close": "Close",
+    "noMatches": "No matches found"
   },
   "switchToEdit": "Edit mode",
   "switchToRead": "Reading mode",
@@ -100,5 +115,17 @@
   "imageLoadFailed": "Unable to load image",
   "uploadProgress": "Current file upload progress",
   "uploadPendingLeave": "Wait for uploads to finish, or retry or remove failed files before leaving.",
-  "uploadStage": { "queued": "Waiting to upload…", "preparing": "Preparing image…", "original": "Uploading original…", "file": "Uploading file…", "processing": "Processing image…", "working": "Uploading image copy…", "creating": "Saving to inspiration library…", "sending": "Uploading", "waiting": "Sent; waiting for server…", "failed": "Upload failed. Retry or remove it." }
+  "uploadStage": {
+    "queued": "Waiting to upload…",
+    "preparing": "Preparing image…",
+    "original": "Uploading original…",
+    "file": "Uploading file…",
+    "processing": "Processing image…",
+    "working": "Uploading image copy…",
+    "creating": "Saving to inspiration library…",
+    "sending": "Uploading",
+    "waiting": "Sent; waiting for server…",
+    "failed": "Upload failed. Retry or remove it."
+  },
+  "backToGallery": "Back to inspiration library"
 }
