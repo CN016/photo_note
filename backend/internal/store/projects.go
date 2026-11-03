@@ -10,6 +10,7 @@ import (
 	"github.com/lib/pq"
 	"github.com/photo-nini/backend/internal/domain/fault"
 	"github.com/photo-nini/backend/internal/model"
+	"github.com/photo-nini/backend/internal/tenant"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )
@@ -231,4 +232,31 @@ func projectSearchGrams(query string) []string {
 		grams = append(grams, gram)
 	}
 	return grams
+}
+
+// ListInspirationProjects 显式校验会话、图片和关联各表的空间及用户，不借用组织管理权限。
+// EXISTS 避免同一策划多次引用造成分页重复，删除的策划不进入结果。
+func (store *PostgresStore) ListInspirationProjects(ctx context.Context, userID, inspirationID uuid.UUID, offset, pageSize int) ([]model.Project, int64, error) {
+	if err := libraryUserBoundary(ctx, userID); err != nil {
+		return nil, 0, err
+	}
+	scope, err := tenant.Require(ctx)
+	if err != nil {
+		return nil, 0, err
+	}
+	var image model.Inspiration
+	if err := store.db.WithContext(ctx).Select("business_id").Where("orgid = ? AND user_id = ? AND business_id = ?", scope.OrgID, userID, inspirationID).First(&image).Error; err != nil {
+		return nil, 0, persistenceError(err)
+	}
+	base := store.db.WithContext(ctx).Model(&model.Project{}).Where("projects.orgid = ? AND projects.user_id = ? AND projects.deleted_at IS NULL", scope.OrgID, userID).
+		Where(`EXISTS (SELECT 1 FROM project_inspiration_usages u JOIN inspirations i ON i.business_id=u.inspiration_business_id AND i.orgid=u.orgid AND i.user_id=u.user_id WHERE u.project_business_id=projects.business_id AND u.orgid=? AND u.user_id=? AND i.orgid=? AND i.user_id=? AND i.business_id=?)`, scope.OrgID, userID, scope.OrgID, userID, inspirationID)
+	var total int64
+	if err := base.Count(&total).Error; err != nil {
+		return nil, 0, persistenceError(err)
+	}
+	items := make([]model.Project, 0)
+	if err := base.Select("projects.business_id", "projects.title", "projects.updated_at").Order("projects.updated_at DESC, projects.business_id ASC").Offset(offset).Limit(pageSize).Find(&items).Error; err != nil {
+		return nil, 0, persistenceError(err)
+	}
+	return items, total, nil
 }

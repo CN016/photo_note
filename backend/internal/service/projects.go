@@ -20,6 +20,7 @@ const projectDocumentSchemaVersion = 1
 
 // ProjectRepository 封装项目 CRUD、短中文全文检索和两个项目资源关联表的事务同步。
 type ProjectRepository interface {
+	ListInspirationProjects(context.Context, uuid.UUID, uuid.UUID, int, int) ([]model.Project, int64, error)
 	ListProjects(context.Context, uuid.UUID, string, int, int) ([]model.Project, int64, error)
 	FindProject(context.Context, uuid.UUID, uuid.UUID) (model.Project, error)
 	CreateProject(context.Context, *model.Project, []uuid.UUID, []model.ProjectAttachment) error
@@ -442,4 +443,24 @@ func projectNGrams(value string) []string {
 		grams = append(grams, gram)
 	}
 	return grams
+}
+
+// InspirationProjectSummary 仅公开关联列表所需字段，不暴露文档或内部资源标识。
+type InspirationProjectSummary struct {
+	BusinessID uuid.UUID `json:"business_id"`
+	Title      string    `json:"title"`
+	UpdatedAt  string    `json:"updated_at"`
+}
+
+// ListForInspiration 在仓储校验图片归属后返回去重、稳定排序的已保存引用。
+func (service *ProjectService) ListForInspiration(ctx context.Context, userID, inspirationID uuid.UUID, page PageRequest) (Page[InspirationProjectSummary], error) {
+	items, total, err := service.repository.ListInspirationProjects(ctx, userID, inspirationID, page.Offset, page.PageSize)
+	if err != nil {
+		return Page[InspirationProjectSummary]{}, err
+	}
+	views := make([]InspirationProjectSummary, 0, len(items))
+	for _, item := range items {
+		views = append(views, InspirationProjectSummary{BusinessID: item.BusinessID, Title: item.Title, UpdatedAt: projectSummary(item).UpdatedAt})
+	}
+	return Page[InspirationProjectSummary]{Items: views, Total: total, Page: page.Page, PageSize: page.PageSize}, nil
 }

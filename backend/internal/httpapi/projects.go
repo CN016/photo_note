@@ -265,3 +265,30 @@ func projectUploadError(err error) error {
 	}
 	return fault.Internal(err)
 }
+
+// inspirationProjectsHandler 沿用标准鉴权、UUID 和分页校验，返回最小关联摘要。
+func inspirationProjectsHandler(projects *service.ProjectService) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		claims, err := authContext(c)
+		if err != nil {
+			writeError(c, err)
+			return
+		}
+		id, err := parseBusinessID(c)
+		if err != nil {
+			writeError(c, err)
+			return
+		}
+		page, err := parsePagination(c)
+		if err != nil {
+			writeError(c, err)
+			return
+		}
+		result, err := projects.ListForInspiration(c.Request.Context(), claims.UserBusinessID, id, page)
+		if err != nil {
+			writeError(c, err)
+			return
+		}
+		writeData(c, http.StatusOK, pageResponse[service.InspirationProjectSummary]{Items: result.Items, Page: result.Page, PageSize: result.PageSize, Total: result.Total})
+	}
+}

@@ -82,3 +82,15 @@
 浏览器预览使用 `@zrimo/viewer` 的本地 Office/PDF/图像查看器；视频通过 Video.js 播放，GIF 由浏览器图片元素内嵌展示。查看器不上传文件到第三方服务。密码保护文件不支持，复杂旧版 Office 对象可能降低保真度，视频实际可播放编码取决于浏览器/WebView。应用构建时从依赖复制查看器 worker、WASM 和字体资源。
 
 服务启动前由 schema 检查确认 `projects`、`project_inspiration_usages`、`project_attachments` 已通过 `backend/migrations/000020_project_documents.sql` 创建。V1 文件存储仍不提供全局文件清单或文件删除接口。
+
+
+## 灵感图关联策划列表（后端 4.7.0）
+
+`GET /api/v1/inspirations/:business_id/projects?page=1&page_size=20`
+
+- 使用已认证会话中的用户和空间，先验证图片归属；不能通过请求参数指定其他用户或空间。
+- 仅查询已保存正文的引用关系，排除软删除策划，同一策划多次引用只返回一条。
+- 使用现有分页校验及封套：`data.items`、`data.page`、`data.page_size`、`data.total`。
+- 每项仅包含 `business_id`、`title`、`updated_at`；按 `updated_at DESC, business_id ASC` 稳定排序。
+- 无引用返回空数组；图片不存在或无权读取返回现有 404 语义，缺失会话返回 401，UUID 或分页非法返回 400。
+- 沿用现有引用表、组织及用户索引，不新增数据库迁移。联查各表显式限定 `orgid`、`user_id`，组织管理员也不能借此入口枚举其他创建者的私有策划。

@@ -196,6 +196,7 @@ func Router(dependencies Dependencies) *gin.Engine {
 		protected.POST("/portfolios/:business_id/share", portfolioShareCreateHandler(dependencies.PortfolioShares))
 		protected.DELETE("/portfolios/:business_id/share", portfolioShareRevokeHandler(dependencies.PortfolioShares))
 	}
+	protected.GET("/inspirations/:business_id/projects", inspirationProjectsHandler(dependencies.Projects))
 	protected.GET("/projects", listProjectsHandler(dependencies.Projects))
 	protected.POST("/projects", createProjectHandler(dependencies.Projects))
 	protected.GET("/projects/:business_id", getProjectHandler(dependencies.Projects))
