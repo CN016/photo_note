@@ -3,6 +3,8 @@ import portfolioZh from './portfolio.zh-CN.json'
 import portfolioEn from './portfolio.en-US.json'
 import publicPortfolioZh from './public-portfolio.zh-CN.json'
 import publicPortfolioEn from './public-portfolio.en-US.json'
+import contextMenuZh from './context-menu.zh-CN.json'
+import contextMenuEn from './context-menu.en-US.json'
 import commonZh from './common.zh-CN.json'
 import commonEn from './common.en-US.json'
 import loginZh from './login.zh-CN.json'
@@ -50,8 +52,8 @@ export const i18n = createI18n({
   locale: localStorage.getItem('photo-nini.locale') === 'en-US' ? 'en-US' : 'zh-CN',
   fallbackLocale: 'zh-CN',
   messages: {
-    'zh-CN': { portfolio: portfolioZh, publicPortfolio: publicPortfolioZh, common: commonZh, login: loginZh, register: registerZh, gallery: galleryZh, statistics: statisticsZh, editor: editorZh, inspirationUpload: inspirationUploadZh, maintenance: maintenanceZh, profile: profileZh, feedback: feedbackZh, ledger: ledgerZh, schedule: scheduleZh, plans: plansZh, projects: projectsZh, workbench: workbenchZh, messages: messagesZh, console: consoleZh, spaces: spacesZh, organizations: organizationsZh, organizationConsole: organizationConsoleZh },
-    'en-US': { portfolio: portfolioEn, publicPortfolio: publicPortfolioEn, common: commonEn, login: loginEn, register: registerEn, gallery: galleryEn, statistics: statisticsEn, editor: editorEn, inspirationUpload: inspirationUploadEn, maintenance: maintenanceEn, profile: profileEn, feedback: feedbackEn, ledger: ledgerEn, schedule: scheduleEn, plans: plansEn, projects: projectsEn, workbench: workbenchEn, messages: messagesEn, console: consoleEn, spaces: spacesEn, organizations: organizationsEn, organizationConsole: organizationConsoleEn },
+    'zh-CN': { contextMenu: contextMenuZh, portfolio: portfolioZh, publicPortfolio: publicPortfolioZh, common: commonZh, login: loginZh, register: registerZh, gallery: galleryZh, statistics: statisticsZh, editor: editorZh, inspirationUpload: inspirationUploadZh, maintenance: maintenanceZh, profile: profileZh, feedback: feedbackZh, ledger: ledgerZh, schedule: scheduleZh, plans: plansZh, projects: projectsZh, workbench: workbenchZh, messages: messagesZh, console: consoleZh, spaces: spacesZh, organizations: organizationsZh, organizationConsole: organizationConsoleZh },
+    'en-US': { contextMenu: contextMenuEn, portfolio: portfolioEn, publicPortfolio: publicPortfolioEn, common: commonEn, login: loginEn, register: registerEn, gallery: galleryEn, statistics: statisticsEn, editor: editorEn, inspirationUpload: inspirationUploadEn, maintenance: maintenanceEn, profile: profileEn, feedback: feedbackEn, ledger: ledgerEn, schedule: scheduleEn, plans: plansEn, projects: projectsEn, workbench: workbenchEn, messages: messagesEn, console: consoleEn, spaces: spacesEn, organizations: organizationsEn, organizationConsole: organizationConsoleEn },
   },
 })
 

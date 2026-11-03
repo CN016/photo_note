@@ -1,3 +1,4 @@
+import { closeMenu, menuState } from './context-menu/menu'
 import type { Router } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { isAndroid, nativeShell, platformAdapter, minimizeApp, subscribeNativeBack, type ExportResult } from '../../../packages/platform-adapters'
@@ -27,6 +28,7 @@ export async function exportFile(blob: Blob, filename: string): Promise<ExportRe
 
 /** 返回键先关闭最上层可关闭浮层，再走路由守卫；首页回到系统而不销毁登录态。 */
 export function closeTopOverlay(): boolean {
+  if (menuState.value) { closeMenu(true); return true }
   const overlays = [...document.querySelectorAll<HTMLElement>('.el-overlay, .el-image-viewer__wrapper')]
     .filter(node => node.getClientRects().length > 0)
   const top = overlays.sort((a, b) => Number(getComputedStyle(a).zIndex) - Number(getComputedStyle(b).zIndex)).at(-1)

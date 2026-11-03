@@ -4,6 +4,8 @@ import { useI18n } from 'vue-i18n'
 import { useRoute } from 'vue-router'
 import zhCn from 'element-plus/es/locale/lang/zh-cn'
 import en from 'element-plus/es/locale/lang/en'
+import { clearGallerySnapshot } from './context-menu/galleryNavigation'
+import GlobalContextMenu from './components/GlobalContextMenu.vue'
 import FeedbackWidget from './components/FeedbackWidget.vue'
 import GlobalMessageButton from './components/GlobalMessageButton.vue'
 import { useAuthStore } from './stores/auth'
@@ -28,6 +30,7 @@ onBeforeUnmount(() => {
 const { locale } = useI18n()
 const route = useRoute()
 const auth = useAuthStore()
+watch(() => `${auth.sessionID}:${auth.orgid}:${auth.sessionVersion}:${auth.user?.business_id ?? ''}`, () => clearGallerySnapshot(), { flush: 'sync' })
 // 等待首个导航完成后再处理失效会话，避免初始路由尚未解析时覆盖公开分享页。
 watch(() => [auth.ready, auth.user] as const, async ([ready, user]) => {
   if (!ready || user) return
@@ -61,6 +64,7 @@ watch(projectEditorRoute, active => document.body.classList.toggle('project-edit
 <template>
   <el-config-provider :locale="elementLocale">
     <GlobalMessageButton />
+    <GlobalContextMenu />
     <RouterView v-slot="{ Component, route: pageRoute }">
       <component :is="Component" v-if="pageRoute.meta.public || auth.user" :key="`${auth.sessionID}:${auth.orgid}:${auth.sessionVersion}:${pageRoute.path}`" />
     </RouterView>

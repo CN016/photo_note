@@ -64,3 +64,15 @@ export const platformAdapter: PlatformAdapter = {
     return 'saved'
   },
 }
+
+/** 剪贴板能力通过平台入口检查；当前壳复用安全上下文 Web API，不申请原生额外权限。 */
+export const clipboardAdapter = {
+  canWriteText: () => typeof navigator !== 'undefined' && typeof navigator.clipboard?.writeText === 'function',
+  canWriteImage: () => typeof navigator !== 'undefined' && typeof navigator.clipboard?.write === 'function' && typeof ClipboardItem !== 'undefined' && typeof createImageBitmap === 'function',
+  canRead: () => typeof navigator !== 'undefined' && typeof navigator.clipboard?.readText === 'function',
+  canReadItems: () => typeof navigator !== 'undefined' && typeof navigator.clipboard?.read === 'function',
+  writeText: (text: string) => navigator.clipboard.writeText(text),
+  readText: () => navigator.clipboard.readText(),
+  readItems: () => navigator.clipboard.read(),
+  writeImage: (png: Promise<Blob>) => navigator.clipboard.write([new ClipboardItem({ 'image/png': png })]),
+}
