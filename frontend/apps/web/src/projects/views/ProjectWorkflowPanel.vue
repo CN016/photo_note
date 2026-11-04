@@ -72,6 +72,8 @@ watch(() => [props.source.shooting, props.saving, props.readOnly, busy.value] as
   if (fingerprint === attemptedShooting) return
   if (props.source.schedule_sync_state === 'failed') { scheduleError.value = t('projects.workflow.scheduleFailed'); attemptedShooting = fingerprint; return }
   if (props.source.schedule_sync_state === 'linked') { attemptedShooting = fingerprint; return }
+  // 空状态表示服务端已处理过相同拍摄信息（例如用户主动解除或删除档期），重新打开页面也不能重建。
+  if (props.source.schedule_sync_state !== 'pending' && props.source.schedule_sync_state !== 'candidates') { attemptedShooting = fingerprint; return }
   autoTimer = setTimeout(() => { if (active) void syncSchedule() }, 400)
 }, { immediate: true })
 
