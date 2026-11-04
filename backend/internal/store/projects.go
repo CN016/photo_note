@@ -27,7 +27,7 @@ func (store *PostgresStore) ListProjects(ctx context.Context, userID uuid.UUID, 
 		return nil, 0, persistenceError(err)
 	}
 	var items []model.Project
-	if err := base.Select("business_id", "title", "cover_emoji", "cover_image_key", "cover_file_name", "revision", "created_at", "updated_at").Order("updated_at DESC, created_at DESC").Offset(offset).Limit(pageSize).Find(&items).Error; err != nil {
+	if err := base.Select("business_id", "title", "cover_emoji", "cover_image_key", "cover_file_name", "revision", "created_at", "updated_at", "document", "manual_summary", "default_read_only").Order("updated_at DESC, created_at DESC").Offset(offset).Limit(pageSize).Find(&items).Error; err != nil {
 		return nil, 0, persistenceError(err)
 	}
 	return items, total, nil

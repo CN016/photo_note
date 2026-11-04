@@ -125,6 +125,9 @@ func checkSchema(ctx context.Context, connection *gorm.DB) error {
 		if name == "projects" && !connection.WithContext(ctx).Migrator().HasColumn(table, "DefaultReadOnly") {
 			return fmt.Errorf("PostgreSQL schema 缺少 projects.default_read_only，请先执行 backend/migrations/000026_project_default_read_only.sql")
 		}
+		if name == "projects" && !connection.WithContext(ctx).Migrator().HasColumn(table, "ManualSummary") {
+			return fmt.Errorf("PostgreSQL schema 缺少 projects.manual_summary，请先执行 backend/migrations/000027_project_summary.sql")
+		}
 		// 所有自建表都必须完成租户迁移，不能让缺少隔离列的旧 schema 启动后才失败。
 		if !connection.WithContext(ctx).Migrator().HasColumn(table, "OrgID") {
 			return fmt.Errorf("PostgreSQL schema 缺少 %s.orgid，请先执行 backend/migrations/000021_multitenant_organizations.sql", name)

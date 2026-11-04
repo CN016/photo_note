@@ -293,6 +293,9 @@ export interface PlanRecord extends PlanFields {
 
 /** 项目是独立文档资源，正文使用版本化 ProseMirror JSON，附件由正文节点引用。 */
 export interface ProjectRecord {
+  /** 人工复盘及服务端根据正文计算的执行状态。 */
+  manual_summary: string
+  status: 'unfinished' | 'executed' | 'completed'
   /** 默认阅读模式，仅为界面偏好，不影响访问权限。 */
   default_read_only: boolean
   business_id: string
@@ -308,10 +311,11 @@ export interface ProjectRecord {
 }
 
 /** 项目列表只返回卡片元数据，不包含完整正文 JSON。 */
-export type ProjectSummary = Omit<ProjectRecord, 'document' | 'document_schema_version'>
+export type ProjectSummary = Omit<ProjectRecord, 'document' | 'document_schema_version' | 'manual_summary'>
 
 /** 项目自动保存提交完整快照，并携带当前修订号执行乐观并发控制。 */
 export interface ProjectSaveInput {
+  manual_summary?: string
   default_read_only?: boolean
   title: string
   cover_emoji: string

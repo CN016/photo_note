@@ -127,5 +127,6 @@
     "waiting": "已发送，等待服务器处理…",
     "failed": "上传失败，请重试或移除。"
   },
-  "backToGallery": "返回灵感库"
+  "backToGallery": "返回灵感库",
+  "manualSummary": "总结复盘"
 }

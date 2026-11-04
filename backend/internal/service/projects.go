@@ -13,6 +13,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/photo-nini/backend/internal/domain/fault"
 	"github.com/photo-nini/backend/internal/model"
+	"github.com/photo-nini/backend/internal/projectstatus"
 	"golang.org/x/text/unicode/norm"
 )
 
@@ -50,7 +51,9 @@ func NewProjectService(repository ProjectRepository, files ProjectFileReader, ma
 // ProjectSave 是创建和自动保存共用的完整文档快照；更新时 revision 必须与服务端一致。
 type ProjectSave struct {
 	// nil 表示旧客户端未提供，更新时保留已有设置。
-	DefaultReadOnly       *bool           `json:"default_read_only"`
+	DefaultReadOnly *bool `json:"default_read_only"`
+	// 未传复盘时保留现值，以兼容旧客户端。
+	ManualSummary         *string         `json:"manual_summary"`
 	Title                 string          `json:"title"`
 	CoverEmoji            string          `json:"cover_emoji"`
 	CoverImageKey         string          `json:"cover_image_key"`
@@ -62,6 +65,8 @@ type ProjectSave struct {
 
 // ProjectView 只暴露项目业务字段和关联资源，不返回自增 ID、所属用户或索引字段。
 type ProjectView struct {
+	ManualSummary         string          `json:"manual_summary"`
+	Status                string          `json:"status"`
 	DefaultReadOnly       bool            `json:"default_read_only"`
 	BusinessID            uuid.UUID       `json:"business_id"`
 	Title                 string          `json:"title"`
@@ -77,6 +82,7 @@ type ProjectView struct {
 
 // ProjectSummary 用于项目卡片列表，避免分页响应下载每个文档的完整 JSONB 正文。
 type ProjectSummary struct {
+	Status          string    `json:"status"`
 	DefaultReadOnly bool      `json:"default_read_only"`
 	BusinessID      uuid.UUID `json:"business_id"`
 	Title           string    `json:"title"`
@@ -132,6 +138,9 @@ func (service *ProjectService) Create(ctx context.Context, userID uuid.UUID, inp
 	if input.DefaultReadOnly != nil {
 		project.DefaultReadOnly = *input.DefaultReadOnly
 	}
+	if input.ManualSummary != nil {
+		project.ManualSummary = *input.ManualSummary
+	}
 	project.BaseModel.BusinessID = uuid.New()
 	project.UserID = userID
 	project.Revision = 1
@@ -155,6 +164,9 @@ func (service *ProjectService) Update(ctx context.Context, userID, projectID uui
 		"cover_image_key": project.CoverImageKey, "cover_file_name": project.CoverFileName,
 		"document_schema_version": project.DocumentSchemaVersion, "document": project.Document,
 		"search_text": project.SearchText, "search_grams": project.SearchGrams,
+	}
+	if input.ManualSummary != nil {
+		updates["manual_summary"] = *input.ManualSummary
 	}
 	if input.DefaultReadOnly != nil {
 		updates["default_read_only"] = *input.DefaultReadOnly
@@ -203,6 +215,9 @@ type prefixedReadCloser struct {
 
 // prepare 校验富文本文档版本、标题、封面、灵感图协议和附件字节，并构建精确搜索字段。
 func (service *ProjectService) prepare(ctx context.Context, userID uuid.UUID, input ProjectSave) (model.Project, []uuid.UUID, []model.ProjectAttachment, error) {
+	if input.ManualSummary != nil && utf8.RuneCountInString(*input.ManualSummary) > 100000 {
+		return model.Project{}, nil, nil, fault.InvalidField("manual_summary", "总结最多 100000 个字符")
+	}
 	title := strings.TrimSpace(input.Title)
 	if title == "" || utf8.RuneCountInString(title) > 120 {
 		return model.Project{}, nil, nil, fault.InvalidField("title", "标题必填且最多 120 个字符")
@@ -417,11 +432,11 @@ func safeProjectFileName(name string) string {
 }
 
 func projectView(item model.Project) ProjectView {
-	return ProjectView{DefaultReadOnly: item.DefaultReadOnly, BusinessID: item.BusinessID, Title: item.Title, CoverEmoji: item.CoverEmoji, CoverImageKey: item.CoverImageKey, CoverFileName: item.CoverFileName, DocumentSchemaVersion: item.DocumentSchemaVersion, Document: json.RawMessage(item.Document), Revision: item.Revision, CreatedAt: item.CreatedAt.UTC().Format("2006-01-02T15:04:05Z07:00"), UpdatedAt: item.UpdatedAt.UTC().Format("2006-01-02T15:04:05Z07:00")}
+	return ProjectView{ManualSummary: item.ManualSummary, Status: projectstatus.Calculate(item.Document, item.ManualSummary), DefaultReadOnly: item.DefaultReadOnly, BusinessID: item.BusinessID, Title: item.Title, CoverEmoji: item.CoverEmoji, CoverImageKey: item.CoverImageKey, CoverFileName: item.CoverFileName, DocumentSchemaVersion: item.DocumentSchemaVersion, Document: json.RawMessage(item.Document), Revision: item.Revision, CreatedAt: item.CreatedAt.UTC().Format("2006-01-02T15:04:05Z07:00"), UpdatedAt: item.UpdatedAt.UTC().Format("2006-01-02T15:04:05Z07:00")}
 }
 
 func projectSummary(item model.Project) ProjectSummary {
-	return ProjectSummary{DefaultReadOnly: item.DefaultReadOnly, BusinessID: item.BusinessID, Title: item.Title, CoverEmoji: item.CoverEmoji, CoverImageKey: item.CoverImageKey, CoverFileName: item.CoverFileName, Revision: item.Revision, CreatedAt: item.CreatedAt.UTC().Format("2006-01-02T15:04:05Z07:00"), UpdatedAt: item.UpdatedAt.UTC().Format("2006-01-02T15:04:05Z07:00")}
+	return ProjectSummary{Status: projectstatus.Calculate(item.Document, item.ManualSummary), DefaultReadOnly: item.DefaultReadOnly, BusinessID: item.BusinessID, Title: item.Title, CoverEmoji: item.CoverEmoji, CoverImageKey: item.CoverImageKey, CoverFileName: item.CoverFileName, Revision: item.Revision, CreatedAt: item.CreatedAt.UTC().Format("2006-01-02T15:04:05Z07:00"), UpdatedAt: item.UpdatedAt.UTC().Format("2006-01-02T15:04:05Z07:00")}
 }
 
 func normalizeProjectText(value string) string {

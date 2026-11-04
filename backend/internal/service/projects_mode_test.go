@@ -49,3 +49,30 @@ func TestProjectDefaultReadOnlyUpdateCompatibility(t *testing.T) {
 	}
 }
 func boolPointer(value bool) *bool { return &value }
+
+// TestProjectManualSummaryCompatibility 确保旧客户端省略复盘时不会将已保存内容清空。
+func TestProjectManualSummaryCompatibility(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		summary *string
+		present bool
+	}{
+		{name: "旧客户端省略", present: false},
+		{name: "明确清空", summary: summaryStringPointer(""), present: true},
+		{name: "填写总结", summary: summaryStringPointer("复盘"), present: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			repo := &projectModeRepository{}
+			service := NewProjectService(repo, nil, 1)
+			input := ProjectSave{Title: "策划", CoverEmoji: "封面", DocumentSchemaVersion: 1, Document: json.RawMessage(`{"type":"doc","content":[{"type":"paragraph"}]}`), Revision: 1, ManualSummary: tc.summary}
+			if _, err := service.Update(context.Background(), uuid.New(), uuid.New(), input); err != nil {
+				t.Fatal(err)
+			}
+			got, exists := repo.updates["manual_summary"]
+			if exists != tc.present || (exists && got != *tc.summary) {
+				t.Fatalf("总结更新不符: %v %v", got, exists)
+			}
+		})
+	}
+}
+func summaryStringPointer(value string) *string { return &value }

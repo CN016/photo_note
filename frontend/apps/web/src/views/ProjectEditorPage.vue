@@ -24,6 +24,7 @@ const { t, locale } = useI18n({ useScope: 'global' })
 const projectID = computed(() => String(route.params.id || ''))
 const project = ref<ProjectRecord | null>(null)
 const title = ref('')
+const manualSummary = ref('')
 const coverEmoji = ref('')
 const coverImageKey = ref('')
 const coverFileName = ref('')
@@ -54,7 +55,7 @@ function editorReady(instance: Editor) {
 function saveInput(): ProjectSaveInput {
   return {
     default_read_only: route.query.from === 'gallery' && readOnly.value && !modeChanged ? project.value?.default_read_only : readOnly.value, title: title.value.trim(), cover_emoji: coverEmoji.value, cover_image_key: coverImageKey.value,
-    cover_file_name: coverFileName.value, document_schema_version: 1,
+    cover_file_name: coverFileName.value, manual_summary: manualSummary.value, document_schema_version: 1,
     document: editor.value?.getJSON() ?? { type: 'doc', content: [{ type: 'paragraph' }] },
     revision: project.value?.revision ?? 1,
   }
@@ -104,6 +105,7 @@ async function loadProject() {
     initialDocument.value = result.document
     readOnly.value = route.query.from === 'gallery' && route.query.mode === 'read' ? true : result.default_read_only ?? false
     title.value = result.title
+    manualSummary.value = result.manual_summary ?? ''
     coverEmoji.value = result.cover_emoji
     coverImageKey.value = result.cover_image_key
     coverFileName.value = result.cover_file_name
@@ -276,7 +278,7 @@ watch(locale, () => {
 })
 
 // 同步观察使加载期间的标题赋值仍受 hydrating 保护，打开旧文档不会触发无意义保存。
-watch(title, () => scheduleSave(), { flush: 'sync' })
+watch([title, manualSummary], () => scheduleSave(), { flush: 'sync' })
 watch(projectID, () => { if (projectID.value) void loadProject() })
 function warnPendingUploads(event: BeforeUnloadEvent) { if (uploadJobs.size) { event.preventDefault(); event.returnValue = '' } }
 onMounted(() => { window.addEventListener('beforeunload', warnPendingUploads); void loadProject(); void loadUploadLimit() })
@@ -323,6 +325,10 @@ onBeforeRouteLeave(async () => {
         @upload-media="mediaInput?.click()"
         @paste-files="importFiles"
       />
+      <section class="project-summary">
+        <h2>{{ t('projects.manualSummary') }}</h2>
+        <el-input v-model="manualSummary" type="textarea" :rows="5" maxlength="100000" :disabled="documentIncompatible || readOnly" :aria-label="t('projects.manualSummary')" />
+      </section>
       <input ref="mediaInput" class="hidden-file-input" type="file" multiple accept="image/*,video/*" @change="uploadFiles" />
       <input ref="attachmentInput" class="hidden-file-input" type="file" multiple accept=".pdf,.doc,.docx,.xls,.xlsx" @change="uploadFiles" />
     </template>
@@ -343,6 +349,8 @@ onBeforeRouteLeave(async () => {
 .project-save-status { flex: 0 0 auto; color: var(--muted); font-size: 12px; }
 .project-save-status.is-error { color: var(--danger); }
 .project-save-status.is-saved { color: var(--success); }
+.project-summary { margin-top: 24px; }
+.project-summary h2 { font-size: 18px; font-weight: 600; margin: 0 0 12px; }
 .hidden-file-input { display: none; }
 .project-editor-state { display: grid; min-height: 60vh; justify-items: center; align-content: center; gap: 12px; color: var(--muted); text-align: center; }
 .project-editor-error { color: var(--danger); }

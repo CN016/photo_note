@@ -127,5 +127,6 @@
     "waiting": "Sent; waiting for server…",
     "failed": "Upload failed. Retry or remove it."
   },
-  "backToGallery": "Back to inspiration library"
+  "backToGallery": "Back to inspiration library",
+  "manualSummary": "Review"
 }

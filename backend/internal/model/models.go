@@ -484,13 +484,15 @@ type Project struct {
 	CoverImageKey string    `gorm:"column:cover_image_key;type:text;not null;default:''"`
 	CoverFileName string    `gorm:"column:cover_file_name;type:text;not null;default:''"`
 	// DefaultReadOnly 仅记录默认阅读模式，不作为资源访问权限。
-	DefaultReadOnly       bool           `gorm:"column:default_read_only;not null;default:false"`
-	DocumentSchemaVersion int16          `gorm:"column:document_schema_version;type:smallint;not null;default:1"`
-	Document              JSONB          `gorm:"column:document;type:jsonb;not null"`
-	SearchText            string         `gorm:"column:search_text;type:text;not null;default:''" json:"-"`
-	SearchGrams           pq.StringArray `gorm:"column:search_grams;type:text[];not null;default:ARRAY[]::text[]" json:"-"`
-	Revision              int64          `gorm:"column:revision;type:bigint;not null;default:1"`
-	DeletedAt             *time.Time     `gorm:"column:deleted_at;type:timestamptz" json:"-"`
+	DefaultReadOnly       bool  `gorm:"column:default_read_only;not null;default:false"`
+	DocumentSchemaVersion int16 `gorm:"column:document_schema_version;type:smallint;not null;default:1"`
+	Document              JSONB `gorm:"column:document;type:jsonb;not null"`
+	// ManualSummary 是人工复盘，与正文一起通过修订号保护。
+	ManualSummary string         `gorm:"column:manual_summary;type:text;not null;default:''"`
+	SearchText    string         `gorm:"column:search_text;type:text;not null;default:''" json:"-"`
+	SearchGrams   pq.StringArray `gorm:"column:search_grams;type:text[];not null;default:ARRAY[]::text[]" json:"-"`
+	Revision      int64          `gorm:"column:revision;type:bigint;not null;default:1"`
+	DeletedAt     *time.Time     `gorm:"column:deleted_at;type:timestamptz" json:"-"`
 }
 
 // TableName 固定项目文档模型使用与版本化 SQL 迁移相同的表名。
