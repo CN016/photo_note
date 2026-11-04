@@ -61,7 +61,7 @@ async function signOut() {
 function active(path: string): boolean {
   if (path === '/inspirations') return route.path === '/inspirations' || route.path.startsWith('/inspirations/')
   if (path === '/portfolios') return route.path === '/portfolios' || route.path.startsWith('/portfolios/')
-  if (path === '/projects') return route.path === '/projects' || route.path.startsWith('/projects/')
+  if (path === '/projects') return route.path === '/projects' || route.path.startsWith('/projects/') || route.path.startsWith('/project-reviews')
   return route.path === path
 }
 </script>

@@ -57,7 +57,7 @@ const elementLocale = computed(() => locale.value === 'en-US' ? en : zhCn)
 const editorRoute = computed(() => route.name === 'new-inspiration' || route.name === 'edit-inspiration' || route.name === 'project-editor')
 const projectEditorRoute = computed(() => route.name === 'project-editor')
 /** 登录后的主要页面共用移动底部导航；游客预约页只保留页面内容与反馈入口。 */
-const hasMobileNav = computed(() => ['workbench', 'portfolios', 'portfolio-detail', 'gallery', 'inspiration-statistics', 'new-inspiration', 'edit-inspiration', 'ledger', 'schedule', 'plans', 'projects', 'project-editor', 'messages', 'profile', 'atelier-console'].includes(String(route.name)))
+const hasMobileNav = computed(() => ['workbench', 'portfolios', 'portfolio-detail', 'gallery', 'inspiration-statistics', 'new-inspiration', 'edit-inspiration', 'ledger', 'schedule', 'plans', 'projects', 'project-editor', 'project-reviews', 'project-review-editor', 'messages', 'profile', 'atelier-console'].includes(String(route.name)))
 watch(projectEditorRoute, active => document.body.classList.toggle('project-editor-route', active), { immediate: true })
 </script>
 

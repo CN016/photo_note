@@ -159,7 +159,8 @@ onBeforeUnmount(() => {
 .project-document-editor :deep(.tvp-content-wrap) { overflow: visible; max-height: none; }
 .project-document-editor :deep(.tvp-content) { padding: 32px clamp(24px, 5vw, 72px) 72px; }
 /* 允许系统字体合成中文斜体，避免全站 font-synthesis:none 吞掉文档格式。 */
-.project-document-editor :deep(.ProseMirror) { min-height: 55vh; color: var(--ink); font-synthesis: style weight; }
+/* 正文按内容自然增长，短动作清单无需占满整屏，复盘模块可以紧随正文。 */
+.project-document-editor :deep(.ProseMirror) { min-height: 320px; color: var(--ink); font-synthesis: style weight; }
 /* Tiptap 3.32 的 checkbox 后方为隐藏说明；保留说明并恢复原生框，避免上游旧版伪装样式隐藏勾选状态。 */
 .project-document-editor :deep(.tvp-content .ProseMirror ul[data-type=taskList] li > label > input[type=checkbox]) { position: static; width: 16px; height: 16px; opacity: 1; accent-color: var(--accent); }
 /* 私有媒体使用自己的操作条；隐藏上游针对公共 URL 节点的浮层，避免窄屏隐藏浮层撑宽页面。 */
@@ -173,6 +174,7 @@ onBeforeUnmount(() => {
 @media (pointer: coarse) { .project-document-editor :deep(.resource-resize-handle) { width: 44px; height: 44px; right: -12px; bottom: -12px; } }
 @media (max-width: 768px) {
   .project-document-editor :deep(.tvp-content) { padding: 20px 16px 180px; }
+  .project-document-editor :deep(.ProseMirror) { min-height: 240px; }
   /* 横向滚动保留全部格式按钮，插图与附件入口优先显示；固定层随可视视口避让键盘。 */
   .project-document-editor :deep(.tvp-toolbar) { position: fixed; inset: auto 0 var(--project-keyboard-bottom, 0px); z-index: 30; display: flex; flex-wrap: nowrap; overflow-x: auto; max-width: 100vw; border-radius: 12px 12px 0 0; padding-bottom: env(safe-area-inset-bottom); }
   .project-document-editor :deep(.tvp-toolbar > *) { flex-shrink: 0; }

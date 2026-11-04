@@ -128,5 +128,56 @@
     "failed": "上传失败，请重试或移除。"
   },
   "backToGallery": "返回灵感库",
-  "manualSummary": "总结复盘"
+  "manualSummary": "总结复盘",
+  "allStatuses": "全部",
+  "filterStatus": "按执行状态筛选",
+  "status": {
+    "unfinished": "未完成",
+    "executed": "已执行",
+    "completed": "已完成"
+  },
+  "shooting": {
+    "title": "拍摄信息",
+    "start": "开始时间（北京时间）",
+    "end": "结束时间（北京时间）",
+    "location": "地点",
+    "person": "人物称呼",
+    "kind": "拍摄类型",
+    "photo": "照片",
+    "video": "视频",
+    "invalid": "请检查拍摄起止时间（最长 24 小时）、地点和人物称呼"
+  },
+  "workflow": {
+    "schedule": "拍摄档期",
+    "openSchedule": "查看日历",
+    "linked": "已关联",
+    "syncSchedule": "同步档期",
+    "linkSchedule": "关联档期",
+    "detach": "解除关联",
+    "detachConfirm": "解除后保留日历中的档期。是否继续？",
+    "scheduleFailed": "档期关联或同步失败，请重试；关联档期已删除时可解除后重新关联",
+    "chooseSchedule": "选择对应档期",
+    "confirmLink": "关联所选档期",
+    "createSeparate": "另建独立档期",
+    "allReviews": "总结汇总",
+    "openReview": "打开总结文档",
+    "completeReview": "完成总结并创建文档",
+    "reviewCreated": "总结文档已创建",
+    "aiTitle": "AI 总结分析",
+    "generate": "生成分析",
+    "preview": "生成结果预览",
+    "adopt": "采用此分析",
+    "replaceAnalysis": "采用后将替换当前 AI 分析，人工总结不变。是否继续？",
+    "aiSendHint": "将策划文字、动作标记和人工总结发送至管理员配置的 AI 服务",
+    "aiUnconfigured": "管理员尚未配置文本 AI 服务",
+    "aiBusy": "AI 分析正在进行，请稍后重试",
+    "aiTimeout": "AI 分析超时，请重试",
+    "aiFailed": "AI 分析失败，请重试",
+    "portfolios": "关联作品集",
+    "managePortfolios": "选择作品集",
+    "saveLinks": "保存关联",
+    "relationsFailed": "关联信息加载失败",
+    "busy": "正在保存关联，请稍后再离开",
+    "aiInvalidConfig": "文本 AI 配置无效，请联系管理员检查服务设置"
+  }
 }

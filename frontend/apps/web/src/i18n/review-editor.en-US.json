@@ -1,0 +1,18 @@
+{
+  "back": "Back to reviews",
+  "source": "Open source plan",
+  "title": "Document title",
+  "content": "Review text",
+  "loadError": "Could not load the review document",
+  "save": "Save",
+  "reload": "Reload",
+  "discard": "Discard unsaved changes and reload?",
+  "conflict": "This document changed elsewhere. Copy any text you want to keep, then reload",
+  "saveError": "Could not save. Try again",
+  "state": {
+    "saved": "Saved",
+    "unsaved": "Unsaved",
+    "saving": "Saving",
+    "error": "Save failed"
+  }
+}

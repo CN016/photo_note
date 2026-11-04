@@ -291,11 +291,37 @@ export interface PlanRecord extends PlanFields {
   updated_at: string
 }
 
+/** 拍摄信息允许草稿空值；时间使用带明确偏移的 ISO 字符串。 */
+export interface ProjectShooting {
+  start_at: string | null
+  end_at: string | null
+  location: string
+  person: string
+  kind: '' | 'photo' | 'video'
+}
+export type ProjectStatus = 'unfinished' | 'executed' | 'completed'
+export type ProjectStatusCounts = Record<ProjectStatus, number>
+export interface ProjectScheduleLink { schedule_id: string | null; owned: boolean }
+/** 独立总结的修订号与来源策划无关，后续编辑不回写来源。 */
+export interface ProjectReview {
+  business_id: string
+  project_id: string
+  title: string
+  content?: string
+  revision: number
+  created_at: string
+  updated_at: string
+}
 /** 项目是独立文档资源，正文使用版本化 ProseMirror JSON，附件由正文节点引用。 */
 export interface ProjectRecord {
   /** 人工复盘及服务端根据正文计算的执行状态。 */
   manual_summary: string
-  status: 'unfinished' | 'executed' | 'completed'
+  status: ProjectStatus
+  shooting: ProjectShooting
+  schedule_id: string | null
+  schedule_owned: boolean
+  schedule_sync_state?: 'pending' | 'linked' | 'candidates' | 'failed' | ''
+  ai_analysis: string
   /** 默认阅读模式，仅为界面偏好，不影响访问权限。 */
   default_read_only: boolean
   business_id: string
@@ -311,11 +337,13 @@ export interface ProjectRecord {
 }
 
 /** 项目列表只返回卡片元数据，不包含完整正文 JSON。 */
-export type ProjectSummary = Omit<ProjectRecord, 'document' | 'document_schema_version' | 'manual_summary'>
+export type ProjectSummary = Omit<ProjectRecord, 'document' | 'document_schema_version' | 'manual_summary' | 'ai_analysis' | 'schedule_id' | 'schedule_owned' | 'schedule_sync_state'>
 
 /** 项目自动保存提交完整快照，并携带当前修订号执行乐观并发控制。 */
 export interface ProjectSaveInput {
   manual_summary?: string
+  shooting?: ProjectShooting
+  ai_analysis?: string
   default_read_only?: boolean
   title: string
   cover_emoji: string

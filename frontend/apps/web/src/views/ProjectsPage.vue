@@ -8,13 +8,16 @@ import { ArrowLeft, ArrowRight, Delete, Files, More, Plus, Search, UploadFilled 
 import AppHeader from '../components/AppHeader.vue'
 import ProjectCoverImage from '../components/ProjectCoverImage.vue'
 import { api } from '../api/client'
-import type { PageResult, ProjectSaveInput, ProjectSummary } from '../api/types'
+import type { PageResult, ProjectSaveInput, ProjectSummary, ProjectStatus, ProjectStatusCounts } from '../api/types'
 import { projectUploadLimit } from '../projects/projectUploadLimit'
 
 const { t, locale } = useI18n({ useScope: 'global' })
 const router = useRouter()
 const records = ref<ProjectSummary[]>([])
 const query = ref('')
+const activeStatus = ref<ProjectStatus | ''>('')
+const statuses: ProjectStatus[] = ['unfinished', 'executed', 'completed']
+const statusCounts = ref<ProjectStatusCounts>({ unfinished: 0, executed: 0, completed: 0 })
 const page = ref(1)
 const pageSize = 20
 const total = ref(0)
@@ -34,6 +37,7 @@ onBeforeRouteLeave(to => to.path !== '/spaces' || (!dialogOpen.value && !saving.
 const fileInput = ref<HTMLInputElement | null>(null)
 const emojiPool = ['✨', '🌿', '🪴', '🌈', '🌙', '🧩', '🪄', '🪷', '🧸', '🌻', '🪐', '📚', '🎨', '🎧', '🧵', '☕']
 let searchTimer: number | undefined
+let loadGeneration = 0
 
 const emptyDocument = { type: 'doc', content: [{ type: 'paragraph' }] }
 
@@ -92,17 +96,20 @@ async function createProject() {
 
 /** 服务端分页检索项目；兼容旧版 Go 导出的首字母大写字段，异常响应进入可重试错误态。 */
 async function loadProjects() {
+  const generation = ++loadGeneration
   loading.value = true
   failed.value = false
   try {
-    const result = await api.projects(page.value, pageSize, query.value) as PageResult<ProjectSummary> & { Items?: ProjectSummary[]; Total?: number }
+    const result = await api.projects(page.value, pageSize, query.value, activeStatus.value) as PageResult<ProjectSummary> & { Items?: ProjectSummary[]; Total?: number; status_counts?: ProjectStatusCounts }
+    if (generation !== loadGeneration) return
     const items = Array.isArray(result?.items) ? result.items : result?.Items
     const resultTotal = typeof result?.total === 'number' ? result.total : result?.Total
     if (!Array.isArray(items) || typeof resultTotal !== 'number' || !Number.isFinite(resultTotal)) throw new Error('invalid_projects_response')
     records.value = items
     total.value = resultTotal
-  } catch { records.value = []; total.value = 0; failed.value = true }
-  finally { loading.value = false }
+    statusCounts.value = result.status_counts ?? { unfinished: 0, executed: 0, completed: 0 }
+  } catch { if (generation === loadGeneration) { records.value = []; total.value = 0; failed.value = true } }
+  finally { if (generation === loadGeneration) loading.value = false }
 }
 
 /** 列表删除经确认后调用项目软删除接口；服务端保留历史灵感图和附件引用关系。 */
@@ -124,8 +131,10 @@ watch(query, () => {
   searchTimer = window.setTimeout(() => { void loadProjects() }, 250)
 })
 watch(page, () => { void loadProjects() })
+watch(activeStatus, () => { if (page.value !== 1) page.value = 1; else void loadProjects() })
 onMounted(() => { void loadProjects(); void projectUploadLimit().then(value => { maxUploadBytes.value = value }) })
 onBeforeUnmount(() => {
+  loadGeneration++
   if (searchTimer) window.clearTimeout(searchTimer)
   if (coverPreview.value) URL.revokeObjectURL(coverPreview.value)
 })
@@ -135,17 +144,18 @@ onBeforeUnmount(() => {
   <AppHeader />
   <ContentZoom><main class="projects-main gallery-main">
     <header class="projects-heading">
-      <div><p class="eyebrow"><el-icon><Files /></el-icon>{{ t('projects.title') }}</p><h1>{{ t('projects.title') }}</h1><p>{{ t('projects.subtitle') }}</p></div>
-      <el-button class="projects-new" type="primary" :icon="Plus" :title="t('projects.newProject')" :aria-label="t('projects.newProject')" @click="openCreate">{{ t('projects.newProject') }}</el-button>
+      <h1>{{ t('projects.title') }}</h1>
+      <div class="projects-heading-actions"><RouterLink class="el-button" to="/project-reviews">{{ t('projects.workflow.allReviews') }}</RouterLink><el-button class="projects-new" type="primary" :icon="Plus" :title="t('projects.newProject')" :aria-label="t('projects.newProject')" @click="openCreate">{{ t('projects.newProject') }}</el-button></div>
     </header>
     <div class="projects-search"><el-input v-model="query" clearable :placeholder="t('projects.searchPlaceholder')"><template #prefix><el-icon><Search /></el-icon></template></el-input></div>
+    <div class="project-status-filters" role="group" :aria-label="t('projects.filterStatus')"><button type="button" :aria-pressed="activeStatus === ''" @click="activeStatus = ''">{{ t('projects.allStatuses') }}</button><button v-for="status in statuses" :key="status" type="button" :class="`status-${status}`" :aria-pressed="activeStatus === status" @click="activeStatus = status"><span class="status-dot" aria-hidden="true" />{{ t(`projects.status.${status}`) }}<span class="status-count">{{ new Intl.NumberFormat(locale).format(statusCounts[status]) }}</span></button></div>
     <div v-if="loading" class="projects-status" role="status">{{ t('common.loading') }}</div>
     <div v-else-if="failed" class="projects-status projects-error"><p>{{ t('projects.loadError') }}</p><el-button @click="loadProjects">{{ t('common.retry') }}</el-button></div>
     <section v-else-if="records.length" class="projects-grid" :aria-label="t('projects.title')">
       <article v-for="record in records" :key="record.business_id" class="project-card">
         <RouterLink class="project-card-link" :to="`/projects/${record.business_id}`">
           <ProjectCoverImage :storekey="record.cover_image_key" :emoji="record.cover_emoji" :label="record.title" />
-          <span class="project-card-copy"><strong>{{ record.title }}</strong><small>{{ new Intl.DateTimeFormat(locale, { dateStyle: 'medium' }).format(new Date(record.updated_at)) }}</small></span>
+          <span class="project-card-copy"><strong>{{ record.title }}</strong><small>{{ new Intl.DateTimeFormat(locale, { dateStyle: 'medium' }).format(new Date(record.updated_at)) }}</small><small class="execution-label" :class="`status-${record.status}`"><span class="status-dot" aria-hidden="true" />{{ t(`projects.status.${record.status}`) }}</small></span>
         </RouterLink>
         <el-dropdown trigger="click" @command="removeProject(record)">
           <el-button text :loading="deletingID === record.business_id" :aria-label="t('projects.deleteProject')"><el-icon><More /></el-icon></el-button>
@@ -178,8 +188,20 @@ onBeforeUnmount(() => {
 <style scoped>
 /* 界面表面与控件使用全局主题令牌；图片、文档和用户自选封面颜色保持原数据。 */
 .projects-main { min-height: 100svh; padding-top: 48px; padding-bottom: 92px; }
-.projects-heading { display: flex; align-items: flex-end; justify-content: space-between; gap: 20px; margin-bottom: 24px; }
-.projects-heading h1 { margin: 8px 0 8px; color: var(--ink); font-size: clamp(31px, 4vw, 44px); letter-spacing: 0; }
+.projects-heading-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.project-status-filters { display: flex; flex-wrap: wrap; gap: 8px; margin: 16px 0 24px; }
+.project-status-filters button { display: inline-flex; align-items: center; gap: 8px; min-height: 44px; padding: 8px 12px; font: inherit; font-size: 14px; background: transparent; color: var(--ink); border: 1px solid transparent; border-radius: 8px; cursor: pointer; }
+.project-status-filters button:hover { background: var(--surface-muted); }
+.project-status-filters button[aria-pressed=true] { background: var(--surface); border-color: var(--line); }
+.project-status-filters button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.status-dot { display: inline-block; width: 6px; height: 6px; flex-shrink: 0; border-radius: 50%; background: currentColor; }
+.status-count { color: var(--muted); font-variant-numeric: tabular-nums; }
+.execution-label { display: inline-flex; align-items: center; gap: 6px; }
+.status-unfinished { color: var(--muted) !important; }
+.status-executed { color: var(--danger) !important; }
+.status-completed { color: var(--success) !important; }
+.projects-heading { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 20px; margin-bottom: 24px; }
+.projects-heading h1 { margin: 8px 0; color: var(--ink); font-size: clamp(28px, 3vw, 36px); font-weight: 500; letter-spacing: 0; }
 .projects-heading > div > p:last-child { margin: 0; color: var(--muted); font-size: 13px; }
 .projects-heading .eyebrow { display: flex; align-items: center; gap: 8px; margin: 0; color: var(--accent-hover); font-size: 12px; font-weight: 600; }
 .projects-new { min-height: 42px; border-radius: var(--radius-control); }

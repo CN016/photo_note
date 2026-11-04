@@ -5,6 +5,8 @@ import type { Editor } from '@tiptap/core'
 import { ElMessage } from 'element-plus'
 import { ArrowLeft } from '@element-plus/icons-vue'
 import ProjectDocumentEditor from '../projects/views/ProjectDocumentEditor.vue'
+import ProjectShootingFields from '../projects/views/ProjectShootingFields.vue'
+import ProjectWorkflowPanel from '../projects/views/ProjectWorkflowPanel.vue'
 import { useI18n } from 'vue-i18n'
 import { useAuthStore } from '../stores/auth'
 import { gallerySnapshot } from '../context-menu/galleryNavigation'
@@ -13,7 +15,7 @@ import ProjectCoverImage from '../components/ProjectCoverImage.vue'
 import ProjectInspirationPicker from '../projects/views/ProjectInspirationPicker.vue'
 import { api, getSessionInfo } from '../api/client'
 import { addUploadPlaceholders, hasUploadPlaceholder, removeUploadPlaceholder, replaceUploadPlaceholder } from '../projects/uploadPlaceholders'
-import type { InspirationRecord, ProjectRecord, ProjectSaveInput } from '../api/types'
+import { ApiError, type InspirationRecord, type ProjectRecord, type ProjectSaveInput, type ProjectShooting } from '../api/types'
 import { createProjectInspiration } from '../projects/createProjectInspiration'
 import { fallbackProjectUploadLimit, projectUploadLimit } from '../projects/projectUploadLimit'
 
@@ -25,6 +27,15 @@ const projectID = computed(() => String(route.params.id || ''))
 const project = ref<ProjectRecord | null>(null)
 const title = ref('')
 const manualSummary = ref('')
+const aiAnalysis = ref('')
+const shooting = ref<ProjectShooting>({ start_at: null, end_at: null, location: '', person: '', kind: '' })
+const workflowBusy = ref(false)
+const shootingError = ref('')
+const workflowInputFocused = ref(false)
+/** 手机端编辑拍摄字段或复盘时隐藏正文格式工具栏，避免将格式命令作用于另一个编辑区域。 */
+function trackEditorFocus(event: FocusEvent) {
+  workflowInputFocused.value = event.target instanceof HTMLElement && !event.target.closest('.project-document-editor')
+}
 const coverEmoji = ref('')
 const coverImageKey = ref('')
 const coverFileName = ref('')
@@ -55,7 +66,7 @@ function editorReady(instance: Editor) {
 function saveInput(): ProjectSaveInput {
   return {
     default_read_only: route.query.from === 'gallery' && readOnly.value && !modeChanged ? project.value?.default_read_only : readOnly.value, title: title.value.trim(), cover_emoji: coverEmoji.value, cover_image_key: coverImageKey.value,
-    cover_file_name: coverFileName.value, manual_summary: manualSummary.value, document_schema_version: 1,
+    cover_file_name: coverFileName.value, manual_summary: manualSummary.value, ai_analysis: aiAnalysis.value, shooting: { ...shooting.value }, document_schema_version: 1,
     document: editor.value?.getJSON() ?? { type: 'doc', content: [{ type: 'paragraph' }] },
     revision: project.value?.revision ?? 1,
   }
@@ -83,8 +94,9 @@ async function saveNow(): Promise<boolean> {
       savingState.value = version === changeVersion ? 'saved' : 'unsaved'
       if (version !== changeVersion) { if (saveTimer) window.clearTimeout(saveTimer); saveTimer = window.setTimeout(() => { void saveNow() }, 100) }
       return true
-    } catch {
+    } catch (error) {
       savingState.value = 'error'
+      if (error instanceof ApiError && String(error.details?.field ?? '').startsWith('shooting')) shootingError.value = t('projects.shooting.invalid')
       ElMessage.error(t('projects.saveError'))
       return false
     } finally { saveFlight = null }
@@ -106,6 +118,8 @@ async function loadProject() {
     readOnly.value = route.query.from === 'gallery' && route.query.mode === 'read' ? true : result.default_read_only ?? false
     title.value = result.title
     manualSummary.value = result.manual_summary ?? ''
+    aiAnalysis.value = result.ai_analysis ?? ''
+    shooting.value = result.shooting ? { ...result.shooting } : { start_at: null, end_at: null, location: '', person: '', kind: '' }
     coverEmoji.value = result.cover_emoji
     coverImageKey.value = result.cover_image_key
     coverFileName.value = result.cover_file_name
@@ -278,15 +292,15 @@ watch(locale, () => {
 })
 
 // 同步观察使加载期间的标题赋值仍受 hydrating 保护，打开旧文档不会触发无意义保存。
-watch([title, manualSummary], () => scheduleSave(), { flush: 'sync' })
+watch([title, manualSummary, aiAnalysis, shooting], () => scheduleSave(), { flush: 'sync' })
+watch(shooting, () => { shootingError.value = '' })
 watch(projectID, () => { if (projectID.value) void loadProject() })
-function warnPendingUploads(event: BeforeUnloadEvent) { if (uploadJobs.size) { event.preventDefault(); event.returnValue = '' } }
+function warnPendingUploads(event: BeforeUnloadEvent) { if (uploadJobs.size || savingState.value !== 'saved') { event.preventDefault(); event.returnValue = '' } }
 onMounted(() => { window.addEventListener('beforeunload', warnPendingUploads); void loadProject(); void loadUploadLimit() })
 onBeforeUnmount(() => { window.removeEventListener('beforeunload', warnPendingUploads); if (saveTimer) window.clearTimeout(saveTimer); for (const job of uploadJobs.values()) { job.complete(); if (job.previewURL) URL.revokeObjectURL(job.previewURL) }
   uploadJobs.clear() })
-onBeforeRouteLeave(async () => {
-  // 整条导入链包括解码与多次上传，不能只等待单个 HTTP 请求。
-  if (documentIncompatible.value) return true
+/** 副作用操作复用离页前相同的排空逻辑，确保采用最后一份已保存快照而非中途修订。 */
+async function flushPendingSaves(): Promise<boolean> {
   if (uploadingAttachments.value > 0 || uploadJobs.size > 0 || loading.value) { ElMessage.warning(t('projects.uploadPendingLeave')); return false }
   while (saveTimer || savingState.value === 'unsaved' || savingState.value === 'saving' || savingState.value === 'error') {
     if (saveFlight) await saveFlight
@@ -294,12 +308,18 @@ onBeforeRouteLeave(async () => {
     if (savingState.value === 'error') return false
   }
   return true
+}
+onBeforeRouteLeave(async () => {
+  // 整条导入链包括解码与多次上传，不能只等待单个 HTTP 请求。
+  if (documentIncompatible.value) return true
+  if (workflowBusy.value) { ElMessage.info(t('projects.workflow.busy')); return false }
+  return flushPendingSaves()
 })
 </script>
 
 <template>
   <div class="project-app-header"><AppHeader /></div>
-  <main class="project-editor-main" :class="{ 'is-loading': loading }">
+  <main class="project-editor-main" :class="{ 'is-loading': loading, 'workflow-input-focused': workflowInputFocused }" @focusin="trackEditorFocus">
     <div v-if="loading" class="project-editor-state">{{ t('common.loading') }}</div>
     <div v-else-if="loadFailed || !project" class="project-editor-state project-editor-error"><p>{{ t('projects.loadError') }}</p><el-button @click="loadProject">{{ t('common.retry') }}</el-button></div>
     <template v-else>
@@ -311,8 +331,10 @@ onBeforeRouteLeave(async () => {
         </div>
         <el-button :disabled="documentIncompatible || uploadingAttachments > 0 || uploadJobs.size > 0" @click="switchMode">{{ readOnly ? t('projects.switchToEdit') : t('projects.switchToRead') }}</el-button>
         <span class="project-save-status" :class="`is-${savingState}`" role="status">{{ saveLabel }}</span>
+        <span class="project-execution-status" :class="`status-${project.status}`">{{ t(`projects.status.${project.status}`) }}</span>
       </header>
 
+      <ProjectShootingFields v-model="shooting" :read-only="readOnly || documentIncompatible" :error="shootingError" />
       <ProjectDocumentEditor
         :key="projectID"
         :document="initialDocument"
@@ -325,10 +347,7 @@ onBeforeRouteLeave(async () => {
         @upload-media="mediaInput?.click()"
         @paste-files="importFiles"
       />
-      <section class="project-summary">
-        <h2>{{ t('projects.manualSummary') }}</h2>
-        <el-input v-model="manualSummary" type="textarea" :rows="5" maxlength="100000" :disabled="documentIncompatible || readOnly" :aria-label="t('projects.manualSummary')" />
-      </section>
+      <ProjectWorkflowPanel :source="project" v-model:summary="manualSummary" v-model:analysis="aiAnalysis" :read-only="readOnly || documentIncompatible" :saving="savingState !== 'saved'" :flush="flushPendingSaves" @busy="workflowBusy = $event" />
       <input ref="mediaInput" class="hidden-file-input" type="file" multiple accept="image/*,video/*" @change="uploadFiles" />
       <input ref="attachmentInput" class="hidden-file-input" type="file" multiple accept=".pdf,.doc,.docx,.xls,.xlsx" @change="uploadFiles" />
     </template>
@@ -349,19 +368,24 @@ onBeforeRouteLeave(async () => {
 .project-save-status { flex: 0 0 auto; color: var(--muted); font-size: 12px; }
 .project-save-status.is-error { color: var(--danger); }
 .project-save-status.is-saved { color: var(--success); }
-.project-summary { margin-top: 24px; }
-.project-summary h2 { font-size: 18px; font-weight: 600; margin: 0 0 12px; }
+.project-execution-status { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--muted); }
+.project-execution-status::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+.status-executed { color: var(--danger); }
+.status-completed { color: var(--success); }
 .hidden-file-input { display: none; }
 .project-editor-state { display: grid; min-height: 60vh; justify-items: center; align-content: center; gap: 12px; color: var(--muted); text-align: center; }
 .project-editor-error { color: var(--danger); }
 @media (max-width: 768px) {
+  .project-editor-main.workflow-input-focused :deep(.tvp-toolbar) { visibility: hidden; pointer-events: none; }
   .project-app-header { display: none; }
   .project-editor-main { width: 100%; margin: 0; padding: 16px 12px calc(96px + env(safe-area-inset-bottom)); }
-  .project-editor-header { flex-wrap: wrap; gap: 4px 12px; margin-bottom: 12px; }
-  .project-back { order: 0; width: 100%; justify-content: flex-start; font-size: 12px; }
-  .project-title-area { order: 1; }
+  .project-editor-header { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 12px; margin-bottom: 16px; }
+  .project-back { order: 0; grid-area: 1 / 1 / 2 / 4; width: 100%; justify-content: flex-start; font-size: 12px; }
+  .project-title-area { order: 0; grid-area: 2 / 1 / 3 / 4; }
+  .project-editor-header > .el-button:not(.project-back) { grid-area: 3 / 1 / 4 / 2; }
+  .project-execution-status { grid-area: 3 / 2 / 4 / 3; }
   .project-title-area :deep(.project-cover-image) { width: 38px; height: 38px; flex-basis: 38px; font-size: 22px; }
   .project-title-input :deep(input) { height: 38px; font-size: 20px; }
-  .project-save-status { order: 2; margin-left: auto; font-size: 12px; }
+  .project-save-status { order: 0; grid-area: 3 / 3 / 4 / 4; margin-left: auto; font-size: 12px; }
 }
 </style>

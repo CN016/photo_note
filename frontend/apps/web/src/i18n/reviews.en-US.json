@@ -1,0 +1,11 @@
+{
+  "title": "Reviews",
+  "plans": "Shoot plans",
+  "search": "Search review titles or text",
+  "empty": "No review documents yet",
+  "noResults": "No matching reviews",
+  "error": "Could not load reviews",
+  "pages": "Review pages",
+  "previous": "Previous page",
+  "next": "Next page"
+}

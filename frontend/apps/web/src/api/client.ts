@@ -2,6 +2,7 @@ import { ApiError, type ApiEnvelope, type ApiErrorEnvelope, type AuthResponse, t
 import { API_REQUEST_ORIGIN } from './config'
 import type { InspirationProjectSummary, Environment, Organization, OrganizationMember, PortfolioRecord, PortfolioPhoto, PortfolioInput } from './types'
 import type { InspirationLibraryFilters, InspirationGoalStatus, InspirationFacet } from './types'
+import type { ProjectStatus, ProjectStatusCounts, ProjectReview, ProjectScheduleLink } from './types'
 
 /** V1 业务路由统一加版本前缀；环境变量只提供服务主机。 */
 const API_BASE = `${API_REQUEST_ORIGIN}/api/v1`
@@ -467,11 +468,24 @@ export const api = {
   deletePlan(id: string) { return request<void>(`/plans/${encodeURIComponent(id)}`, { method: 'DELETE' }) },
   /** 分页搜索当前用户的项目标题与正文。 */
   inspirationProjects(id: string, page = 1) { return request<PageResult<InspirationProjectSummary>>(`/inspirations/${encodeURIComponent(id)}/projects?page=${page}&page_size=20`) },
-  projects(page = 1, pageSize = 20, query = '') {
+  projects(page = 1, pageSize = 20, query = '', status: ProjectStatus | '' = '') {
     const params = new URLSearchParams({ page: String(page), page_size: String(pageSize) })
     if (query.trim()) params.set('q', query.trim())
-    return request<PageResult<ProjectSummary>>(`/projects?${params.toString()}`)
+    if (status) params.set('status', status)
+    return request<PageResult<ProjectSummary> & { status_counts: ProjectStatusCounts }>(`/projects?${params.toString()}`)
   },
+  /** 读取真正时间重叠的候选；已有档期由用户明确选择。 */
+  projectScheduleCandidates(id: string) { return request<{ items: ScheduleOccurrence[] }>(`/projects/${encodeURIComponent(id)}/schedule/candidates`) },
+  syncProjectSchedule(id: string, input: { revision: number; schedule_id?: string; detach?: boolean; create_new?: boolean }) { return request<ProjectScheduleLink>(`/projects/${encodeURIComponent(id)}/schedule`, { method: 'POST', body: JSON.stringify(input) }) },
+  projectReview(id: string) { return request<ProjectReview | null>(`/projects/${encodeURIComponent(id)}/review`) },
+  completeProjectReview(id: string, revision: number) { return request<ProjectReview>(`/projects/${encodeURIComponent(id)}/review`, { method: 'POST', body: JSON.stringify({ revision }) }) },
+  projectReviews(page = 1, query = '') { return request<PageResult<ProjectReview>>(`/project-reviews?${new URLSearchParams({ page: String(page), page_size: '20', q: query.trim() })}`) },
+  review(id: string) { return request<ProjectReview>(`/project-reviews/${encodeURIComponent(id)}`) },
+  saveReview(id: string, input: Pick<ProjectReview, 'title' | 'revision'> & { content: string }) { return request<ProjectReview>(`/project-reviews/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify(input) }) },
+  projectPortfolios(id: string) { return request<{ items: PortfolioRecord[] }>(`/projects/${encodeURIComponent(id)}/portfolios`) },
+  setProjectPortfolios(id: string, portfolio_ids: string[]) { return request<{ items: PortfolioRecord[] }>(`/projects/${encodeURIComponent(id)}/portfolios`, { method: 'PUT', body: JSON.stringify({ portfolio_ids }) }) },
+  /** 生成只返回预览；用户采用后再通过策划修订保存，不自动覆盖分析草稿。 */
+  generateProjectAnalysis(id: string, revision: number, locale: string, signal?: AbortSignal) { return request<{ analysis: string; source_revision: number }>(`/projects/${encodeURIComponent(id)}/ai-analysis`, { method: 'POST', body: JSON.stringify({ revision, locale }), signal }) },
   /** 读取项目正文并校验所有资源引用。 */
   project(id: string) { return request<ProjectRecord>(`/projects/${encodeURIComponent(id)}`) },
   /** 创建带初始内容的项目文档。 */

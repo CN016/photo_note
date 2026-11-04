@@ -128,5 +128,56 @@
     "failed": "Upload failed. Retry or remove it."
   },
   "backToGallery": "Back to inspiration library",
-  "manualSummary": "Review"
+  "manualSummary": "Review",
+  "allStatuses": "All",
+  "filterStatus": "Filter by execution status",
+  "status": {
+    "unfinished": "Unfinished",
+    "executed": "Executed",
+    "completed": "Completed"
+  },
+  "shooting": {
+    "title": "Shoot details",
+    "start": "Start (China standard time)",
+    "end": "End (China standard time)",
+    "location": "Location",
+    "person": "Subject name",
+    "kind": "Shoot type",
+    "photo": "Photo",
+    "video": "Video",
+    "invalid": "Check the start and end times (up to 24 hours), location and subject name"
+  },
+  "workflow": {
+    "schedule": "Shoot schedule",
+    "openSchedule": "Open calendar",
+    "linked": "Linked",
+    "syncSchedule": "Sync schedule",
+    "linkSchedule": "Link schedule",
+    "detach": "Unlink",
+    "detachConfirm": "The calendar event will be kept. Unlink it?",
+    "scheduleFailed": "Could not link or sync the event. Retry, or unlink a deleted event and link again",
+    "chooseSchedule": "Choose a matching event",
+    "confirmLink": "Link selected event",
+    "createSeparate": "Create separate event",
+    "allReviews": "Reviews",
+    "openReview": "Open review document",
+    "completeReview": "Complete review and create document",
+    "reviewCreated": "Review document created",
+    "aiTitle": "AI review analysis",
+    "generate": "Generate analysis",
+    "preview": "Generated preview",
+    "adopt": "Use this analysis",
+    "replaceAnalysis": "Replace the current AI analysis? Your manual review will be kept",
+    "aiSendHint": "Sends planning text, action markers and your manual review to the AI service configured by the administrator",
+    "aiUnconfigured": "The administrator has not configured a text AI service",
+    "aiBusy": "AI analysis is busy. Try again shortly",
+    "aiTimeout": "AI analysis timed out. Try again",
+    "aiFailed": "AI analysis failed. Try again",
+    "portfolios": "Linked portfolios",
+    "managePortfolios": "Choose portfolios",
+    "saveLinks": "Save links",
+    "relationsFailed": "Could not load links",
+    "busy": "Links are being saved. Please wait before leaving",
+    "aiInvalidConfig": "The text AI configuration is invalid. Ask an administrator to check the service settings"
+  }
 }
