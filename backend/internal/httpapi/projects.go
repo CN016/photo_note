@@ -31,16 +31,16 @@ func listProjectsHandler(projects *service.ProjectService) gin.HandlerFunc {
 			writeError(c, err)
 			return
 		}
-		if len(c.QueryArray("q")) > 1 {
-			writeError(c, fault.InvalidRequest("q 查询参数不能重复"))
+		if len(c.QueryArray("q")) > 1 || len(c.QueryArray("status")) > 1 {
+			writeError(c, fault.InvalidRequest("q 和 status 查询参数不能重复"))
 			return
 		}
-		result, err := projects.List(c.Request.Context(), claims.UserBusinessID, c.Query("q"), page)
+		result, err := projects.ListFiltered(c.Request.Context(), claims.UserBusinessID, c.Query("q"), c.Query("status"), page)
 		if err != nil {
 			writeError(c, err)
 			return
 		}
-		writeData(c, http.StatusOK, projectListPageResponse(result))
+		writeData(c, http.StatusOK, result)
 	}
 }
 
@@ -52,7 +52,7 @@ func projectListPageResponse(result service.Page[service.ProjectSummary]) pageRe
 }
 
 // createProjectHandler 创建项目及其第一份版本化正文快照。
-func createProjectHandler(projects *service.ProjectService) gin.HandlerFunc {
+func createProjectHandler(projects *service.ProjectService, workflows ...*service.ProjectWorkflowService) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		claims, err := authContext(c)
 		if err != nil {
@@ -68,6 +68,9 @@ func createProjectHandler(projects *service.ProjectService) gin.HandlerFunc {
 		if err != nil {
 			writeError(c, err)
 			return
+		}
+		if len(workflows) > 0 {
+			item = syncSavedProjectSchedule(c.Request.Context(), claims.UserBusinessID, item, workflows[0])
 		}
 		writeData(c, http.StatusCreated, item)
 	}
@@ -96,7 +99,7 @@ func getProjectHandler(projects *service.ProjectService) gin.HandlerFunc {
 }
 
 // patchProjectHandler 保存完整正文快照并依赖 revision 拒绝过期自动保存。
-func patchProjectHandler(projects *service.ProjectService) gin.HandlerFunc {
+func patchProjectHandler(projects *service.ProjectService, workflows ...*service.ProjectWorkflowService) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		claims, err := authContext(c)
 		if err != nil {
@@ -117,6 +120,9 @@ func patchProjectHandler(projects *service.ProjectService) gin.HandlerFunc {
 		if err != nil {
 			writeError(c, err)
 			return
+		}
+		if len(workflows) > 0 {
+			item = syncSavedProjectSchedule(c.Request.Context(), claims.UserBusinessID, item, workflows[0])
 		}
 		writeData(c, http.StatusOK, item)
 	}

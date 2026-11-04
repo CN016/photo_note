@@ -7,9 +7,9 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/lib/pq"
 	"github.com/photo-nini/backend/internal/domain/fault"
 	"github.com/photo-nini/backend/internal/model"
+	"github.com/photo-nini/backend/internal/projectstatus"
 	"github.com/photo-nini/backend/internal/tenant"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
@@ -17,24 +17,15 @@ import (
 
 // ListProjects 按用户范围分页检索项目；GIN gram 负责短词候选，strpos 再核对真实连续子串。
 func (store *PostgresStore) ListProjects(ctx context.Context, userID uuid.UUID, query string, offset, pageSize int) ([]model.Project, int64, error) {
-	base := store.db.WithContext(ctx).Model(&model.Project{}).Where("user_id = ? AND deleted_at IS NULL", userID)
-	if query != "" {
-		grams := projectSearchGrams(query)
-		base = base.Where("search_grams @> ? AND strpos(search_text, ?) > 0", pq.StringArray(grams), query)
-	}
-	var total int64
-	if err := base.Count(&total).Error; err != nil {
-		return nil, 0, persistenceError(err)
-	}
-	var items []model.Project
-	if err := base.Select("business_id", "title", "cover_emoji", "cover_image_key", "cover_file_name", "revision", "created_at", "updated_at", "document", "manual_summary", "default_read_only").Order("updated_at DESC, created_at DESC").Offset(offset).Limit(pageSize).Find(&items).Error; err != nil {
-		return nil, 0, persistenceError(err)
-	}
-	return items, total, nil
+	items, total, _, err := store.ListProjectsFiltered(ctx, userID, query, "", offset, pageSize)
+	return items, total, err
 }
 
 // FindProject 同时限定项目业务 UUID、所属用户和未删除状态。
 func (store *PostgresStore) FindProject(ctx context.Context, userID, projectID uuid.UUID) (model.Project, error) {
+	if err := projectUserBoundary(ctx, userID); err != nil {
+		return model.Project{}, err
+	}
 	var item model.Project
 	if err := store.db.WithContext(ctx).Where("user_id = ? AND business_id = ? AND deleted_at IS NULL", userID, projectID).First(&item).Error; err != nil {
 		return model.Project{}, persistenceError(err)
@@ -44,6 +35,10 @@ func (store *PostgresStore) FindProject(ctx context.Context, userID, projectID u
 
 // CreateProject 在一个事务中保存文档并同步灵感图、封面和正文附件关系。
 func (store *PostgresStore) CreateProject(ctx context.Context, item *model.Project, inspirations []uuid.UUID, attachments []model.ProjectAttachment) error {
+	if err := projectUserBoundary(ctx, item.UserID); err != nil {
+		return err
+	}
+	item.Status = projectstatus.Calculate(item.Document, item.ManualSummary)
 	return store.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		now := time.Now().UTC()
 		item.CreatedAt, item.UpdatedAt = now, now
@@ -62,6 +57,9 @@ func (store *PostgresStore) CreateProject(ctx context.Context, item *model.Proje
 
 // UpdateProject 锁定当前修订并同时提交文档、索引文本及资源关联，避免自动保存交叉覆盖。
 func (store *PostgresStore) UpdateProject(ctx context.Context, userID, projectID uuid.UUID, revision int64, updates map[string]any, inspirations []uuid.UUID, attachments []model.ProjectAttachment) (model.Project, error) {
+	if err := projectUserBoundary(ctx, userID); err != nil {
+		return model.Project{}, err
+	}
 	var updated model.Project
 	err := store.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		var current model.Project
@@ -71,6 +69,16 @@ func (store *PostgresStore) UpdateProject(ctx context.Context, userID, projectID
 		if current.Revision != revision {
 			return fault.Conflict("项目已在其他位置更新，请重新加载后继续编辑")
 		}
+		// 从已锁定版本读取未提交的总结；旧客户端只能修改其明确提供的字段。
+		summary := current.ManualSummary
+		if value, ok := updates["manual_summary"].(string); ok {
+			summary = value
+		}
+		document := current.Document
+		if value, ok := updates["document"].(model.JSONB); ok {
+			document = value
+		}
+		updates["status"] = projectstatus.Calculate(document, summary)
 		if err := lockProjectInspirations(tx, userID, inspirations); err != nil {
 			return err
 		}
@@ -95,6 +103,9 @@ func (store *PostgresStore) UpdateProject(ctx context.Context, userID, projectID
 
 // DeleteProject 软删除策划，保留正文资源关系，同时清除作品集对已删除策划的引用。
 func (store *PostgresStore) DeleteProject(ctx context.Context, userID, projectID uuid.UUID) error {
+	if err := projectUserBoundary(ctx, userID); err != nil {
+		return err
+	}
 	return store.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		result := tx.Model(&model.Project{}).Where("user_id = ? AND business_id = ? AND deleted_at IS NULL", userID, projectID).Updates(map[string]any{"deleted_at": time.Now().UTC(), "updated_at": time.Now().UTC()})
 		if result.Error != nil {
@@ -237,7 +248,7 @@ func projectSearchGrams(query string) []string {
 // ListInspirationProjects 显式校验会话、图片和关联各表的空间及用户，不借用组织管理权限。
 // EXISTS 避免同一策划多次引用造成分页重复，删除的策划不进入结果。
 func (store *PostgresStore) ListInspirationProjects(ctx context.Context, userID, inspirationID uuid.UUID, offset, pageSize int) ([]model.Project, int64, error) {
-	if err := libraryUserBoundary(ctx, userID); err != nil {
+	if err := projectUserBoundary(ctx, userID); err != nil {
 		return nil, 0, err
 	}
 	scope, err := tenant.Require(ctx)

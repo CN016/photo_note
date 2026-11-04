@@ -13,7 +13,6 @@ import (
 	"github.com/google/uuid"
 	"github.com/photo-nini/backend/internal/domain/fault"
 	"github.com/photo-nini/backend/internal/model"
-	"github.com/photo-nini/backend/internal/projectstatus"
 	"golang.org/x/text/unicode/norm"
 )
 
@@ -53,45 +52,54 @@ type ProjectSave struct {
 	// nil 表示旧客户端未提供，更新时保留已有设置。
 	DefaultReadOnly *bool `json:"default_read_only"`
 	// 未传复盘时保留现值，以兼容旧客户端。
-	ManualSummary         *string         `json:"manual_summary"`
-	Title                 string          `json:"title"`
-	CoverEmoji            string          `json:"cover_emoji"`
-	CoverImageKey         string          `json:"cover_image_key"`
-	CoverFileName         string          `json:"cover_file_name"`
-	DocumentSchemaVersion int             `json:"document_schema_version"`
-	Document              json.RawMessage `json:"document"`
-	Revision              int64           `json:"revision"`
+	ManualSummary         *string                `json:"manual_summary"`
+	Shooting              *model.ProjectShooting `json:"shooting"`
+	AIAnalysis            *string                `json:"ai_analysis"`
+	Title                 string                 `json:"title"`
+	CoverEmoji            string                 `json:"cover_emoji"`
+	CoverImageKey         string                 `json:"cover_image_key"`
+	CoverFileName         string                 `json:"cover_file_name"`
+	DocumentSchemaVersion int                    `json:"document_schema_version"`
+	Document              json.RawMessage        `json:"document"`
+	Revision              int64                  `json:"revision"`
 }
 
 // ProjectView 只暴露项目业务字段和关联资源，不返回自增 ID、所属用户或索引字段。
 type ProjectView struct {
-	ManualSummary         string          `json:"manual_summary"`
-	Status                string          `json:"status"`
-	DefaultReadOnly       bool            `json:"default_read_only"`
-	BusinessID            uuid.UUID       `json:"business_id"`
-	Title                 string          `json:"title"`
-	CoverEmoji            string          `json:"cover_emoji"`
-	CoverImageKey         string          `json:"cover_image_key"`
-	CoverFileName         string          `json:"cover_file_name"`
-	DocumentSchemaVersion int16           `json:"document_schema_version"`
-	Document              json.RawMessage `json:"document"`
-	Revision              int64           `json:"revision"`
-	CreatedAt             string          `json:"created_at"`
-	UpdatedAt             string          `json:"updated_at"`
+	ScheduleSyncNeeded    bool                  `json:"-"`
+	ScheduleSyncState     string                `json:"schedule_sync_state,omitempty"`
+	Shooting              model.ProjectShooting `json:"shooting"`
+	ScheduleID            *uuid.UUID            `json:"schedule_id"`
+	ScheduleOwned         bool                  `json:"schedule_owned"`
+	AIAnalysis            string                `json:"ai_analysis"`
+	ManualSummary         string                `json:"manual_summary"`
+	Status                string                `json:"status"`
+	DefaultReadOnly       bool                  `json:"default_read_only"`
+	BusinessID            uuid.UUID             `json:"business_id"`
+	Title                 string                `json:"title"`
+	CoverEmoji            string                `json:"cover_emoji"`
+	CoverImageKey         string                `json:"cover_image_key"`
+	CoverFileName         string                `json:"cover_file_name"`
+	DocumentSchemaVersion int16                 `json:"document_schema_version"`
+	Document              json.RawMessage       `json:"document"`
+	Revision              int64                 `json:"revision"`
+	CreatedAt             string                `json:"created_at"`
+	UpdatedAt             string                `json:"updated_at"`
 }
 
 // ProjectSummary 用于项目卡片列表，避免分页响应下载每个文档的完整 JSONB 正文。
 type ProjectSummary struct {
-	Status          string    `json:"status"`
-	DefaultReadOnly bool      `json:"default_read_only"`
-	BusinessID      uuid.UUID `json:"business_id"`
-	Title           string    `json:"title"`
-	CoverEmoji      string    `json:"cover_emoji"`
-	CoverImageKey   string    `json:"cover_image_key"`
-	CoverFileName   string    `json:"cover_file_name"`
-	Revision        int64     `json:"revision"`
-	CreatedAt       string    `json:"created_at"`
-	UpdatedAt       string    `json:"updated_at"`
+	Shooting        model.ProjectShooting `json:"shooting"`
+	Status          string                `json:"status"`
+	DefaultReadOnly bool                  `json:"default_read_only"`
+	BusinessID      uuid.UUID             `json:"business_id"`
+	Title           string                `json:"title"`
+	CoverEmoji      string                `json:"cover_emoji"`
+	CoverImageKey   string                `json:"cover_image_key"`
+	CoverFileName   string                `json:"cover_file_name"`
+	Revision        int64                 `json:"revision"`
+	CreatedAt       string                `json:"created_at"`
+	UpdatedAt       string                `json:"updated_at"`
 }
 
 // ProjectAttachmentView 是项目授权范围内可预览的附件元数据。
@@ -141,6 +149,12 @@ func (service *ProjectService) Create(ctx context.Context, userID uuid.UUID, inp
 	if input.ManualSummary != nil {
 		project.ManualSummary = *input.ManualSummary
 	}
+	if input.Shooting != nil {
+		project.Shooting = *input.Shooting
+	}
+	if input.AIAnalysis != nil {
+		project.AIAnalysis = *input.AIAnalysis
+	}
 	project.BaseModel.BusinessID = uuid.New()
 	project.UserID = userID
 	project.Revision = 1
@@ -167,6 +181,13 @@ func (service *ProjectService) Update(ctx context.Context, userID, projectID uui
 	}
 	if input.ManualSummary != nil {
 		updates["manual_summary"] = *input.ManualSummary
+	}
+	if input.Shooting != nil {
+		updates["shoot_start_at"], updates["shoot_end_at"] = input.Shooting.StartAt, input.Shooting.EndAt
+		updates["shoot_location"], updates["shoot_person"], updates["shoot_kind"] = input.Shooting.Location, input.Shooting.Person, input.Shooting.Kind
+	}
+	if input.AIAnalysis != nil {
+		updates["ai_analysis"] = *input.AIAnalysis
 	}
 	if input.DefaultReadOnly != nil {
 		updates["default_read_only"] = *input.DefaultReadOnly
@@ -215,6 +236,14 @@ type prefixedReadCloser struct {
 
 // prepare 校验富文本文档版本、标题、封面、灵感图协议和附件字节，并构建精确搜索字段。
 func (service *ProjectService) prepare(ctx context.Context, userID uuid.UUID, input ProjectSave) (model.Project, []uuid.UUID, []model.ProjectAttachment, error) {
+	if input.Shooting != nil {
+		if err := validateProjectShooting(input.Shooting); err != nil {
+			return model.Project{}, nil, nil, err
+		}
+	}
+	if input.AIAnalysis != nil && utf8.RuneCountInString(*input.AIAnalysis) > 100000 {
+		return model.Project{}, nil, nil, fault.InvalidField("ai_analysis", "AI 分析最多 100000 个字符")
+	}
 	if input.ManualSummary != nil && utf8.RuneCountInString(*input.ManualSummary) > 100000 {
 		return model.Project{}, nil, nil, fault.InvalidField("manual_summary", "总结最多 100000 个字符")
 	}
@@ -432,11 +461,11 @@ func safeProjectFileName(name string) string {
 }
 
 func projectView(item model.Project) ProjectView {
-	return ProjectView{ManualSummary: item.ManualSummary, Status: projectstatus.Calculate(item.Document, item.ManualSummary), DefaultReadOnly: item.DefaultReadOnly, BusinessID: item.BusinessID, Title: item.Title, CoverEmoji: item.CoverEmoji, CoverImageKey: item.CoverImageKey, CoverFileName: item.CoverFileName, DocumentSchemaVersion: item.DocumentSchemaVersion, Document: json.RawMessage(item.Document), Revision: item.Revision, CreatedAt: item.CreatedAt.UTC().Format("2006-01-02T15:04:05Z07:00"), UpdatedAt: item.UpdatedAt.UTC().Format("2006-01-02T15:04:05Z07:00")}
+	return ProjectView{ScheduleSyncState: projectScheduleState(item), ScheduleSyncNeeded: item.Shooting.Complete() && item.ScheduleFingerprint != item.Shooting.Fingerprint() && (item.ScheduleID == nil || item.ScheduleOwned), Shooting: item.Shooting, ScheduleID: item.ScheduleID, ScheduleOwned: item.ScheduleOwned, AIAnalysis: item.AIAnalysis, ManualSummary: item.ManualSummary, Status: item.Status, DefaultReadOnly: item.DefaultReadOnly, BusinessID: item.BusinessID, Title: item.Title, CoverEmoji: item.CoverEmoji, CoverImageKey: item.CoverImageKey, CoverFileName: item.CoverFileName, DocumentSchemaVersion: item.DocumentSchemaVersion, Document: json.RawMessage(item.Document), Revision: item.Revision, CreatedAt: item.CreatedAt.UTC().Format("2006-01-02T15:04:05Z07:00"), UpdatedAt: item.UpdatedAt.UTC().Format("2006-01-02T15:04:05Z07:00")}
 }
 
 func projectSummary(item model.Project) ProjectSummary {
-	return ProjectSummary{Status: projectstatus.Calculate(item.Document, item.ManualSummary), DefaultReadOnly: item.DefaultReadOnly, BusinessID: item.BusinessID, Title: item.Title, CoverEmoji: item.CoverEmoji, CoverImageKey: item.CoverImageKey, CoverFileName: item.CoverFileName, Revision: item.Revision, CreatedAt: item.CreatedAt.UTC().Format("2006-01-02T15:04:05Z07:00"), UpdatedAt: item.UpdatedAt.UTC().Format("2006-01-02T15:04:05Z07:00")}
+	return ProjectSummary{Shooting: item.Shooting, Status: item.Status, DefaultReadOnly: item.DefaultReadOnly, BusinessID: item.BusinessID, Title: item.Title, CoverEmoji: item.CoverEmoji, CoverImageKey: item.CoverImageKey, CoverFileName: item.CoverFileName, Revision: item.Revision, CreatedAt: item.CreatedAt.UTC().Format("2006-01-02T15:04:05Z07:00"), UpdatedAt: item.UpdatedAt.UTC().Format("2006-01-02T15:04:05Z07:00")}
 }
 
 func normalizeProjectText(value string) string {

@@ -125,6 +125,7 @@ func run() error {
 		Schedule:              service.NewScheduleService(repository, tokens, runtimeConfig.SchedulePerIPPerHour),
 		Plans:                 plans,
 		Projects:              projects,
+		ProjectWorkflow:       service.NewProjectWorkflowService(repository, runtimeConfigService),
 		PortfolioShares:       service.NewPortfolioShareService(repository),
 		Portfolios:            service.NewPortfolioService(repository),
 		PortfolioPhotos:       service.NewPortfolioPhotoService(repository, fileService, runtimeConfig.MaxUploadBytes, runtimeConfigService.CurrentFileStoreType),

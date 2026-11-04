@@ -14,7 +14,9 @@ ENV GOPROXY=${GOPROXY}
 COPY go.mod go.sum ./
 RUN go mod download
 COPY . .
-RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /out/photo-nini-api ./cmd/api
+# 默认限制编译并行度，避免本机构建挤占正在运行的服务；CI 可显式增加构建参数。
+ARG GO_BUILD_PARALLELISM=2
+RUN GOMAXPROCS=${GO_BUILD_PARALLELISM} CGO_ENABLED=0 GOOS=linux go build -p ${GO_BUILD_PARALLELISM} -trimpath -ldflags="-s -w" -o /out/photo-nini-api ./cmd/api
 
 FROM ${AI_RUNTIME_BASE_IMAGE}
 USER root

@@ -90,6 +90,7 @@ func checkSchema(ctx context.Context, connection *gorm.DB) error {
 		"notice_deliveries":           &model.NoticeDelivery{},
 		"error_logs":                  &model.ErrorLog{},
 		"projects":                    &model.Project{},
+		"project_reviews":             &model.ProjectReview{},
 		"plans":                       &model.Plan{},
 		"plan_reminders":              &model.PlanReminder{},
 		"project_inspiration_usages":  &model.ProjectInspirationUsage{},
@@ -127,6 +128,13 @@ func checkSchema(ctx context.Context, connection *gorm.DB) error {
 		}
 		if name == "projects" && !connection.WithContext(ctx).Migrator().HasColumn(table, "ManualSummary") {
 			return fmt.Errorf("PostgreSQL schema 缺少 projects.manual_summary，请先执行 backend/migrations/000027_project_summary.sql")
+		}
+		if name == "projects" {
+			for _, column := range []string{"status", "shoot_start_at", "shoot_end_at", "shoot_location", "shoot_person", "shoot_kind", "schedule_id", "schedule_owned", "schedule_fingerprint", "ai_analysis"} {
+				if !connection.WithContext(ctx).Migrator().HasColumn(table, column) {
+					return fmt.Errorf("PostgreSQL schema 缺少策划流程字段，请先执行 backend/migrations/000028_project_workflow.sql")
+				}
+			}
 		}
 		// 所有自建表都必须完成租户迁移，不能让缺少隔离列的旧 schema 启动后才失败。
 		if !connection.WithContext(ctx).Migrator().HasColumn(table, "OrgID") {

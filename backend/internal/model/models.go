@@ -488,11 +488,19 @@ type Project struct {
 	DocumentSchemaVersion int16 `gorm:"column:document_schema_version;type:smallint;not null;default:1"`
 	Document              JSONB `gorm:"column:document;type:jsonb;not null"`
 	// ManualSummary 是人工复盘，与正文一起通过修订号保护。
-	ManualSummary string         `gorm:"column:manual_summary;type:text;not null;default:''"`
-	SearchText    string         `gorm:"column:search_text;type:text;not null;default:''" json:"-"`
-	SearchGrams   pq.StringArray `gorm:"column:search_grams;type:text[];not null;default:ARRAY[]::text[]" json:"-"`
-	Revision      int64          `gorm:"column:revision;type:bigint;not null;default:1"`
-	DeletedAt     *time.Time     `gorm:"column:deleted_at;type:timestamptz" json:"-"`
+	ManualSummary string `gorm:"column:manual_summary;type:text;not null;default:''"`
+	// Status 在保存事务中与正文、人工总结一同计算，列表无需加载完整正文。
+	Status   string          `gorm:"column:status;type:varchar(16);not null;default:'unfinished'"`
+	Shooting ProjectShooting `gorm:"embedded"`
+	// ScheduleOwned 仅授权同步本策划创建的档期，关联已有档期不授予改写权限。
+	ScheduleID          *uuid.UUID     `gorm:"column:schedule_id;type:uuid"`
+	ScheduleOwned       bool           `gorm:"column:schedule_owned;not null;default:false"`
+	ScheduleFingerprint string         `gorm:"column:schedule_fingerprint;type:varchar(64);not null;default:''"`
+	AIAnalysis          string         `gorm:"column:ai_analysis;type:text;not null;default:''"`
+	SearchText          string         `gorm:"column:search_text;type:text;not null;default:''" json:"-"`
+	SearchGrams         pq.StringArray `gorm:"column:search_grams;type:text[];not null;default:ARRAY[]::text[]" json:"-"`
+	Revision            int64          `gorm:"column:revision;type:bigint;not null;default:1"`
+	DeletedAt           *time.Time     `gorm:"column:deleted_at;type:timestamptz" json:"-"`
 }
 
 // TableName 固定项目文档模型使用与版本化 SQL 迁移相同的表名。

@@ -96,6 +96,16 @@ func (store *PostgresStore) DeleteScheduleItem(ctx context.Context, userID, item
 		if result.RowsAffected == 0 {
 			return fault.NotFound()
 		}
+		// 删除日历事件时清理同空间同用户的策划关联，保留策划内容；同一份拍摄信息不应立即重建事件。
+		var linked []model.Project
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Select("business_id", "shoot_start_at", "shoot_end_at", "shoot_location", "shoot_person", "shoot_kind").Where("user_id = ? AND schedule_id = ?", userID, itemID).Find(&linked).Error; err != nil {
+			return persistenceError(err)
+		}
+		for _, project := range linked {
+			if err := tx.Model(&model.Project{}).Where("user_id = ? AND business_id = ?", userID, project.BusinessID).Updates(map[string]any{"schedule_id": nil, "schedule_owned": false, "schedule_fingerprint": project.Shooting.Fingerprint()}).Error; err != nil {
+				return persistenceError(err)
+			}
+		}
 		if err := tx.Where("user_id = ? AND schedule_business_id = ?", userID, itemID).Delete(&model.ScheduleException{}).Error; err != nil {
 			return persistenceError(err)
 		}

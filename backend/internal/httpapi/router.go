@@ -60,6 +60,7 @@ type Dependencies struct {
 	Schedule              *service.ScheduleService
 	Plans                 *service.PlanService
 	Projects              *service.ProjectService
+	ProjectWorkflow       *service.ProjectWorkflowService
 	PortfolioShares       *service.PortfolioShareService
 	Portfolios            *service.PortfolioService
 	PortfolioPhotos       *service.PortfolioPhotoService
@@ -198,11 +199,12 @@ func Router(dependencies Dependencies) *gin.Engine {
 	}
 	protected.GET("/inspirations/:business_id/projects", inspirationProjectsHandler(dependencies.Projects))
 	protected.GET("/projects", listProjectsHandler(dependencies.Projects))
-	protected.POST("/projects", createProjectHandler(dependencies.Projects))
+	protected.POST("/projects", createProjectHandler(dependencies.Projects, dependencies.ProjectWorkflow))
 	protected.GET("/projects/:business_id", getProjectHandler(dependencies.Projects))
-	protected.PATCH("/projects/:business_id", patchProjectHandler(dependencies.Projects))
+	protected.PATCH("/projects/:business_id", patchProjectHandler(dependencies.Projects, dependencies.ProjectWorkflow))
 	protected.DELETE("/projects/:business_id", deleteProjectHandler(dependencies.Projects))
 	protected.GET("/projects/:business_id/attachments/content", projectAttachmentHandler(dependencies.Projects))
+	registerProjectWorkflow(protected, dependencies.ProjectWorkflow)
 	protected.GET("/notifications", listNotificationsHandler(dependencies.Notices))
 	protected.GET("/notifications/unread-count", unreadNotificationCountHandler(dependencies.Notices))
 	protected.PATCH("/notifications/:business_id/read", markNotificationReadHandler(dependencies.Notices))
