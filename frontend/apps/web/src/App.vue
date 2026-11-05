@@ -8,6 +8,7 @@ import { clearGallerySnapshot } from './context-menu/galleryNavigation'
 import GlobalContextMenu from './components/GlobalContextMenu.vue'
 import FeedbackWidget from './components/FeedbackWidget.vue'
 import GlobalMessageButton from './components/GlobalMessageButton.vue'
+import StartupRecovery from './components/StartupRecovery.vue'
 import { useAuthStore } from './stores/auth'
 import { configureSpaceCoordination, preparingSpaceSwitch } from './spaces/coordination'
 import { router, defaultAuthenticatedRoute } from './router'
@@ -63,6 +64,7 @@ watch(projectEditorRoute, active => document.body.classList.toggle('project-edit
 
 <template>
   <el-config-provider :locale="elementLocale">
+    <StartupRecovery />
     <GlobalMessageButton />
     <GlobalContextMenu />
     <RouterView v-slot="{ Component, route: pageRoute }">

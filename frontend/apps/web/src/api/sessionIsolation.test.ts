@@ -26,7 +26,7 @@ describe('空间切换中的请求隔离', () => {
     const client = await import('./client'); client.acceptTokenPair(pair(11, 1))
     await expect(client.api.refresh()).resolves.toBe('access-1')
     expect(fetchMock).not.toHaveBeenCalled()
-    expect(bridge).toHaveBeenCalledWith('photo_nini', { method: 'refreshNotificationSession', options: { identity: 'same-browser-session:11:1' } })
+    expect(bridge).toHaveBeenCalledWith('photo_nini', { method: 'refreshNotificationSession', options: { identity: 'same-browser-session:11:1', rejectedAccessToken: '' } })
   })
   it('旧安卓壳缺少通知桥接时仍能沿用HTTP刷新登录', async () => {
     vi.stubGlobal('browser', { runtime: { id: 'photo-nini@imcn016.love', sendNativeMessage: vi.fn(async () => { throw new Error('unsupported_method') }) } })

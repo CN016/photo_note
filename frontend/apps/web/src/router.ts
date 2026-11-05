@@ -59,7 +59,8 @@ router.beforeEach(async to => {
   }
   if (!backendAvailable && to.name === 'maintenance') return true
   const auth = useAuthStore()
-  await auth.initialize()
+  // 首次恢复失败后转入登录恢复页时，不要在导航守卫里再等待一轮刷新；重试由页面按钮明确触发。
+  if (!(to.name === 'login' && auth.recoveryPending)) await auth.initialize()
   if (to.meta.public && auth.user && to.name !== 'public-booking' && to.name !== 'public-portfolio') return defaultAuthenticatedRoute()
   if (!to.meta.public && !auth.user) return '/login'
   if (to.name === 'atelier-console' || to.name === 'platform-edit-inspiration') {

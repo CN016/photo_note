@@ -19,12 +19,16 @@ final class ApkUpdateChecker {
     static final long INTERVAL_MS = 60 * 60 * 1000L;
     static final String STATE = "apk-update-state";
     private static final Object CLAIM_LOCK = new Object();
+    private static final java.util.Set<String> inFlight = new java.util.HashSet<>();
     private static final CopyOnWriteArraySet<Runnable> listeners = new CopyOnWriteArraySet<>();
     private final SharedPreferences state;
     private final URL feed;
     private final URL download;
     private final long installed;
     private final String channel;
+    private final FeedReader reader;
+    /** 可注入离线合成清单验证节流；正式构造器固定使用HTTPS读取器。 */
+    interface FeedReader { byte[] read(Network network) throws Exception; }
     record Release(long code, String version) {}
 
     /** 配置由构建时官网环境变量生成，不允许服务端版本记录重定向升级按钮。 */
@@ -32,6 +36,10 @@ final class ApkUpdateChecker {
         this(context, readConfig(context));
     }
     ApkUpdateChecker(Context context, JSONObject config) throws Exception {
+        this(context, config, null);
+    }
+    ApkUpdateChecker(Context context, JSONObject config, FeedReader reader) throws Exception {
+        this.reader = reader == null ? this::fetch : reader;
         feed = safeUrl(config.getString("feedUrl")); download = safeUrl(config.getString("downloadUrl"));
         if (!feed.getAuthority().equals(download.getAuthority())) throw new SecurityException("origin");
         installed = context.getPackageManager().getPackageInfo(context.getPackageName(), 0).getLongVersionCode();
@@ -64,15 +72,22 @@ final class ApkUpdateChecker {
         checkAt(now, network, false);
     }
     void checkAt(long now, Network network, boolean scheduled) {
+        checkAt(now, network, scheduled, false);
+    }
+    /** 用户每次从后台进入均主动读取官网；与小时任务共用在途锁，检查不阻塞启动或登录恢复。 */
+    void checkOnEntry(long now) { checkAt(now, null, false, true); }
+    private void checkAt(long now, Network network, boolean scheduled, boolean onEntry) {
         synchronized (CLAIM_LOCK) {
+            if (inFlight.contains(feed.toString())) return;
             long previous = state.getLong("last_check", 0);
             // 系统任务可在周期末尾五分钟弹性窗口执行，不能因此错过后再等完整一小时。
             long minimum = scheduled ? INTERVAL_MS - ApkUpdateJobService.FLEX_MS : INTERVAL_MS;
-            if (previous > 0 && now >= previous && now - previous < minimum) return;
+            if (!onEntry && previous > 0 && now >= previous && now - previous < minimum) return;
             if (!state.edit().putLong("last_check", now).commit()) return;
+            inFlight.add(feed.toString());
         }
         try {
-            JSONObject result = new JSONObject(new String(fetch(network), StandardCharsets.UTF_8));
+            JSONObject result = new JSONObject(new String(reader.read(network), StandardCharsets.UTF_8));
             Release release = parse(result, installed, channel);
             if (Thread.currentThread().isInterrupted() || !feed.toString().equals(state.getString("source", ""))) return;
             var edit = state.edit();
@@ -81,7 +96,7 @@ final class ApkUpdateChecker {
             if (edit.commit()) for (Runnable listener : listeners) listener.run();
         } catch (Exception ignored) {
             // 离线、旧清单、异常响应只保留上次已确认结果；不弹网络错误、不清理任何登录数据。
-        }
+        } finally { synchronized (CLAIM_LOCK) { inFlight.remove(feed.toString()); } }
     }
 
     /** 版本号必须是合法整数；以 Android 安装版本比较，渠道不匹配不能诱导跨签名升级。 */

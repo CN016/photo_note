@@ -20,6 +20,33 @@ import java.util.regex.Pattern;
 /** 使用合成版本状态，不下载安装包；拦截外部 Intent，防止测试真的离开应用访问官网。 */
 @RunWith(AndroidJUnit4.class)
 public class ApkUpdateInstrumentedTest {
+    /** 离线夹具验证每次进入强制检查、在途合并及弹窗节流；不访问官网。 */
+    @Test public void entryChecksBypassHourButCoalesceAndRespectPromptDismissal() throws Exception {
+        var app = InstrumentationRegistry.getInstrumentation().getTargetContext();
+        String prefix = "apk-entry-fixture-" + java.util.UUID.randomUUID();
+        var context = new android.content.ContextWrapper(app) {
+            @Override public SharedPreferences getSharedPreferences(String name, int mode) { return super.getSharedPreferences(prefix + name, mode); }
+        };
+        long code = app.getPackageManager().getPackageInfo(app.getPackageName(), 0).getLongVersionCode() + 1;
+        byte[] release = new JSONObject().put("schema", 1).put("versionCode", code).put("version", "9.9.9").put("channel", "debug").toString().getBytes(java.nio.charset.StandardCharsets.UTF_8);
+        var requests = new java.util.concurrent.atomic.AtomicInteger();
+        var entered = new java.util.concurrent.CountDownLatch(1); var finish = new java.util.concurrent.CountDownLatch(1);
+        var checker = new ApkUpdateChecker(context, new JSONObject().put("feedUrl", "https://fixture.invalid/entry.json").put("downloadUrl", "https://fixture.invalid/download"), network -> {
+            if (requests.incrementAndGet() == 3) { entered.countDown(); if (!finish.await(5, java.util.concurrent.TimeUnit.SECONDS)) throw new java.io.IOException("fixture_timeout"); }
+            return release;
+        });
+        long now = System.currentTimeMillis();
+        checker.checkAt(now, null); checker.checkAt(now + 1000, null); assertEquals(1, requests.get());
+        checker.checkOnEntry(now + 2000); assertEquals("每次进入绕过小时缓存", 2, requests.get());
+        checker.prompted(checker.pending(now + 2000), now + 2000);
+        Thread request = new Thread(() -> checker.checkOnEntry(now + 3000)); request.start();
+        try {
+            assertTrue(entered.await(5, java.util.concurrent.TimeUnit.SECONDS)); checker.checkOnEntry(now + 4000);
+            assertEquals("在途检查不得并发重复请求", 3, requests.get());
+        } finally { finish.countDown(); request.join(5000); }
+        assertFalse(request.isAlive()); assertNull("稍后后重新检查仍不得重复弹窗", checker.pending(now + 5000));
+    }
+
     @Test public void versionCodeChannelAndMalformedRecords() throws Exception {
         JSONObject release = new JSONObject().put("schema", 1).put("versionCode", 12).put("version", "1.3.0").put("channel", "debug");
         assertEquals(12, ApkUpdateChecker.parse(release, 11, "debug").code());

@@ -68,6 +68,10 @@ final class SessionVault {
     synchronized String currentRefresh() throws Exception { return read().getJSONObject("session").getString("refresh_token"); }
     /** 退出请求优先使用后台已轮换的内存Access Token，避免网页旧令牌导致服务端撤销失败。 */
     synchronized String currentAccess() { return memoryTokens == null ? "" : memoryTokens.optString("access_token"); }
+    /** 首屏恢复复用有效内存凭据。只有接口明确拒绝的仍是当前令牌时才强刷，避免后台刚刷新又排队重复刷新。 */
+    synchronized JSONObject resume(String expected, String rejectedAccessToken) throws Exception {
+        return refresh(expected, !rejectedAccessToken.isEmpty() && rejectedAccessToken.equals(currentAccess()));
+    }
     /** 原生和Web统一刷新入口；仅允许当前会话代次，不持久化Access Token，不跟随重定向。 */
     synchronized JSONObject refresh(String expected, boolean force) throws Exception {
         if (!active || expected.isEmpty() || !expected.equals(identity())) throw new SecurityException("session_changed");

@@ -49,14 +49,18 @@ public class MainActivity extends AppCompatActivity {
     private ActivityResultLauncher<Intent> fileLauncher;
     private ApkUpdateChecker apkUpdates;
     private androidx.appcompat.app.AlertDialog apkDialog;
+    private boolean apkEntryCheckPending;
     private final android.os.Handler apkHandler = new android.os.Handler(android.os.Looper.getMainLooper());
     private final java.util.concurrent.ExecutorService apkIO = java.util.concurrent.Executors.newSingleThreadExecutor();
     private final Runnable apkListener = () -> runOnUiThread(this::showApkUpdate);
     private final Runnable apkTick = new Runnable() {
         @Override public void run() {
             if (apkUpdates == null || !getLifecycle().getCurrentState().isAtLeast(androidx.lifecycle.Lifecycle.State.RESUMED)) return;
+            boolean onEntry = apkEntryCheckPending;
+            apkEntryCheckPending = false;
             apkIO.execute(() -> {
-                apkUpdates.checkAt(System.currentTimeMillis(), null);
+                if (onEntry) apkUpdates.checkOnEntry(System.currentTimeMillis());
+                else apkUpdates.checkAt(System.currentTimeMillis(), null);
                 runOnUiThread(() -> {
                     if (isDestroyed() || !getLifecycle().getCurrentState().isAtLeast(androidx.lifecycle.Lifecycle.State.RESUMED)) return;
                     showApkUpdate(); apkHandler.removeCallbacks(this);
@@ -354,7 +358,7 @@ public class MainActivity extends AppCompatActivity {
         apkDialog.setOnDismissListener(dialog -> apkDialog = null);
         apkDialog.show(); apkUpdates.prompted(release, System.currentTimeMillis());
     }
-    @Override protected void onStart() { super.onStart(); if (session != null) session.setActive(true); ApkUpdateChecker.subscribe(apkListener); }
+    @Override protected void onStart() { super.onStart(); apkEntryCheckPending = true; if (session != null) session.setActive(true); ApkUpdateChecker.subscribe(apkListener); }
     @Override protected void onNewIntent(Intent intent) {
         super.onNewIntent(intent); setIntent(intent);
         if (shell != null) shell.notificationIntent(intent);

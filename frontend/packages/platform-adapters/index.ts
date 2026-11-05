@@ -10,7 +10,7 @@ interface NativeShell {
   setTheme(options: { dark: boolean }): Promise<void>
   startNotificationMonitor(options: { identity: string }): Promise<void>
   stopNotificationMonitor(options: { identity: string }): Promise<void>
-  refreshNotificationSession(options: { identity: string }): Promise<{ status: number; body: string }>
+  refreshNotificationSession(options: { identity: string; rejectedAccessToken?: string }): Promise<{ status: number; body: string }>
   consumeNotificationOpen(): Promise<{ open: boolean }>
 }
 interface BrowserRuntime {
@@ -23,24 +23,33 @@ function runtime(): BrowserRuntime | undefined {
   return (globalThis as typeof globalThis & { browser?: { runtime?: BrowserRuntime } }).browser?.runtime
 }
 export const isAndroid = () => runtime()?.id === 'photo-nini@imcn016.love'
-function invoke<T>(method: string, options: unknown): Promise<T> {
+function invoke<T>(method: string, options: unknown, timeoutMs = 0): Promise<T> {
   const bridge = runtime()
   if (!isAndroid() || !bridge) return Promise.reject(new Error('native_unavailable'))
-  return bridge.sendNativeMessage('photo_nini', { method, options }) as Promise<T>
+  const response = bridge.sendNativeMessage('photo_nini', { method, options }) as Promise<T>
+  if (!timeoutMs) return response
+  // 认证不能沿用文件导出的五分钟等待。超时只结束本页等待，不撤销原生已轮换的凭据。
+  let timer: ReturnType<typeof setTimeout>
+  const deadline = new Promise<T>((_, reject) => { timer = setTimeout(() => reject(new Error('native_timeout')), timeoutMs) })
+  return Promise.race([response, deadline]).finally(() => clearTimeout(timer))
 }
 export const nativeShell: NativeShell = {
   exportFile: options => invoke('exportFile', options),
   setTheme: options => invoke('setTheme', options),
   startNotificationMonitor: options => invoke('startNotificationMonitor', options),
   stopNotificationMonitor: options => invoke('stopNotificationMonitor', options),
-  refreshNotificationSession: options => invoke('refreshNotificationSession', options),
+  refreshNotificationSession: options => invoke('refreshNotificationSession', options, 30_000),
   consumeNotificationOpen: () => invoke('consumeNotificationOpen', {}),
 }
 let notificationSupport: Promise<boolean> | undefined
 /** 老APK没有新桥接时继续沿用HTTP刷新和站内提示，热更新不会使旧壳无法登录。 */
 export function supportsNotificationMonitor(): Promise<boolean> {
   if (!isAndroid()) return Promise.resolve(false)
-  return notificationSupport ??= invoke('notificationCapabilities', {}).then(() => true, () => false)
+  return notificationSupport ??= invoke('notificationCapabilities', {}, 3_000).then(() => true, error => {
+    // 探测超时并不代表旧壳。此时禁止走HTTP消费可能已被后台轮换的旧刷新令牌，允许下次重新探测。
+    if (error instanceof Error && ['native_timeout', 'native_busy'].includes(error.message)) { notificationSupport = undefined; throw error }
+    return false
+  })
 }
 /** 点击系统通知只触发受保护的消息中心路由，不接收原生传入的任意URL。 */
 export function subscribeNativeNotificationOpen(callback: () => void): void {

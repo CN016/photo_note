@@ -79,7 +79,12 @@ public class NativeShellService {
         }
         else if ("refreshNotificationSession".equals(method)) {
             io.execute(() -> {
-                try { call.resolve(new JSONObject().put("status", 200).put("body", new JSONObject().put("data", new JSONObject().put("tokens", noticeVault().refresh(call.getString("identity"), true))).toString())); }
+                try {
+                    SessionVault vault = noticeVault();
+                    // 新Web传入被拒绝的Access Token；启动恢复传空串。旧Web保持原有强制刷新语义。
+                    JSONObject tokens = options.has("rejectedAccessToken") ? vault.resume(call.getString("identity"), call.getString("rejectedAccessToken")) : vault.refresh(call.getString("identity"), true);
+                    call.resolve(new JSONObject().put("status", 200).put("body", new JSONObject().put("data", new JSONObject().put("tokens", tokens)).toString()));
+                }
                 catch (SecurityException revoked) { try { call.resolve(new JSONObject().put("status", 401).put("body", "{}")); } catch (Exception ignored) { call.reject("notification_session_failed"); } }
                 catch (Exception unavailable) { call.reject("notification_session_failed"); }
             });
