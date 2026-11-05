@@ -100,5 +100,13 @@
     "noSecret": "No signing secret"
   },
   "inspirationGoalUnmet": "Daily collection reminder",
-  "inspirationGoalBody": "{day}: {count} images saved. Goal: {target}."
+  "inspirationGoalBody": "{day}: {count} images saved. Goal: {target}.",
+  "delivery_selection_submitted": "Client selection submitted",
+  "delivery_reopen": "Selection reopened",
+  "delivery_publish_final": "Finals published",
+  "delivery_received": "Receipt confirmed",
+  "delivery_export_completed": "Delivery export completed",
+  "delivery_export_failed": "Delivery export failed",
+  "deliveryBody": "Open the delivery to view the latest result.",
+  "goToDelivery": "Open delivery"
 }

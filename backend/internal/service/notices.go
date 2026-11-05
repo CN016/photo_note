@@ -838,6 +838,15 @@ func feishuFeedbackLinksOnly(markdown string) string {
 
 // noticeMessage 仅从服务端生成的安全消息载荷选择固定中文描述，不把用户内容注入外发模板。
 func noticeMessage(delivery model.NoticeDelivery) (string, string) {
+	// 交付事件仅外发安全的操作分类，不携带照片、客户备注或分享地址。
+	if strings.HasPrefix(delivery.EventType, "delivery.") {
+		titles := map[string]string{"delivery.selection_submitted": "客户已提交选片", "delivery.reopen": "选片已重新开放", "delivery.publish_final": "精修已发布", "delivery.received": "客户已确认收片", "delivery.export_completed": "交付打包已完成", "delivery.export_failed": "交付打包失败"}
+		title := titles[delivery.EventType]
+		if title == "" {
+			title = "交付任务状态已更新"
+		}
+		return title, "请打开取景台交付模块查看处理结果。"
+	}
 	if delivery.EventType == "notice.webhook_test" {
 		return "取景台通知渠道测试", "这是一条测试消息，用于确认此通知渠道可以正常接收取景台通知。"
 	}

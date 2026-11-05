@@ -1,5 +1,6 @@
 import { ApiError, type ApiEnvelope, type ApiErrorEnvelope, type AuthResponse, type ConsoleConfigRecord, type ConsoleFeedbackRecord, type ConsoleInspirationRecord, type ConsoleUserRecord, type InspirationImageMetadata, type InspirationRecord, type InspirationStatistics, type LedgerFields, type LedgerImportItem, type LedgerImportResult, type LedgerRecord, type NoticeConfig, type NoticeConfigList, type NoticeDelivery, type NotificationPage, type PageResult, type PlanFields, type PlanRecord, type ProjectRecord, type ProjectSaveInput, type ProjectSummary, type ScheduleBooking, type ScheduleBookingReceipt, type ScheduleFields, type ScheduleOccurrence, type SchedulePublicSlot, type ScheduleShare, type TagRecord, type TokenPair, type UserProfile } from './types'
 import { API_REQUEST_ORIGIN } from './config'
+import type { DeliveryTask, DeliveryDetail, DeliverySettings, DeliveryCommand, DeliverySelection } from './delivery'
 import { isAndroid, nativeShell, supportsNotificationMonitor } from '../../../../packages/platform-adapters'
 import type { InspirationProjectSummary, Environment, Organization, OrganizationMember, PortfolioRecord, PortfolioPhoto, PortfolioInput } from './types'
 import type { InspirationLibraryFilters, InspirationGoalStatus, InspirationFacet } from './types'
@@ -234,7 +235,28 @@ async function requestBlob(path: string, retry = true, cache: RequestCache = 'de
   return blob
 }
 
+/** 客户文件仍经过分享授权接口，错误返回沿用统一 API 错误，不把失败响应保存成照片。 */
+async function deliveryPublicBlob(path: string, code: string): Promise<Blob> {
+  const response = await fetch(`${API_BASE}${path}`, {headers:{'X-Delivery-Code':code},cache:'no-store'})
+  if (!response.ok) throw await parseFailure(response)
+  return response.blob()
+}
+
 export const api = {
+  /** 独立交付模块复用会话代次校验；客户访问码只放请求头，不写 URL 或持久化存储。 */
+  deliveryList: () => request<{ items: DeliveryTask[] }>('/deliveries'),
+  deliveryCreate: (input: DeliverySettings) => request<DeliveryTask>('/deliveries', { method: 'POST', body: JSON.stringify(input) }),
+  deliveryGet: (id: string) => request<DeliveryDetail>(`/deliveries/${encodeURIComponent(id)}`),
+  deliveryAction: (id: string, input: DeliveryCommand) => request<{token: string}>(`/deliveries/${encodeURIComponent(id)}/actions`, {method:'POST',body:JSON.stringify(input)}),
+  deliveryUpload: (id: string, body: FormData) => request<{business_id:string}>(`/deliveries/${encodeURIComponent(id)}/photos`,{method:'POST',body}),
+  deliveryFile: (id: string, photo: string, original = false, thumbnail = false) => requestBlob(`/deliveries/${encodeURIComponent(id)}/photos/${encodeURIComponent(photo)}/file?original=${original ? 1 : 0}&thumbnail=${thumbnail ? 1 : 0}`, true, 'no-store'),
+  deliveryCreateExport: (id: string, kind: string, token = '', code = '', photo_ids: string[] = []) => request<import('./delivery').DeliveryExport>(token ? `/delivery-shares/${encodeURIComponent(token)}/exports` : `/deliveries/${encodeURIComponent(id)}/exports`,{method:'POST',headers:token?{'X-Delivery-Code':code}:{},body:JSON.stringify({kind,photo_ids})},!token),
+  deliveryExportStatus: (id: string, job: string, token = '', code = '') => request<import('./delivery').DeliveryExport>(token ? `/delivery-shares/${encodeURIComponent(token)}/exports/${job}` : `/deliveries/${encodeURIComponent(id)}/exports/${job}`,{headers:token?{'X-Delivery-Code':code}:{}},!token),
+  deliveryExportFile: (id: string, job: string, token = '', code = '') => token ? deliveryPublicBlob(`/delivery-shares/${encodeURIComponent(token)}/exports/${job}/file`,code) : requestBlob(`/deliveries/${encodeURIComponent(id)}/exports/${job}/file`,true,'no-store'),
+  deliveryPublicGet: (token: string, code: string) => request<DeliveryDetail>(`/delivery-shares/${encodeURIComponent(token)}`, {headers:{'X-Delivery-Code':code}}, false),
+  deliverySelect: (token: string, code: string, input: DeliverySelection) => request(`/delivery-shares/${encodeURIComponent(token)}/selection`, {method:'PUT',headers:{'X-Delivery-Code':code},body:JSON.stringify(input)}, false),
+  deliveryReceive: (token: string, code: string) => request(`/delivery-shares/${encodeURIComponent(token)}/receive`, {method:'POST',headers:{'X-Delivery-Code':code}}, false),
+  deliveryPublicFile: (token: string, code: string, photo: string, original = false, thumbnail = false) => deliveryPublicBlob(`/delivery-shares/${encodeURIComponent(token)}/photos/${encodeURIComponent(photo)}/file?original=${original?1:0}&thumbnail=${thumbnail?1:0}`, code),
   /** 作品集接口与灵感图库独立；归属由会话确定。 */
   portfolios() { return request<{items: PortfolioRecord[]}>('/portfolios') },
   portfolio(id: string) { return request<PortfolioRecord>(`/portfolios/${encodeURIComponent(id)}`) },

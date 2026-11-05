@@ -126,6 +126,7 @@ func run() error {
 		Plans:                 plans,
 		Projects:              projects,
 		ProjectWorkflow:       service.NewProjectWorkflowService(repository, runtimeConfigService),
+		Deliveries:            service.NewDeliveryService(repository, fileService, runtimeConfigService, passwords, runtimeConfig.MaxUploadBytes),
 		PortfolioShares:       service.NewPortfolioShareService(repository),
 		Portfolios:            service.NewPortfolioService(repository),
 		PortfolioPhotos:       service.NewPortfolioPhotoService(repository, fileService, runtimeConfig.MaxUploadBytes, runtimeConfigService.CurrentFileStoreType),
@@ -146,6 +147,8 @@ func run() error {
 
 	shutdownContext, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
+	go dependencies.Deliveries.RunExportWorker(shutdownContext)
+	go dependencies.Deliveries.RunNoticeWorker(shutdownContext, notices)
 	inspirationLibrary.Start(shutdownContext, processingConfig)
 	defer func() {
 		cleanup, cancel := context.WithTimeout(context.Background(), 10*time.Second)

@@ -13,6 +13,7 @@ const auth = useAuthStore()
 const menuItems = computed(() => {
   const items: Array<{ key: string; to: string; icon: Component }> = [
     { key: 'inspirations', to: '/inspirations', icon: Picture },
+    { key: 'delivery', to: '/delivery', icon: Files },
     { key: 'projects', to: '/projects', icon: Files },
     { key: 'ledger', to: '/ledger', icon: Clock },
     { key: 'schedule', to: '/schedule', icon: Calendar },

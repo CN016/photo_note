@@ -19,6 +19,9 @@ export const router = createRouter({
     { path: '/maintenance', name: 'maintenance', component: () => import('./views/BackendMaintenancePage.vue'), meta: { public: true, maintenance: true } },
     { path: '/book/:shareToken', name: 'public-booking', component: () => import('./views/PublicBookingPage.vue'), meta: { public: true } },
     { path: '/p/:shareToken', name: 'public-portfolio', component: () => import('./views/PublicPortfolioPage.vue'), meta: { public: true } },
+    { path: '/delivery', name: 'delivery', component: () => import('./views/DeliveryPage.vue'), meta: { standalone: true } },
+    { path: '/delivery/tasks/:id', name: 'delivery-task', component: () => import('./views/DeliveryPage.vue'), meta: { standalone: true } },
+    { path: '/d/:token', name: 'public-delivery', component: () => import('./views/PublicDeliveryPage.vue'), meta: { public: true, standalone: true } },
     { path: '/portfolios', name: 'portfolios', component: () => import('./views/PortfolioPage.vue') },
     { path: '/portfolios/:id', name: 'portfolio-detail', component: () => import('./views/PortfolioPage.vue') },
     { path: '/workbench', name: 'workbench', component: () => import('./views/WorkbenchPage.vue') },
@@ -61,7 +64,7 @@ router.beforeEach(async to => {
   const auth = useAuthStore()
   // 首次恢复失败后转入登录恢复页时，不要在导航守卫里再等待一轮刷新；重试由页面按钮明确触发。
   if (!(to.name === 'login' && auth.recoveryPending)) await auth.initialize()
-  if (to.meta.public && auth.user && to.name !== 'public-booking' && to.name !== 'public-portfolio') return defaultAuthenticatedRoute()
+  if (to.meta.public && auth.user && to.name !== 'public-booking' && to.name !== 'public-portfolio' && to.name !== 'public-delivery') return defaultAuthenticatedRoute()
   if (!to.meta.public && !auth.user) return '/login'
   if (to.name === 'atelier-console' || to.name === 'platform-edit-inspiration') {
     try {

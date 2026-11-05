@@ -41,6 +41,7 @@ type publicConfigReader interface {
 
 // Dependencies 汇总 HTTP 层使用的业务服务和健康检查依赖，路由不直接创建数据库连接。
 type Dependencies struct {
+	Deliveries            *service.DeliveryService
 	Auth                  *service.AuthService
 	Users                 *service.UserService
 	Tags                  *service.TagService
@@ -128,6 +129,7 @@ func Router(dependencies Dependencies) *gin.Engine {
 
 	protected := api.Group("")
 	protected.Use(authenticationMiddleware(dependencies.Tokens), tenantScopeMiddleware(scopeResolver, dependencies.Organizations))
+	registerDeliveryRoutes(api, protected, dependencies.Deliveries, dependencies.MaxUploadBytes)
 	protected.GET("/environments", environmentsHandler(dependencies.Organizations))
 	protected.POST("/auth/logout", logoutHandler(dependencies.Auth))
 	protected.GET("/files/:storekey/thumbnail", downloadThumbnailHandler(dependencies.Files))

@@ -111,6 +111,7 @@ function selectTab(next: 'inbox' | 'channels') {
 }
 
 function messageTitle(item: NoticeMessage): string {
+  if (item.resource_type === 'delivery') return t(`delivery_${item.event_type.slice(9)}`)
   if (item.event_type === 'inspiration.goal.unmet') return t('inspirationGoalUnmet')
   if (item.event_type === 'inspiration.compression.succeeded') return t('compressionSucceeded')
   if (item.event_type === 'inspiration.compression.failed') return t('compressionFailed')
@@ -122,6 +123,7 @@ function messageTitle(item: NoticeMessage): string {
 }
 
 function messageBody(item: NoticeMessage): string {
+  if (item.resource_type === 'delivery') return t('deliveryBody')
   if (item.event_type === 'inspiration.goal.unmet') return t('inspirationGoalBody', { day: item.payload.day || '', count: item.payload.saved_count ?? 0, target: item.payload.target ?? 0 })
   if (item.event_type === 'inspiration.compression.succeeded') {
     return t('version', { version: item.payload.async_version ?? 0 })
@@ -235,6 +237,8 @@ async function openMessage(item: NoticeMessage) {
   }
   if (item.resource_type === 'inspiration' && item.resource_business_id) {
     await router.push(`/inspirations/${encodeURIComponent(item.resource_business_id)}`)
+  } else if (item.resource_type === 'delivery' && item.resource_business_id) {
+    await router.push(`/delivery/tasks/${encodeURIComponent(item.resource_business_id)}`)
   } else if (item.resource_type === 'plan' && item.resource_business_id) {
     await router.push('/plans')
   }
@@ -441,6 +445,7 @@ onBeforeUnmount(() => {
             <p v-else class="no-delivery-status">{{ item.event_type === 'system.error_log.created' ? t('errorLogInternalOnly') : t('noWebhookStatus') }}</p>
 
             <button v-if="item.resource_type === 'inspiration' && item.resource_business_id" class="open-resource" type="button" @click.stop="openMessage(item)">{{ t('goToInspiration') }} <el-icon aria-hidden="true"><TopRight /></el-icon></button>
+            <button v-if="item.resource_type === 'delivery' && item.resource_business_id" class="open-resource" type="button" @click.stop="openMessage(item)">{{ t('goToDelivery') }} <el-icon aria-hidden="true"><TopRight /></el-icon></button>
             <button v-if="item.resource_type === 'plan' && item.resource_business_id" class="open-resource" type="button" @click.stop="openMessage(item)">{{ t('goToPlan') }} <el-icon aria-hidden="true"><TopRight /></el-icon></button>
           </div>
         </article>

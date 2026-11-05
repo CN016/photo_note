@@ -24,6 +24,7 @@ var managedTenantTables = map[string]bool{
 	"organizations": false, "organization_members": false, "file_ownerships": false,
 	"portfolios": false, "portfolio_photos": false, "portfolio_projects": false,
 	"project_reviews": false,
+	"delivery_tasks":  false, "delivery_photos": false, "delivery_rounds": false, "delivery_events": false,
 }
 
 // RegisterTenantCallbacks 为普通 GORM 读写建立不可省略的组织条件；原始 SQL 必须在所在 repository 显式限定。

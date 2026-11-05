@@ -65,12 +65,12 @@ watch(projectEditorRoute, active => document.body.classList.toggle('project-edit
 <template>
   <el-config-provider :locale="elementLocale">
     <StartupRecovery />
-    <GlobalMessageButton />
-    <GlobalContextMenu />
+    <GlobalMessageButton v-if="!route.meta.standalone" />
+    <GlobalContextMenu v-if="!route.meta.standalone" />
     <RouterView v-slot="{ Component, route: pageRoute }">
       <component :is="Component" v-if="pageRoute.meta.public || auth.user" :key="`${auth.sessionID}:${auth.orgid}:${auth.sessionVersion}:${pageRoute.path}`" />
     </RouterView>
-    <FeedbackWidget :editor-route="editorRoute" :has-mobile-nav="hasMobileNav" />
+    <FeedbackWidget v-if="route.name && !route.meta.standalone" :editor-route="editorRoute" :has-mobile-nav="hasMobileNav" />
     <div v-if="preparingSpaceSwitch" class="space-switch-overlay" role="status" aria-live="polite">{{ $t('spaces.preparing') }}</div>
   </el-config-provider>
 </template>

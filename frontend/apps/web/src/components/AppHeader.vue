@@ -79,6 +79,7 @@ function active(path: string): boolean {
       <span class="brand-copy"><strong>{{ t('common.brand') }}</strong><small>{{ t('common.product') }}</small></span>
     </RouterLink>
     <nav class="desktop-nav">
+      <RouterLink class="nav-item" to="/delivery"><el-icon aria-hidden="true"><Files /></el-icon>{{ t('common.delivery') }}</RouterLink>
       <RouterLink class="nav-item" :class="{ active: active('/inspirations') }" to="/inspirations"><el-icon aria-hidden="true"><Picture /></el-icon>{{ t('common.inspirations') }}</RouterLink>
       <RouterLink class="nav-item" :class="{ active: active('/portfolios') }" to="/portfolios"><el-icon aria-hidden="true"><PictureFilled /></el-icon>{{ t('common.portfolios') }}</RouterLink>
       <RouterLink class="nav-item" :class="{ active: active('/projects') }" to="/projects"><el-icon aria-hidden="true"><Files /></el-icon>{{ t('common.projects') }}</RouterLink>

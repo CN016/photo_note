@@ -100,5 +100,13 @@
     "noSecret": "未设置签名密钥"
   },
   "inspirationGoalUnmet": "灵感库存图提醒",
-  "inspirationGoalBody": "{day} 已存 {count} 张，目标 {target} 张。"
+  "inspirationGoalBody": "{day} 已存 {count} 张，目标 {target} 张。",
+  "delivery_selection_submitted": "客户已提交选片",
+  "delivery_reopen": "选片已重新开放",
+  "delivery_publish_final": "精修已发布",
+  "delivery_received": "客户已确认收片",
+  "delivery_export_completed": "交付打包已完成",
+  "delivery_export_failed": "交付打包失败",
+  "deliveryBody": "打开交付任务查看最新处理结果。",
+  "goToDelivery": "打开交付"
 }
