@@ -1,5 +1,6 @@
 import { ApiError, type ApiEnvelope, type ApiErrorEnvelope, type AuthResponse, type ConsoleConfigRecord, type ConsoleFeedbackRecord, type ConsoleInspirationRecord, type ConsoleUserRecord, type InspirationImageMetadata, type InspirationRecord, type InspirationStatistics, type LedgerFields, type LedgerImportItem, type LedgerImportResult, type LedgerRecord, type NoticeConfig, type NoticeConfigList, type NoticeDelivery, type NotificationPage, type PageResult, type PlanFields, type PlanRecord, type ProjectRecord, type ProjectSaveInput, type ProjectSummary, type ScheduleBooking, type ScheduleBookingReceipt, type ScheduleFields, type ScheduleOccurrence, type SchedulePublicSlot, type ScheduleShare, type TagRecord, type TokenPair, type UserProfile } from './types'
 import { API_REQUEST_ORIGIN } from './config'
+import { isAndroid, nativeShell, supportsNotificationMonitor } from '../../../../packages/platform-adapters'
 import type { InspirationProjectSummary, Environment, Organization, OrganizationMember, PortfolioRecord, PortfolioPhoto, PortfolioInput } from './types'
 import type { InspirationLibraryFilters, InspirationGoalStatus, InspirationFacet } from './types'
 import type { ProjectStatus, ProjectStatusCounts, ProjectReview, ProjectScheduleLink } from './types'
@@ -67,6 +68,11 @@ async function parseFailure(response: Response): Promise<ApiError> {
 /** 网络错误保留 Refresh Token，只有服务端明确返回未授权才会清除会话。 */
 async function exchangeRefreshToken(refreshToken: string): Promise<Response> {
   try {
+    // 新安卓壳由原生凭据锁统一消费刷新令牌；Web本地副本即使落后于后台轮换也不会重复消费。
+    if (await supportsNotificationMonitor()) {
+      const result = await nativeShell.refreshNotificationSession({ identity: sessionStamp() })
+      return new Response(result.body, { status: result.status, headers: { 'Content-Type': 'application/json' } })
+    }
     return await fetch(`${API_BASE}/auth/refresh`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ refresh_token: refreshToken }),
     })
@@ -242,7 +248,7 @@ export const api = {
   /** 空间切换由跨标签页协调器调用，单次比较会话代次，禁止旧页面更换当前租户。 */
   environments() { return request<{ items: Environment[] }>('/environments') },
   switchEnvironment(orgid: number, expectedVersion: number, switchID: string) {
-    return request<{ tokens: TokenPair }>('/auth/switch-environment', { method: 'POST', body: JSON.stringify({ refresh_token: getRefreshToken(), orgid, expected_session_version: expectedVersion, switch_id: switchID }) }, false)
+    return request<{ tokens: TokenPair }>('/auth/switch-environment', { method: 'POST', headers: isAndroid() ? { 'X-Photo-Nini-Session': sessionStamp() } : {}, body: JSON.stringify({ refresh_token: getRefreshToken(), orgid, expected_session_version: expectedVersion, switch_id: switchID }) }, false)
   },
   organizations(page = 1, q = '') { return request<PageResult<Organization>>(`/atelier-7f3c9a2e/organizations?page=${page}&page_size=20&q=${encodeURIComponent(q)}`) },
   createOrganization(name: string, initialAdminID: string) { return request<Organization>('/atelier-7f3c9a2e/organizations', { method: 'POST', body: JSON.stringify({ name, initial_admin_user_id: initialAdminID }) }) },
@@ -267,7 +273,7 @@ export const api = {
   /** 当前 refresh token 轮换结果仅含新 token pair。 */
   refresh() { return rotateRefreshToken() },
   /** 撤销当前服务端会话。 */
-  logout() { return request<void>('/auth/logout', { method: 'POST' }) },
+  logout() { return request<void>('/auth/logout', { method: 'POST', headers: isAndroid() ? { 'X-Photo-Nini-Session': sessionStamp() } : {} }) },
   /** 读取当前登录用户资料。 */
   currentUser() { return request<UserProfile>('/users/me') },
   /** 原子保存当前用户单张统计卡片的图表模式。 */
@@ -548,6 +554,8 @@ export function acceptTokenPair(tokens: TokenPair): void {
 
 /** 退出或鉴权彻底失效时清空当前页与同源标签页的登录态。 */
 export function clearTokens(): void {
+  const identity = sessionStamp()
+  void supportsNotificationMonitor().then(supported => { if (supported) return nativeShell.stopNotificationMonitor({ identity }) }).catch(() => {})
   accessToken = null
   localStorage.removeItem(REFRESH_KEY)
   localStorage.removeItem(SESSION_KEY)

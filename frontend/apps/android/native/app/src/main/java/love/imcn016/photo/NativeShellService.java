@@ -28,6 +28,10 @@ public class NativeShellService {
     private final ExecutorService io = Executors.newSingleThreadExecutor();
     private final ActivityResultLauncher<Intent> saveLauncher;
     private Call saveCall;
+    private final ActivityResultLauncher<String> notificationPermission;
+    private String monitorIdentity = "";
+    private boolean permissionPending;
+    private boolean notificationOpen;
 
     /** 所有响应只返回安全状态，不包含用户路径和文件内容。 */
     public interface Reply { void success(JSONObject result); void failure(String code); }
@@ -46,6 +50,12 @@ public class NativeShellService {
     /** 必须在 Activity STARTED 之前注册系统结果回调；实际文件读写使用专用串行线程。 */
     public NativeShellService(AppCompatActivity activity) {
         this.activity = activity;
+        notificationOpen = NotificationMonitorService.OPEN_MESSAGES.equals(activity.getIntent().getAction());
+        NotificationMonitorService.channels(activity);
+        notificationPermission = activity.registerForActivityResult(new ActivityResultContracts.RequestPermission(), granted -> {
+            permissionPending = false;
+            if (granted) activity.getWindow().getDecorView().post(this::resumeNotifications);
+        });
         saveLauncher = activity.registerForActivityResult(new ActivityResultContracts.StartActivityForResult(), result -> {
             Call call = saveCall;
             saveCall = null;
@@ -58,8 +68,51 @@ public class NativeShellService {
         if ("exportFile".equals(method)) exportFile(call);
         else if ("setTheme".equals(method)) setTheme(call);
         else if ("minimizeApp".equals(method)) { activity.moveTaskToBack(true); call.resolve(); }
+        else if ("notificationCapabilities".equals(method)) call.resolve();
+        else if ("startNotificationMonitor".equals(method)) {
+            activity.runOnUiThread(() -> { monitorIdentity = call.getString("identity"); resumeNotifications(); call.resolve(); });
+        }
+        else if ("stopNotificationMonitor".equals(method)) {
+            String identity = call.getString("identity");
+            activity.runOnUiThread(() -> { if (identity.equals(monitorIdentity)) { monitorIdentity = ""; activity.stopService(new Intent(activity, NotificationMonitorService.class)); activity.getSystemService(android.app.NotificationManager.class).cancel(NotificationMonitorService.MESSAGE_ID); } });
+            io.execute(() -> { try { SessionVault vault = noticeVault(); synchronized (vault) { if (identity.equals(vault.identity())) vault.logout(); } call.resolve(); } catch (Exception unavailable) { call.reject("notification_session_failed"); } });
+        }
+        else if ("refreshNotificationSession".equals(method)) {
+            io.execute(() -> {
+                try { call.resolve(new JSONObject().put("status", 200).put("body", new JSONObject().put("data", new JSONObject().put("tokens", noticeVault().refresh(call.getString("identity"), true))).toString())); }
+                catch (SecurityException revoked) { try { call.resolve(new JSONObject().put("status", 401).put("body", "{}")); } catch (Exception ignored) { call.reject("notification_session_failed"); } }
+                catch (Exception unavailable) { call.reject("notification_session_failed"); }
+            });
+        }
+        else if ("consumeNotificationOpen".equals(method)) {
+            activity.runOnUiThread(() -> { try { call.resolve(new JSONObject().put("open", notificationOpen)); notificationOpen = false; } catch (Exception ignored) { call.reject("notification_open_failed"); } });
+        }
         else call.reject("unsupported_method");
     }
+
+    /** 仅读取APK固定API配置；网页不得传入上游主机或刷新令牌。 */
+    private SessionVault noticeVault() throws Exception {
+        try (InputStream input = activity.getAssets().open("update-config.json")) {
+            String api = new JSONObject(new String(SessionVault.readLimited(input), java.nio.charset.StandardCharsets.UTF_8)).getString("apiOrigin");
+            return SessionVault.shared(activity, api);
+        }
+    }
+    /** 默认启用，首次登录自动申请系统权限；拒绝后不反复弹窗，仍保留站内消息。 */
+    void resumeNotifications() {
+        if (monitorIdentity.isEmpty() || !activity.getLifecycle().getCurrentState().isAtLeast(androidx.lifecycle.Lifecycle.State.RESUMED)) return;
+        if (android.os.Build.VERSION.SDK_INT >= 33 && androidx.core.content.ContextCompat.checkSelfPermission(activity, android.Manifest.permission.POST_NOTIFICATIONS) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+            var preferences = activity.getSharedPreferences("notification-permission", 0);
+            if (!permissionPending && !preferences.getBoolean("requested", false)) {
+                preferences.edit().putBoolean("requested", true).apply(); permissionPending = true;
+                notificationPermission.launch(android.Manifest.permission.POST_NOTIFICATIONS);
+            }
+            return;
+        }
+        if (!activity.getSystemService(android.app.NotificationManager.class).areNotificationsEnabled()) return;
+        try { activity.startForegroundService(new Intent(activity, NotificationMonitorService.class).putExtra("identity", monitorIdentity)); }
+        catch (RuntimeException unavailable) { /* 系统拒绝启动或同步额度耗尽时保留站内消息，等下次用户打开应用。 */ }
+    }
+    void notificationIntent(Intent intent) { if (NotificationMonitorService.OPEN_MESSAGES.equals(intent.getAction())) notificationOpen = true; }
 
     public void close() { io.shutdown(); }
 

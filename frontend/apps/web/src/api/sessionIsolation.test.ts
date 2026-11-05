@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { TokenPair } from './types'
 
 vi.mock('./config', () => ({ API_REQUEST_ORIGIN: '' }))
@@ -16,8 +16,25 @@ beforeEach(() => {
   vi.stubGlobal('navigator', { locks: { request: async (_: string, _options: unknown, action: () => unknown) => action() } })
   vi.stubGlobal('BroadcastChannel', class { addEventListener() {} postMessage() {} })
 })
+afterEach(() => vi.unstubAllGlobals())
 
 describe('空间切换中的请求隔离', () => {
+  it('新安卓壳统一从原生刷新，Web不重复消费已被后台轮换的刷新令牌', async () => {
+    const bridge = vi.fn(async (_app: string, message: { method: string }) => message.method === 'notificationCapabilities' ? {} : { status: 200, body: JSON.stringify({ data: { tokens: pair(11, 1) } }) })
+    vi.stubGlobal('browser', { runtime: { id: 'photo-nini@imcn016.love', sendNativeMessage: bridge } })
+    const fetchMock = vi.fn(); vi.stubGlobal('fetch', fetchMock)
+    const client = await import('./client'); client.acceptTokenPair(pair(11, 1))
+    await expect(client.api.refresh()).resolves.toBe('access-1')
+    expect(fetchMock).not.toHaveBeenCalled()
+    expect(bridge).toHaveBeenCalledWith('photo_nini', { method: 'refreshNotificationSession', options: { identity: 'same-browser-session:11:1' } })
+  })
+  it('旧安卓壳缺少通知桥接时仍能沿用HTTP刷新登录', async () => {
+    vi.stubGlobal('browser', { runtime: { id: 'photo-nini@imcn016.love', sendNativeMessage: vi.fn(async () => { throw new Error('unsupported_method') }) } })
+    const fetchMock = vi.fn(async () => Response.json({ data: { tokens: pair(11, 1) } })); vi.stubGlobal('fetch', fetchMock)
+    const client = await import('./client'); client.acceptTokenPair(pair(11, 1))
+    await expect(client.api.refresh()).resolves.toBe('access-1')
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+  })
   it('旧请求返回401时不能用新组织凭证重放，也不能清除新会话', async () => {
     const client = await import('./client')
     client.acceptTokenPair(pair(11, 1))

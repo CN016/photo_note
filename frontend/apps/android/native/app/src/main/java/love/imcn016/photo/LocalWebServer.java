@@ -20,7 +20,7 @@ public final class LocalWebServer implements AutoCloseable {
     private volatile String migrationScript = "";
     public LocalWebServer(Context context, WebBundleUpdater bundles) throws Exception {
         this.context = context; this.bundles = bundles;
-        vault = new SessionVault(context,bundles.config.getString("apiOrigin"));
+        vault = SessionVault.shared(context,bundles.config.getString("apiOrigin"));
         var preferences = context.getSharedPreferences("web-local-origin", 0);
         token = preferences.getString("token", UUID.randomUUID().toString());
         int port = preferences.getInt("port", 0);
@@ -112,15 +112,38 @@ public final class LocalWebServer implements AutoCloseable {
     }
     /** API只代理APK固定的HTTPS后端，保留流式上传下载，不接受客户端指定目标或重定向。 */
     private void proxy(String[] request, Map<String,String> headers, InputStream input, OutputStream output) throws Exception {
+        // 登录、退出和切换空间与后台刷新串行；普通上传下载不持有凭据锁。
+        if (URI.create(request[1]).getPath().startsWith("/api/v1/auth/")) {
+            synchronized (vault) { proxyRequest(request, headers, input, output); }
+        } else proxyRequest(request, headers, input, output);
+    }
+    private void proxyRequest(String[] request, Map<String,String> headers, InputStream input, OutputStream output) throws Exception {
         if (!Arrays.asList("GET","POST","PUT","PATCH","DELETE","HEAD").contains(request[0]) || headers.containsKey("transfer-encoding")) { status(output,400); return; }
         long bytes = Long.parseLong(headers.getOrDefault("content-length", "0"));
         if (bytes < 0 || bytes > 128L * 1024 * 1024) { status(output,413); return; }
         long sessionGeneration = vault.generation();
         String endpoint = URI.create(request[1]).getPath();
+        // 后台轮换后Web本地副本可能落后；先核对完整代次，再替换切换空间请求中的刷新令牌。
+        if (request[0].equals("POST") && (endpoint.equals("/api/v1/auth/switch-environment") || endpoint.equals("/api/v1/auth/logout")) && headers.containsKey("x-photo-nini-session")) {
+            if (!headers.get("x-photo-nini-session").equals(vault.identity())) { status(output, 409); return; }
+            if (endpoint.equals("/api/v1/auth/switch-environment")) {
+                if (bytes > 16384) { status(output, 413); return; }
+                byte[] submitted = new byte[(int) bytes];
+                new DataInputStream(input).readFully(submitted);
+                JSONObject body = new JSONObject(new String(submitted, StandardCharsets.UTF_8));
+                body.put("refresh_token", vault.currentRefresh());
+                byte[] replacement = body.toString().getBytes(StandardCharsets.UTF_8);
+                input = new ByteArrayInputStream(replacement); bytes = replacement.length;
+            }
+        }
         boolean sessionResponse = request[0].equals("POST") && Arrays.asList("/api/v1/auth/login","/api/v1/auth/register","/api/v1/auth/refresh","/api/v1/auth/switch-environment").contains(endpoint);
         boolean refreshing = endpoint.equals("/api/v1/auth/refresh") && request[0].equals("POST");
         ByteArrayOutputStream refreshBody = refreshing && bytes <= 16384 ? new ByteArrayOutputStream() : null;
-        if (endpoint.equals("/api/v1/auth/logout") && request[0].equals("POST")) vault.logout();
+        if (endpoint.equals("/api/v1/auth/logout") && request[0].equals("POST")) {
+            String access = vault.currentAccess();
+            if (!access.isEmpty()) headers.put("authorization", "Bearer " + access);
+            vault.logout();
+        }
         URL url = new URL(bundles.config.getString("apiOrigin") + request[1]);
         HttpURLConnection remote = (HttpURLConnection) url.openConnection();
         remote.setInstanceFollowRedirects(false); remote.setConnectTimeout(10000); remote.setReadTimeout(60000); remote.setRequestMethod(request[0]);
@@ -188,5 +211,5 @@ public final class LocalWebServer implements AutoCloseable {
         String type = URLConnection.guessContentTypeFromName(path); return type == null ? "application/octet-stream" : type;
     }
     private static void status(OutputStream output, int code) throws IOException { output.write(("HTTP/1.1 " + code + " Response\r\nContent-Length: 0\r\nConnection: close\r\n\r\n").getBytes(StandardCharsets.US_ASCII)); output.flush(); }
-    public void close() { vault.stop(); try { listener.close(); } catch (IOException ignored) { } workers.shutdownNow(); }
+    public void close() { vault.invalidateRequests(); try { listener.close(); } catch (IOException ignored) { } workers.shutdownNow(); }
 }

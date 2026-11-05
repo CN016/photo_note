@@ -1,7 +1,7 @@
 import { closeMenu, menuState } from './context-menu/menu'
 import type { Router } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { isAndroid, nativeShell, platformAdapter, minimizeApp, subscribeNativeBack, type ExportResult } from '../../../packages/platform-adapters'
+import { isAndroid, nativeShell, platformAdapter, minimizeApp, subscribeNativeBack, subscribeNativeNotificationOpen, supportsNotificationMonitor, type ExportResult } from '../../../packages/platform-adapters'
 import { i18n } from './i18n'
 
 let exporting = false
@@ -43,6 +43,13 @@ export function closeTopOverlay(): boolean {
 export function initializePlatform(router: Router): void {
   if (!isAndroid()) return
   document.documentElement.classList.add('platform-android')
+  const openMessages = () => {
+    void supportsNotificationMonitor().then(async supported => {
+      if (supported && (await nativeShell.consumeNotificationOpen()).open) await router.push('/messages')
+    }).catch(() => {})
+  }
+  subscribeNativeNotificationOpen(openMessages)
+  void router.isReady().then(openMessages)
   const syncTheme = () => { void nativeShell.setTheme({ dark: document.documentElement.dataset.theme === 'dark' }).catch(() => {}) }
   syncTheme()
   new MutationObserver(syncTheme).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] })

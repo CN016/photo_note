@@ -355,7 +355,12 @@ public class MainActivity extends AppCompatActivity {
         apkDialog.show(); apkUpdates.prompted(release, System.currentTimeMillis());
     }
     @Override protected void onStart() { super.onStart(); if (session != null) session.setActive(true); ApkUpdateChecker.subscribe(apkListener); }
-    @Override protected void onResume() { super.onResume(); apkHandler.removeCallbacks(apkTick); apkHandler.post(apkTick); showApkUpdate(); }
+    @Override protected void onNewIntent(Intent intent) {
+        super.onNewIntent(intent); setIntent(intent);
+        if (shell != null) shell.notificationIntent(intent);
+        if (pagePort != null) try { pagePort.postMessage(new JSONObject().put("type", "notificationOpen")); } catch (Exception ignored) { }
+    }
+    @Override protected void onResume() { super.onResume(); getWindow().getDecorView().post(() -> { if (shell != null) shell.resumeNotifications(); }); apkHandler.removeCallbacks(apkTick); apkHandler.post(apkTick); showApkUpdate(); }
     @Override protected void onPause() { apkHandler.removeCallbacks(apkTick); super.onPause(); }
     @Override protected void onStop() { ApkUpdateChecker.unsubscribe(apkListener); if (session != null) session.setActive(false); super.onStop(); }
     @Override protected void onDestroy() {

@@ -15,4 +15,9 @@
     <string name="apk_update_later">稍后再说</string>
     <string name="apk_update_open">前往官网下载</string>
     <string name="apk_update_no_browser">无法打开浏览器，请检查是否已安装浏览器。</string>
+    <string name="notice_channel">消息通知</string>
+    <string name="notice_monitor_channel">消息监听</string>
+    <string name="notice_monitor_running">正在检查新消息</string>
+    <string name="notice_new">你有新消息</string>
+    <string name="notice_open">点击打开消息中心</string>
 </resources>

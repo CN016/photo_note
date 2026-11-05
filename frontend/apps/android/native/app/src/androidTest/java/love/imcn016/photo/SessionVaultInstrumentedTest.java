@@ -40,4 +40,14 @@ public class SessionVaultInstrumentedTest {
     @Test public void closedServerDiscardsLateSessionResponse() throws Exception {
         SessionVault vault=new SessionVault(context(),"https://fixture.invalid"); vault.accept(pair("stable",-1,1)); long epoch=vault.generation(); vault.stop(); vault.accept(pair("late",-1,1),epoch); assertTrue(vault.bootstrap().contains("stable")); assertFalse(vault.bootstrap().contains("late"));
     }
+    @Test public void notificationRefreshUsesMemoryAndRejectsOtherSpaceWithoutNetwork() throws Exception {
+        SessionVault vault = new SessionVault(context(), "https://fixture.invalid");
+        vault.accept(pair("fixture", 17, 2).put("expires_in", 3600));
+        assertEquals("fixture-session:17:2", vault.identity());
+        assertEquals("never-persist-access", vault.refresh(vault.identity(), false).getString("access_token"));
+        try { vault.refresh("fixture-session:23:2", false); fail("跨空间刷新必须拒绝"); } catch (SecurityException expected) { }
+        vault.invalidateRequests(); assertEquals("never-persist-access", vault.refresh(vault.identity(), false).getString("access_token"));
+        vault.logout(); assertEquals("", vault.identity());
+        try { vault.refresh("fixture-session:17:2", false); fail("退出后不得后台刷新"); } catch (SecurityException expected) { }
+    }
 }

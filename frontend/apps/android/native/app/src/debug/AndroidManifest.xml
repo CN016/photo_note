@@ -1,0 +1,6 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- 合成通知测试服务仅存在于调试构建，不向外部应用开放。 -->
+    <application>
+        <service android:name=".NotificationFixtureService" android:exported="false" android:foregroundServiceType="dataSync" />
+    </application>
+</manifest>

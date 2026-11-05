@@ -15,4 +15,9 @@
     <string name="apk_update_later">Later</string>
     <string name="apk_update_open">Open download page</string>
     <string name="apk_update_no_browser">Could not open a browser. Check that a browser is installed.</string>
+    <string name="notice_channel">Messages</string>
+    <string name="notice_monitor_channel">Message monitoring</string>
+    <string name="notice_monitor_running">Checking for new messages</string>
+    <string name="notice_new">You have new messages</string>
+    <string name="notice_open">Tap to open the message center</string>
 </resources>

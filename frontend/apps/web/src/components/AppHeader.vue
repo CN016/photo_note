@@ -10,6 +10,7 @@ import BrandMark from './BrandMark.vue'
 import LanguageSwitcher from './LanguageSwitcher.vue'
 import ThemeSwitcher from './ThemeSwitcher.vue'
 import InspirationGoalReminder from './InspirationGoalReminder.vue'
+import { nativeShell, supportsNotificationMonitor } from '../../../../packages/platform-adapters'
 
 const { t } = useI18n()
 const auth = useAuthStore()
@@ -31,6 +32,10 @@ watch(() => auth.user ? [auth.user.business_id, auth.user.avatar_key, auth.orgid
     return
   }
   const [businessID, storekey] = identity
+  const stamp = `${auth.sessionID}:${auth.orgid}:${auth.sessionVersion}`
+  void supportsNotificationMonitor().then(supported => {
+    if (supported && auth.user?.business_id === businessID && stamp === `${auth.sessionID}:${auth.orgid}:${auth.sessionVersion}`) return nativeShell.startNotificationMonitor({ identity: stamp })
+  }).catch(() => { /* 系统通知不可用时保留现有站内消息和应用内提示。 */ })
   void appShell.ensureAvatar(businessID, storekey)
   stopNotificationListener = appShell.subscribeToNewNotifications(() => {
     ElNotification({

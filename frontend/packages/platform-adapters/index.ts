@@ -8,6 +8,10 @@ export interface PlatformAdapter {
 interface NativeShell {
   exportFile(options: ExportLabels & { data: string; filename: string; mime: string }): Promise<{ status: ExportResult }>
   setTheme(options: { dark: boolean }): Promise<void>
+  startNotificationMonitor(options: { identity: string }): Promise<void>
+  stopNotificationMonitor(options: { identity: string }): Promise<void>
+  refreshNotificationSession(options: { identity: string }): Promise<{ status: number; body: string }>
+  consumeNotificationOpen(): Promise<{ open: boolean }>
 }
 interface BrowserRuntime {
   id: string
@@ -27,6 +31,20 @@ function invoke<T>(method: string, options: unknown): Promise<T> {
 export const nativeShell: NativeShell = {
   exportFile: options => invoke('exportFile', options),
   setTheme: options => invoke('setTheme', options),
+  startNotificationMonitor: options => invoke('startNotificationMonitor', options),
+  stopNotificationMonitor: options => invoke('stopNotificationMonitor', options),
+  refreshNotificationSession: options => invoke('refreshNotificationSession', options),
+  consumeNotificationOpen: () => invoke('consumeNotificationOpen', {}),
+}
+let notificationSupport: Promise<boolean> | undefined
+/** 老APK没有新桥接时继续沿用HTTP刷新和站内提示，热更新不会使旧壳无法登录。 */
+export function supportsNotificationMonitor(): Promise<boolean> {
+  if (!isAndroid()) return Promise.resolve(false)
+  return notificationSupport ??= invoke('notificationCapabilities', {}).then(() => true, () => false)
+}
+/** 点击系统通知只触发受保护的消息中心路由，不接收原生传入的任意URL。 */
+export function subscribeNativeNotificationOpen(callback: () => void): void {
+  runtime()?.connectNative('photo_nini').onMessage.addListener(message => { if (message.type === 'notificationOpen') callback() })
 }
 export const minimizeApp = () => invoke<void>('minimizeApp', {})
 /** 长连接只传系统返回事件，业务载荷用带明确响应的一次性消息。 */
