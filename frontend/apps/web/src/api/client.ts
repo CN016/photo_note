@@ -66,22 +66,28 @@ async function parseFailure(response: Response): Promise<ApiError> {
 }
 
 /** 网络错误保留 Refresh Token，只有服务端明确返回未授权才会清除会话。 */
-async function exchangeRefreshToken(refreshToken: string): Promise<Response> {
+async function exchangeRefreshToken(refreshToken: string, rejectedAccessToken: string): Promise<Response> {
   try {
     // 新安卓壳由原生凭据锁统一消费刷新令牌；Web本地副本即使落后于后台轮换也不会重复消费。
     if (await supportsNotificationMonitor()) {
-      const result = await nativeShell.refreshNotificationSession({ identity: sessionStamp() })
+      const result = await nativeShell.refreshNotificationSession({ identity: sessionStamp(), rejectedAccessToken })
       return new Response(result.body, { status: result.status, headers: { 'Content-Type': 'application/json' } })
     }
     return await fetch(`${API_BASE}/auth/refresh`, {
-      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ refresh_token: refreshToken }),
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ refresh_token: refreshToken }), signal: AbortSignal.timeout(15_000),
     })
   } catch { throw new ApiError('network', 'network', 0) }
 }
 
 /** 通过 Web Locks 串行刷新；不支持该 API 的浏览器使用短租约并在失败时等待另一标签页轮换完成。 */
 export async function withRefreshLock<T>(action: () => Promise<T>): Promise<T> {
-  if ('locks' in navigator && navigator.locks) return navigator.locks.request('photo-nini-auth-mutation', { mode: 'exclusive' }, action)
+  if ('locks' in navigator && navigator.locks) {
+    // 被关闭页面留下的锁或其他标签页长请求不能无限阻塞首屏；只限制排队，不中断已开始的令牌轮换。
+    const controller = new AbortController()
+    const timer = setTimeout(() => controller.abort(), 8_000)
+    try { return await navigator.locks.request('photo-nini-auth-mutation', { mode: 'exclusive', signal: controller.signal }, () => { clearTimeout(timer); return action() }) }
+    finally { clearTimeout(timer) }
+  }
   const owner = `${Date.now()}-${Math.random().toString(36).slice(2)}`
   const deadline = Date.now() + 8000
   while (Date.now() < deadline) {
@@ -98,13 +104,13 @@ export async function withRefreshLock<T>(action: () => Promise<T>): Promise<T> {
 }
 
 /** Refresh Token 单次消费；失败的并发标签页等待已获胜页面持久化的新 token。 */
-async function rotateRefreshToken(): Promise<string | null> {
+async function rotateRefreshToken(rejectedAccessToken = ''): Promise<string | null> {
   if (refreshFlight) return refreshFlight
   refreshFlight = withRefreshLock(async () => {
     let token = getRefreshToken()
     if (!token) return null
     for (let attempt = 0; attempt < 4; attempt += 1) {
-      const response = await exchangeRefreshToken(token)
+      const response = await exchangeRefreshToken(token, rejectedAccessToken)
       if (response.ok) {
         const envelope = await response.json() as ApiEnvelope<{ tokens: TokenPair }>
         acceptTokenPair(envelope.data.tokens)
@@ -148,7 +154,7 @@ async function request<T>(path: string, init: RequestInit = {}, auth = true, ret
   finally { pendingRequests -= 1 }
   assertSession(expected, auth)
   if (response.status === 401 && auth && retry) {
-    const nextToken = await rotateRefreshToken()
+    const nextToken = await rotateRefreshToken(headers.get('Authorization')?.replace(/^Bearer /, '') || '')
     assertSession(expected, auth)
     if (nextToken) return request<T>(path, init, auth, false, apiBase, expected)
     throw new ApiError('unauthorized', 'unauthorized', 401)
@@ -185,7 +191,7 @@ async function uploadWithProgress(file: Blob, filename: string, progress: (loade
   } finally { pendingRequests -= 1 }
   assertSession(expected, true)
   if (result.status === 401 && retry) {
-    const token = await rotateRefreshToken()
+    const token = await rotateRefreshToken(accessToken || '')
     assertSession(expected, true)
     if (token) return uploadWithProgress(file, filename, progress, false, expected)
     throw new ApiError('unauthorized', 'unauthorized', 401)
@@ -215,7 +221,7 @@ async function requestBlob(path: string, retry = true, cache: RequestCache = 'de
   finally { pendingRequests -= 1 }
   assertSession(expected, true)
   if (response.status === 401 && retry) {
-    if (await rotateRefreshToken()) { assertSession(expected, true); return requestBlob(path, false, cache, expected) }
+    if (await rotateRefreshToken(accessToken || '')) { assertSession(expected, true); return requestBlob(path, false, cache, expected) }
     throw new ApiError('unauthorized', 'unauthorized', 401)
   }
   if (!response.ok) {
@@ -275,7 +281,7 @@ export const api = {
   /** 撤销当前服务端会话。 */
   logout() { return request<void>('/auth/logout', { method: 'POST', headers: isAndroid() ? { 'X-Photo-Nini-Session': sessionStamp() } : {} }) },
   /** 读取当前登录用户资料。 */
-  currentUser() { return request<UserProfile>('/users/me') },
+  currentUser(signal?: AbortSignal) { return request<UserProfile>('/users/me', { signal }) },
   /** 原子保存当前用户单张统计卡片的图表模式。 */
   updateStatisticsChartMode(dimension: string, mode: string) { return request<UserProfile>('/users/me/statistics-chart-mode', { method: 'PATCH', body: JSON.stringify({ dimension, mode }) }) },
   currentAvatar() { return requestBlob('/users/me/avatar', true, 'reload') },

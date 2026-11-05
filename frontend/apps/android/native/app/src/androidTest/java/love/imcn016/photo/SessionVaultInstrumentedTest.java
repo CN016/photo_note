@@ -45,6 +45,9 @@ public class SessionVaultInstrumentedTest {
         vault.accept(pair("fixture", 17, 2).put("expires_in", 3600));
         assertEquals("fixture-session:17:2", vault.identity());
         assertEquals("never-persist-access", vault.refresh(vault.identity(), false).getString("access_token"));
+        // fixture.invalid不可达；恢复及旧令牌失败都应直接复用有效内存值，不额外访问网络。
+        assertEquals("never-persist-access", vault.resume(vault.identity(), "").getString("access_token"));
+        assertEquals("never-persist-access", vault.resume(vault.identity(), "older-access").getString("access_token"));
         try { vault.refresh("fixture-session:23:2", false); fail("跨空间刷新必须拒绝"); } catch (SecurityException expected) { }
         vault.invalidateRequests(); assertEquals("never-persist-access", vault.refresh(vault.identity(), false).getString("access_token"));
         vault.logout(); assertEquals("", vault.identity());

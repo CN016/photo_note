@@ -8,7 +8,25 @@ describe('平台文件导出边界', () => {
   beforeEach(() => {
     vi.stubGlobal('browser', { runtime: { id: 'photo-nini@imcn016.love', sendNativeMessage: nativeExport } })
   })
-  afterEach(() => { vi.unstubAllGlobals(); nativeExport.mockReset() })
+  afterEach(() => { vi.unstubAllGlobals(); nativeExport.mockReset(); vi.useRealTimers() })
+
+  it('认证桥接30秒超时而不是沿用导出的五分钟等待', async () => {
+    vi.useFakeTimers()
+    nativeExport.mockImplementation(() => new Promise(() => {}))
+    const { nativeShell } = await import('./index')
+    const pending = expect(nativeShell.refreshNotificationSession({ identity: 'fixture:-1:1', rejectedAccessToken: '' })).rejects.toThrow('native_timeout')
+    await vi.advanceTimersByTimeAsync(30_000)
+    await pending
+  })
+
+  it('能力探测超时不误判旧壳，并允许恢复后重新探测', async () => {
+    vi.resetModules(); vi.useFakeTimers()
+    nativeExport.mockImplementationOnce(() => new Promise(() => {})).mockResolvedValue({})
+    const { supportsNotificationMonitor } = await import('./index')
+    const pending = expect(supportsNotificationMonitor()).rejects.toThrow('native_timeout')
+    await vi.advanceTimersByTimeAsync(3_000); await pending
+    await expect(supportsNotificationMonitor()).resolves.toBe(true)
+  })
 
   it('超过原生上限的 Blob 在读取前拒绝，避免额外内存分配', async () => {
     const read = vi.fn()

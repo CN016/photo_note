@@ -53,7 +53,8 @@ export const useAuthStore = defineStore('auth', {
           const token = await api.refresh()
           if (!token) { this.recoveryPending = false; return }
           setAccessToken(token)
-          this.user = await api.currentUser()
+          // 刷新成功后的资料读取也必须有限等待；失败保留原生或Web已轮换的新凭据供重试。
+          this.user = await api.currentUser(AbortSignal.timeout(10_000))
           this.recoveryPending = false
           this.syncSession()
         } catch (cause) {
