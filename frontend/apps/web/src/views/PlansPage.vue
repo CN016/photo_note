@@ -3,13 +3,13 @@ import ContentZoom from '../components/ContentZoom.vue'
 import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
 import { onBeforeRouteLeave } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Calendar, Check, Clock, Delete, Edit, Plus, Refresh, UploadFilled } from '@element-plus/icons-vue'
+import { Calendar, Clock, Delete, Edit, Plus, Refresh, UploadFilled } from '@element-plus/icons-vue'
 import { useI18n } from 'vue-i18n'
 import AppHeader from '../components/AppHeader.vue'
 import PlanCoverImage from '../components/PlanCoverImage.vue'
 import { api } from '../api/client'
 import type { PlanFields, PlanRecord } from '../api/types'
-import { addDateKey, chinaDateKey, chinaDateTimeInput, formatChinaTime, mondayOf, toChinaTimestamp } from '../schedule/scheduleUtils'
+import { chinaDateKey, chinaDateTimeInput, formatChinaTime, toChinaTimestamp } from '../schedule/scheduleUtils'
 
 type PlanTab = 'today' | 'plans' | 'completed'
 type PlanGroup = { key: string; items: PlanRecord[] }
@@ -23,8 +23,8 @@ function t(key: string, parameters?: Record<string, string | number>): string {
 const loading = ref(true)
 const loadFailed = ref(false)
 const plans = ref<PlanRecord[]>([])
-const activeTab = ref<PlanTab>('today')
-const tabKeys: PlanTab[] = ['today', 'plans', 'completed']
+const activeTab = ref<PlanTab>('plans')
+const tabKeys: PlanTab[] = ['plans', 'today', 'completed']
 const today = ref(chinaDateKey())
 const dialogOpen = ref(false)
 const saving = ref(false)
@@ -43,29 +43,21 @@ let dateTimer: number | undefined
 const activePlans = computed(() => plans.value.filter(item => item.status === 'active'))
 const completedPlans = computed(() => plans.value.filter(item => item.status === 'completed'))
 const todayItems = computed(() => activePlans.value.filter(item => planDate(item) <= today.value).sort(sortByStart))
-const futureItems = computed(() => activePlans.value.filter(item => planDate(item) > today.value).sort(sortByStart))
-const currentWeekEnd = computed(() => addDateKey(mondayOf(today.value), 7))
-const yearText = computed(() => today.value.slice(0, 4))
 const groups = computed<PlanGroup[]>(() => {
-  if (activeTab.value === 'today') {
-    return [
-      { key: 'overdue', items: todayItems.value.filter(item => planDate(item) < today.value) },
-      { key: 'today', items: todayItems.value.filter(item => planDate(item) === today.value) },
-    ].filter(group => group.items.length > 0)
-  }
-  if (activeTab.value === 'plans') {
-    return [
-      { key: 'week', items: futureItems.value.filter(item => planDate(item) < currentWeekEnd.value) },
-      { key: 'year', items: futureItems.value.filter(item => planDate(item) >= currentWeekEnd.value && planDate(item).startsWith(yearText.value)) },
-      { key: 'other', items: futureItems.value.filter(item => !planDate(item).startsWith(yearText.value)) },
-    ].filter(group => group.items.length > 0)
-  }
-  return completedPlans.value.length ? [{ key: 'completed', items: [...completedPlans.value].sort(sortByStart) }] : []
+  // 待办始终在前，完成记录留在当前列表底部，避免勾选后任务突然消失。
+  const completed = [...completedPlans.value].sort((a, b) => (b.completed_at ?? '').localeCompare(a.completed_at ?? '') || sortByStart(a, b))
+  if (activeTab.value === 'completed') return completed.length ? [{ key: 'completed', items: completed }] : []
+  const pending = activeTab.value === 'today' ? todayItems.value : [...activePlans.value].sort(sortByStart)
+  const done = activeTab.value === 'today' ? completed.filter(item => planDate(item) <= today.value) : completed
+  return [
+    { key: 'pending', items: pending },
+    { key: 'completed', items: done },
+  ].filter(group => group.items.length > 0)
 })
 const visibleCount = computed(() => groups.value.reduce((sum, group) => sum + group.items.length, 0))
 
 function emptyFields(): PlanFields {
-  return { title: '', description: '', starts_at: '', cover_emoji: '', cover_image_key: '', reminder_offsets: [60] }
+  return { title: '', description: '', starts_at: '', cover_emoji: '', cover_image_key: '', reminder_offsets: [] }
 }
 
 function sortByStart(left: PlanRecord, right: PlanRecord): number {
@@ -195,7 +187,7 @@ function validateForm(): boolean {
   return true
 }
 
-/** 保存完整编辑快照；时间显式按 +08:00 提交，提醒空集合交由服务端应用一小时默认值。 */
+/** 保存完整编辑快照；时间显式按 +08:00 提交，提醒空集合明确表示不提醒。 */
 async function save(): Promise<void> {
   // 回车提交与按钮点击共用同一入口，处理中不重复创建计划或保存尚未完成的封面。
   if (saving.value || uploadingCover.value) return
@@ -222,16 +214,13 @@ async function save(): Promise<void> {
   }
 }
 
-/** 只有确认后才完成计划；服务端在事务中取消它的所有未发送提醒。 */
+/** 勾选后由服务端原子完成并取消未发送提醒；请求成功后更新本地列表。 */
 async function complete(item: PlanRecord): Promise<void> {
+  if (busyPlanID.value || item.status !== 'active') return
   try {
-    await ElMessageBox.confirm(t('form.completeConfirm', { title: item.title }), t('actions.complete'), {
-      confirmButtonText: t('actions.complete'), cancelButtonText: t('actions.cancel'), type: 'success',
-    })
     busyPlanID.value = item.business_id
-    await api.completePlan(item.business_id)
-    ElMessage.success(t('form.completed'))
-    await load()
+    const result = await api.completePlan(item.business_id)
+    plans.value = plans.value.map(plan => plan.business_id === item.business_id ? result : plan)
   } catch (error) {
     if (error !== 'cancel' && error !== 'close') ElMessage.error(t('common.errors.requestFailed'))
   } finally {
@@ -278,9 +267,7 @@ onBeforeUnmount(() => {
   <ContentZoom><main class="plans-main">
     <header class="plans-heading">
       <div>
-        <p class="plans-eyebrow">{{ t('title') }}</p>
         <h1>{{ t('title') }}</h1>
-        <p class="plans-subtitle">{{ t('subtitle') }}</p>
       </div>
       <el-button type="primary" class="add-plan-button" @click="openForm()">
         <el-icon aria-hidden="true"><Plus /></el-icon>{{ t('actions.add') }}
@@ -290,7 +277,7 @@ onBeforeUnmount(() => {
     <nav class="plan-tabs" :aria-label="t('title')" role="tablist">
       <button v-for="tab in tabKeys" :key="tab" type="button" role="tab" :aria-selected="activeTab === tab" :class="{ active: activeTab === tab }" @click="activeTab = tab">
         {{ t(`tabs.${tab}`) }}
-        <span>{{ tab === 'today' ? todayItems.length : tab === 'plans' ? futureItems.length : completedPlans.length }}</span>
+        <span>{{ tab === 'today' ? todayItems.length : tab === 'plans' ? activePlans.length : completedPlans.length }}</span>
       </button>
     </nav>
 
@@ -301,8 +288,9 @@ onBeforeUnmount(() => {
     <template v-else>
       <section v-if="visibleCount" class="plan-groups" :aria-label="t(`tabs.${activeTab}`)">
         <section v-for="group in groups" :key="group.key" class="plan-group">
-          <h2><span class="group-marker"></span>{{ group.key === 'year' ? `${t(`groups.${group.key}`)} · ${yearText}` : t(`groups.${group.key}`) }}<small>{{ group.items.length }}</small></h2>
+          <h2><span class="group-marker"></span>{{ t(`groups.${group.key}`) }}<small>{{ group.items.length }}</small></h2>
           <article v-for="item in group.items" :key="item.business_id" class="plan-card" :class="{ 'is-completed': item.status === 'completed', 'is-overdue': planDate(item) < today && item.status === 'active' }">
+            <el-checkbox class="plan-check" :model-value="item.status === 'completed'" :disabled="item.status === 'completed' || !!busyPlanID" :aria-label="t('actions.complete')" @change="complete(item)" />
             <div class="plan-cover" aria-hidden="true">
               <PlanCoverImage v-if="item.cover_image_key" :storekey="item.cover_image_key" :label="t('cover.imageAlt')" :loading-label="t('cover.loading')" :unavailable-label="t('cover.unavailable')" />
               <span v-else class="plan-emoji">{{ item.cover_emoji }}</span>
@@ -317,7 +305,7 @@ onBeforeUnmount(() => {
               <div class="plan-meta"><span><el-icon aria-hidden="true"><Calendar /></el-icon>{{ dateLabel(item) }}</span><span v-if="item.reminder_offsets.length"><el-icon aria-hidden="true"><Clock /></el-icon>{{ item.reminder_offsets.map(value => t('reminderLabel', { minutes: value })).join(' · ') }}</span></div>
             </div>
             <div class="plan-actions">
-              <el-button v-if="item.status === 'active'" circle type="success" plain :loading="busyPlanID === item.business_id" :title="t('actions.complete')" :aria-label="t('actions.complete')" @click="complete(item)"><el-icon aria-hidden="true"><Check /></el-icon></el-button>
+
               <el-button v-if="item.status === 'active'" circle plain :disabled="busyPlanID === item.business_id" :title="t('actions.edit')" :aria-label="t('actions.edit')" @click="openForm(item)"><el-icon aria-hidden="true"><Edit /></el-icon></el-button>
               <el-button circle type="danger" plain :loading="busyPlanID === item.business_id" :title="t('actions.delete')" :aria-label="t('actions.delete')" @click="remove(item)"><el-icon aria-hidden="true"><Delete /></el-icon></el-button>
             </div>
@@ -407,7 +395,11 @@ onBeforeUnmount(() => {
 .plan-group h2 small { display: grid; min-width: 20px; height: 20px; place-items: center; border-radius: 10px; background: var(--surface-soft); color: var(--muted); font-size: 12px; }
 .plan-card { display: flex; min-width: 0; align-items: center; gap: 16px; margin-bottom: 8px; padding: 16px; border: 1px solid var(--line); border-radius: var(--radius-card); background: var(--surface); box-shadow: var(--soft-shadow); transition: border-color .18s ease, box-shadow .18s ease; }
 .plan-card:hover { border-color: color-mix(in srgb, var(--accent) 30%, var(--line)); box-shadow: var(--soft-shadow); }
-.plan-card.is-completed { opacity: .72; }
+.plan-card.is-completed { background: var(--surface-soft); color: var(--muted); }
+.plan-card.is-completed .plan-copy { color: var(--muted); }
+.plan-card.is-completed h3 { color: var(--muted); text-decoration: line-through; }
+.plan-card.is-completed .plan-cover { filter: grayscale(1); opacity: .6; }
+.plan-check { flex: 0 0 28px; min-height: 44px; }
 .plan-card.is-overdue { border-left: 3px solid var(--danger); }
 .plan-cover { display: grid; width: 68px; height: 68px; flex: 0 0 68px; place-items: center; overflow: hidden; border-radius: var(--radius-card); background: var(--accent-soft); }
 .plan-emoji { font-size: 30px; line-height: 1; }
@@ -459,7 +451,7 @@ onBeforeUnmount(() => {
   .add-plan-button { min-height: 44px; padding: 0 12px; font-size: 12px; }
   .plan-tabs { margin: 24px 0 16px; gap: 3px; padding: 4px; }
   .plan-tabs button { min-height: 44px; gap: 4px; font-size: 12px; }
-  .plan-card { display: grid; grid-template-columns: 50px minmax(0, 1fr); align-items: start; gap: 12px; padding: 12px; }
+  .plan-card { display: grid; grid-template-columns: 28px 50px minmax(0, 1fr); align-items: start; gap: 12px; padding: 12px; }
   .plan-cover { width: 50px; height: 50px; flex-basis: 50px; }
   .plan-cover :deep(.plan-cover-image) { width: 50px; height: 50px; flex-basis: 50px; }
   .plan-emoji { font-size: 24px; }
@@ -468,7 +460,7 @@ onBeforeUnmount(() => {
   .plan-description { font-size: 12px; }
   .plan-meta { display: grid; gap: 4px; font-size: 12px; }
   /* 操作移到正文下方，44px 按钮不会压缩标题与描述。 */
-  .plan-actions { grid-column: 2; justify-self: end; gap: 4px; margin-left: 0; }
+  .plan-actions { grid-column: 3; justify-self: end; gap: 4px; margin-left: 0; }
   .plan-actions :deep(.el-button) { width: 44px; height: 44px; min-height: 44px; }
   .plan-actions :deep(.el-button + .el-button) { margin-left: 0; }
   .cover-editor { gap: 12px; }

@@ -20,7 +20,6 @@ import (
 )
 
 const (
-	planDefaultReminderMinutes  = 60
 	planMaximumTitleRunes       = 120
 	planMaximumDescriptionRunes = 4000
 	planMaximumReminderMinutes  = 525600
@@ -67,7 +66,7 @@ func (service *PlanService) SetErrorLogService(errorLogs *ErrorLogService) {
 	service.errorLogs = errorLogs
 }
 
-// PlanFields 是创建计划时可写入的字段；提醒偏移为提前分钟数，空数组采用默认的一小时。
+// PlanFields 是创建计划时可写入的字段；提醒偏移为提前分钟数，空数组表示不提醒。
 type PlanFields struct {
 	Title           string    `json:"title"`
 	Description     string    `json:"description"`
@@ -124,7 +123,7 @@ func (service *PlanService) Get(ctx context.Context, userID, planID uuid.UUID) (
 	return planView(item), nil
 }
 
-// Create 校验计划与封面后创建计划和默认或自定义提醒任务。
+// Create 校验计划与封面后创建计划，仅为显式配置的偏移创建提醒任务。
 func (service *PlanService) Create(ctx context.Context, userID uuid.UUID, fields PlanFields) (PlanView, error) {
 	clean, err := normalizePlanFields(fields)
 	if err != nil {
@@ -356,9 +355,6 @@ func normalizePlanFields(fields PlanFields) (PlanFields, error) {
 	if fields.StartsAt.IsZero() {
 		return PlanFields{}, fault.InvalidField("starts_at", "计划时间不能为空")
 	}
-	if len(fields.ReminderOffsets) == 0 {
-		fields.ReminderOffsets = []int{planDefaultReminderMinutes}
-	}
 	if len(fields.ReminderOffsets) > 3 {
 		return PlanFields{}, fault.InvalidField("reminder_offsets", "最多只能设置三条提醒")
 	}
@@ -397,7 +393,7 @@ func samePlanReminderOffsets(left, right []int) bool {
 func planView(item model.Plan) PlanView {
 	offsets := append([]int(nil), item.ReminderOffsets...)
 	if offsets == nil {
-		offsets = []int{planDefaultReminderMinutes}
+		offsets = []int{}
 	}
 	return PlanView{
 		BusinessID: item.BusinessID, Title: item.Title, Description: item.Description,

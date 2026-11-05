@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/photo-nini/backend/internal/domain/fault"
+	"github.com/photo-nini/backend/internal/model"
 )
 
 type planEmojiConfig struct{ values []PublicConfigValue }
@@ -34,7 +35,7 @@ func TestNormalizePlanFieldsDefaultsAndLimitsReminders(t *testing.T) {
 	if err != nil {
 		t.Fatalf("valid plan fields were rejected: %v", err)
 	}
-	if clean.Title != "预约体检" || len(clean.ReminderOffsets) != 1 || clean.ReminderOffsets[0] != 60 {
+	if clean.Title != "预约体检" || len(clean.ReminderOffsets) != 0 {
 		t.Fatalf("unexpected normalized plan defaults: %#v", clean)
 	}
 
@@ -90,5 +91,19 @@ func TestValidatePlanCoverChecksPrivateStoreKeyAndImageContents(t *testing.T) {
 	service.files = planImageFiles{content: []byte("not an image")}
 	if err := service.validatePlanCover(context.Background(), "", imageKey); err == nil {
 		t.Fatal("invalid image contents should be rejected")
+	}
+}
+
+// TestPlanWithoutReminders 保证取消提醒后不会在规范化或响应映射时重新补上默认提醒。
+func TestPlanWithoutReminders(t *testing.T) {
+	for _, offsets := range [][]int{nil, {}} {
+		clean, err := normalizePlanFields(PlanFields{Title: "不提醒的待办", StartsAt: time.Now(), CoverEmoji: "📌", ReminderOffsets: offsets})
+		if err != nil || len(clean.ReminderOffsets) != 0 {
+			t.Fatalf("empty reminders must remain disabled: %#v, %v", clean, err)
+		}
+		view := planView(model.Plan{ReminderOffsets: offsets})
+		if view.ReminderOffsets == nil || len(view.ReminderOffsets) != 0 {
+			t.Fatalf("API must return an empty array: %#v", view.ReminderOffsets)
+		}
 	}
 }

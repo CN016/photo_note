@@ -6,7 +6,7 @@
   "retry": "Retry",
   "tabs": {
     "today": "Today",
-    "plans": "Plans",
+    "plans": "All",
     "completed": "Completed"
   },
   "groups": {
@@ -15,11 +15,12 @@
     "week": "This week",
     "year": "This year",
     "other": "Later",
-    "completed": "Completed"
+    "completed": "Completed",
+    "pending": "To do"
   },
   "empty": {
     "today": "There are no plans due today.",
-    "plans": "There are no upcoming plans yet.",
+    "plans": "No plans yet.",
     "completed": "There are no completed plans yet.",
     "hint": "Create a plan for the next thing you want to do."
   },
@@ -53,7 +54,7 @@
     "reminders": "Reminders",
     "reminderHelp": "Up to three. Lead time is relative to the plan time.",
     "minutesBefore": "minutes before",
-    "defaultReminder": "If left unset, a reminder is sent one hour before.",
+    "defaultReminder": "No reminder",
     "emojiLoadFailed": "Could not load the latest emoji list. Retry, or upload an image cover.",
     "coverLoadFailed": "Image upload failed. Check the file and try again.",
     "saved": "Plan saved.",

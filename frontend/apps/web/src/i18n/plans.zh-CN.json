@@ -6,7 +6,7 @@
   "retry": "重试",
   "tabs": {
     "today": "今天",
-    "plans": "计划",
+    "plans": "全部",
     "completed": "已完成"
   },
   "groups": {
@@ -15,11 +15,12 @@
     "week": "本周",
     "year": "本年",
     "other": "其他",
-    "completed": "已完成"
+    "completed": "已完成",
+    "pending": "待办"
   },
   "empty": {
     "today": "今天没有待办计划。",
-    "plans": "还没有之后的计划。",
+    "plans": "还没有计划。",
     "completed": "还没有已完成的计划。",
     "hint": "新建计划，安排下一件要做的事。"
   },
@@ -53,7 +54,7 @@
     "reminders": "提醒",
     "reminderHelp": "最多三条；提前分钟数相对于计划时间计算。",
     "minutesBefore": "分钟前提醒",
-    "defaultReminder": "未设置时默认提前 1 小时提醒。",
+    "defaultReminder": "不提醒",
     "emojiLoadFailed": "无法读取最新 emoji 配置，请重试；也可以上传图片封面。",
     "coverLoadFailed": "图片上传失败，请检查文件后重试。",
     "saved": "计划已保存。",
