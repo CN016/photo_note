@@ -10,7 +10,7 @@ import BrandMark from './BrandMark.vue'
 import LanguageSwitcher from './LanguageSwitcher.vue'
 import ThemeSwitcher from './ThemeSwitcher.vue'
 import InspirationGoalReminder from './InspirationGoalReminder.vue'
-import { nativeShell, supportsNotificationMonitor } from '../../../../packages/platform-adapters'
+import { ensureNotificationSession } from '../notificationSession'
 
 const { t } = useI18n()
 const auth = useAuthStore()
@@ -32,10 +32,7 @@ watch(() => auth.user ? [auth.user.business_id, auth.user.avatar_key, auth.orgid
     return
   }
   const [businessID, storekey] = identity
-  const stamp = `${auth.sessionID}:${auth.orgid}:${auth.sessionVersion}`
-  void supportsNotificationMonitor().then(supported => {
-    if (supported && auth.user?.business_id === businessID && stamp === `${auth.sessionID}:${auth.orgid}:${auth.sessionVersion}`) return nativeShell.startNotificationMonitor({ identity: stamp })
-  }).catch(() => { /* 系统通知不可用时保留现有站内消息和应用内提示。 */ })
+  void ensureNotificationSession().catch(() => { /* 通知初始化失败不影响登录、头像或业务页面。 */ })
   void appShell.ensureAvatar(businessID, storekey)
   stopNotificationListener = appShell.subscribeToNewNotifications(() => {
     ElNotification({
@@ -49,7 +46,15 @@ watch(() => auth.user ? [auth.user.business_id, auth.user.avatar_key, auth.orgid
   appShell.startNotificationPolling(businessID)
 }, { immediate: true })
 
-onBeforeUnmount(() => { stopNotificationListener?.() })
+/** 重试仅发生于已登录状态；通知接口401不触发Web刷新，下一次正常Web刷新或回到前台再尝试。 */
+const retryNoticeSession = () => { if (auth.user) void ensureNotificationSession().catch(() => {}) }
+window.addEventListener('focus', retryNoticeSession)
+window.addEventListener('photo-nini-session-updated', retryNoticeSession)
+onBeforeUnmount(() => {
+  stopNotificationListener?.()
+  window.removeEventListener('focus', retryNoticeSession)
+  window.removeEventListener('photo-nini-session-updated', retryNoticeSession)
+})
 
 /** 浏览器无法解码头像时同步切换所有共享位置的昵称首字母回退。 */
 function fallbackAvatar() {

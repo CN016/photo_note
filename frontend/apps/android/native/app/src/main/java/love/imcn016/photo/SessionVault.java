@@ -16,23 +16,21 @@ import java.security.KeyStore;
 
 /** 用Android Keystore和AES-GCM保存刷新凭据；不依赖浏览器异步落盘，不持久化Access Token或密码。 */
 final class SessionVault {
-    private static SessionVault shared;
     private JSONObject memoryTokens;
     private long accessDeadline;
-    /** 页面代理和通知服务共用同一把凭据锁，防止单次刷新令牌被两端并发消费。 */
-    static synchronized SessionVault shared(Context context, String apiBase) {
-        if (shared == null || !shared.apiBase.equals(apiBase)) shared = new SessionVault(context.getApplicationContext(), apiBase);
-        return shared;
-    }
     private final AtomicFile file;
     private final String apiBase;
     private final String alias;
     private final java.util.concurrent.atomic.AtomicLong generation = new java.util.concurrent.atomic.AtomicLong();
     private boolean active = true;
     SessionVault(Context context, String apiBase) {
+        this(context, apiBase, false);
+    }
+    /** 通知保管库使用独立文件和Keystore别名，绝不读取、覆盖或锁住浏览器凭据。 */
+    SessionVault(Context context, String apiBase, boolean notification) {
         this.apiBase = apiBase;
-        alias = context.getPackageName() + ".refresh-v1";
-        file = new AtomicFile(new File(context.getFilesDir(), "session-vault-v1.json"));
+        alias = context.getPackageName() + (notification ? ".notice-refresh-v1" : ".refresh-v1");
+        file = new AtomicFile(new File(context.getFilesDir(), notification ? "notice-session-v1.json" : "session-vault-v1.json"));
     }
     /** 登录、刷新、切换空间的成功响应必须先原子落盘，才能转交网页消费新凭据。 */
     long generation() { return generation.get(); }

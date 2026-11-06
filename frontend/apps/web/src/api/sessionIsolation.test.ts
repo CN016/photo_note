@@ -19,21 +19,29 @@ beforeEach(() => {
 afterEach(() => vi.unstubAllGlobals())
 
 describe('空间切换中的请求隔离', () => {
-  it('新安卓壳统一从原生刷新，Web不重复消费已被后台轮换的刷新令牌', async () => {
-    const bridge = vi.fn(async (_app: string, message: { method: string }) => message.method === 'notificationCapabilities' ? {} : { status: 200, body: JSON.stringify({ data: { tokens: pair(11, 1) } }) })
+  it('安卓通知桥接永不返回时Web仍独立通过HTTP恢复', async () => {
+    const bridge = vi.fn(() => new Promise(() => {}))
     vi.stubGlobal('browser', { runtime: { id: 'photo-nini@imcn016.love', sendNativeMessage: bridge } })
-    const fetchMock = vi.fn(); vi.stubGlobal('fetch', fetchMock)
-    const client = await import('./client'); client.acceptTokenPair(pair(11, 1))
+    const fetchMock = vi.fn(async () => Response.json({data:{tokens:pair(11,1)}})); vi.stubGlobal('fetch',fetchMock)
+    const client = await import('./client');client.acceptTokenPair(pair(11,1))
     await expect(client.api.refresh()).resolves.toBe('access-1')
-    expect(fetchMock).not.toHaveBeenCalled()
-    expect(bridge).toHaveBeenCalledWith('photo_nini', { method: 'refreshNotificationSession', options: { identity: 'same-browser-session:11:1', rejectedAccessToken: '' } })
-  })
-  it('旧安卓壳缺少通知桥接时仍能沿用HTTP刷新登录', async () => {
-    vi.stubGlobal('browser', { runtime: { id: 'photo-nini@imcn016.love', sendNativeMessage: vi.fn(async () => { throw new Error('unsupported_method') }) } })
-    const fetchMock = vi.fn(async () => Response.json({ data: { tokens: pair(11, 1) } })); vi.stubGlobal('fetch', fetchMock)
-    const client = await import('./client'); client.acceptTokenPair(pair(11, 1))
-    await expect(client.api.refresh()).resolves.toBe('access-1')
+    expect(bridge).not.toHaveBeenCalled()
     expect(fetchMock).toHaveBeenCalledTimes(1)
+  })
+  it('通知签发被拒绝不会刷新或清除Web会话', async () => {
+    const client=await import('./client');client.acceptTokenPair(pair(11,1))
+    const fetchMock=vi.fn(async()=>Response.json({error:{code:'environment_unavailable'}},{status:403}));vi.stubGlobal('fetch',fetchMock)
+    await expect(client.api.notificationSession()).rejects.toMatchObject({status:403})
+    expect(client.getRefreshToken()).toBe('refresh-1');expect(fetchMock).toHaveBeenCalledTimes(1)
+  })
+  it('通知请求挂起不参与业务排空，也不能写入新空间', async () => {
+    const client=await import('./client');client.acceptTokenPair(pair(11,1))
+    const response=deferred<Response>();vi.stubGlobal('fetch',vi.fn(()=>response.promise))
+    const pending=client.api.notificationSession()
+    const rejected=expect(pending).rejects.toMatchObject({code:'space_changed'})
+    await client.drainSpaceRequests(Date.now()+20)
+    client.acceptTokenPair(pair(22,2));response.resolve(Response.json({data:{tokens:pair(11,1)}}))
+    await rejected;expect(client.getRefreshToken()).toBe('refresh-2')
   })
   it('旧请求返回401时不能用新组织凭证重放，也不能清除新会话', async () => {
     const client = await import('./client')

@@ -1,7 +1,7 @@
 import { ApiError, type ApiEnvelope, type ApiErrorEnvelope, type AuthResponse, type ConsoleConfigRecord, type ConsoleFeedbackRecord, type ConsoleInspirationRecord, type ConsoleUserRecord, type InspirationImageMetadata, type InspirationRecord, type InspirationStatistics, type LedgerFields, type LedgerImportItem, type LedgerImportResult, type LedgerRecord, type NoticeConfig, type NoticeConfigList, type NoticeDelivery, type NotificationPage, type PageResult, type PlanFields, type PlanRecord, type ProjectRecord, type ProjectSaveInput, type ProjectSummary, type ScheduleBooking, type ScheduleBookingReceipt, type ScheduleFields, type ScheduleOccurrence, type SchedulePublicSlot, type ScheduleShare, type TagRecord, type TokenPair, type UserProfile } from './types'
 import { API_REQUEST_ORIGIN } from './config'
 import type { DeliveryTask, DeliveryDetail, DeliverySettings, DeliveryCommand, DeliverySelection } from './delivery'
-import { isAndroid, nativeShell, supportsNotificationMonitor } from '../../../../packages/platform-adapters'
+import { nativeShell, supportsNotificationMonitor } from '../../../../packages/platform-adapters'
 import type { InspirationProjectSummary, Environment, Organization, OrganizationMember, PortfolioRecord, PortfolioPhoto, PortfolioInput } from './types'
 import type { InspirationLibraryFilters, InspirationGoalStatus, InspirationFacet } from './types'
 import type { ProjectStatus, ProjectStatusCounts, ProjectReview, ProjectScheduleLink } from './types'
@@ -67,15 +67,11 @@ async function parseFailure(response: Response): Promise<ApiError> {
 }
 
 /** 网络错误保留 Refresh Token，只有服务端明确返回未授权才会清除会话。 */
-async function exchangeRefreshToken(refreshToken: string, rejectedAccessToken: string): Promise<Response> {
+async function exchangeRefreshToken(refreshToken: string): Promise<Response> {
   try {
-    // 新安卓壳由原生凭据锁统一消费刷新令牌；Web本地副本即使落后于后台轮换也不会重复消费。
-    if (await supportsNotificationMonitor()) {
-      const result = await nativeShell.refreshNotificationSession({ identity: sessionStamp(), rejectedAccessToken })
-      return new Response(result.body, { status: result.status, headers: { 'Content-Type': 'application/json' } })
-    }
+    // 恢复历史HTTP路径：通知能力、桥接状态和通知刷新均不参与Web登录恢复。
     return await fetch(`${API_BASE}/auth/refresh`, {
-      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ refresh_token: refreshToken }), signal: AbortSignal.timeout(15_000),
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ refresh_token: refreshToken }),
     })
   } catch { throw new ApiError('network', 'network', 0) }
 }
@@ -105,13 +101,13 @@ export async function withRefreshLock<T>(action: () => Promise<T>): Promise<T> {
 }
 
 /** Refresh Token 单次消费；失败的并发标签页等待已获胜页面持久化的新 token。 */
-async function rotateRefreshToken(rejectedAccessToken = ''): Promise<string | null> {
+async function rotateRefreshToken(): Promise<string | null> {
   if (refreshFlight) return refreshFlight
   refreshFlight = withRefreshLock(async () => {
     let token = getRefreshToken()
     if (!token) return null
     for (let attempt = 0; attempt < 4; attempt += 1) {
-      const response = await exchangeRefreshToken(token, rejectedAccessToken)
+      const response = await exchangeRefreshToken(token)
       if (response.ok) {
         const envelope = await response.json() as ApiEnvelope<{ tokens: TokenPair }>
         acceptTokenPair(envelope.data.tokens)
@@ -155,7 +151,7 @@ async function request<T>(path: string, init: RequestInit = {}, auth = true, ret
   finally { pendingRequests -= 1 }
   assertSession(expected, auth)
   if (response.status === 401 && auth && retry) {
-    const nextToken = await rotateRefreshToken(headers.get('Authorization')?.replace(/^Bearer /, '') || '')
+    const nextToken = await rotateRefreshToken()
     assertSession(expected, auth)
     if (nextToken) return request<T>(path, init, auth, false, apiBase, expected)
     throw new ApiError('unauthorized', 'unauthorized', 401)
@@ -192,7 +188,7 @@ async function uploadWithProgress(file: Blob, filename: string, progress: (loade
   } finally { pendingRequests -= 1 }
   assertSession(expected, true)
   if (result.status === 401 && retry) {
-    const token = await rotateRefreshToken(accessToken || '')
+    const token = await rotateRefreshToken()
     assertSession(expected, true)
     if (token) return uploadWithProgress(file, filename, progress, false, expected)
     throw new ApiError('unauthorized', 'unauthorized', 401)
@@ -222,7 +218,7 @@ async function requestBlob(path: string, retry = true, cache: RequestCache = 'de
   finally { pendingRequests -= 1 }
   assertSession(expected, true)
   if (response.status === 401 && retry) {
-    if (await rotateRefreshToken(accessToken || '')) { assertSession(expected, true); return requestBlob(path, false, cache, expected) }
+    if (await rotateRefreshToken()) { assertSession(expected, true); return requestBlob(path, false, cache, expected) }
     throw new ApiError('unauthorized', 'unauthorized', 401)
   }
   if (!response.ok) {
@@ -242,7 +238,22 @@ async function deliveryPublicBlob(path: string, code: string): Promise<Blob> {
   return response.blob()
 }
 
+/** 通知令牌签发是可失败的独立操作，403/401/超时都不得触发Web清凭据或刷新。 */
+async function notificationSessionRequest(): Promise<{tokens:TokenPair}> {
+  if (requestsPaused) throw new ApiError('space_switch_pending', 'space_switch_pending', 409)
+  const expected = sessionStamp()
+  // 不计入业务请求排空：通知超时不延迟空间切换；只校验迟到响应的原会话代次。
+  const response = await fetch(`${API_BASE}/auth/notification-session`, { method: 'POST', headers: { Authorization: `Bearer ${accessToken || ''}` }, signal: AbortSignal.timeout(10_000) })
+  assertSession(expected, true)
+  if (!response.ok) throw await parseFailure(response)
+  const result = await response.json() as ApiEnvelope<{tokens:TokenPair}>
+  assertSession(expected, true)
+  return result.data
+}
+
 export const api = {
+  /** 仅申请独立通知会话；失败不触发Web刷新或清除Web凭据，交给异步通知初始化重试。 */
+  notificationSession() { return notificationSessionRequest() },
   /** 独立交付模块复用会话代次校验；客户访问码只放请求头，不写 URL 或持久化存储。 */
   deliveryList: () => request<{ items: DeliveryTask[] }>('/deliveries'),
   deliveryCreate: (input: DeliverySettings) => request<DeliveryTask>('/deliveries', { method: 'POST', body: JSON.stringify(input) }),
@@ -276,7 +287,7 @@ export const api = {
   /** 空间切换由跨标签页协调器调用，单次比较会话代次，禁止旧页面更换当前租户。 */
   environments() { return request<{ items: Environment[] }>('/environments') },
   switchEnvironment(orgid: number, expectedVersion: number, switchID: string) {
-    return request<{ tokens: TokenPair }>('/auth/switch-environment', { method: 'POST', headers: isAndroid() ? { 'X-Photo-Nini-Session': sessionStamp() } : {}, body: JSON.stringify({ refresh_token: getRefreshToken(), orgid, expected_session_version: expectedVersion, switch_id: switchID }) }, false)
+    return request<{ tokens: TokenPair }>('/auth/switch-environment', { method: 'POST', body: JSON.stringify({ refresh_token: getRefreshToken(), orgid, expected_session_version: expectedVersion, switch_id: switchID }) }, false)
   },
   organizations(page = 1, q = '') { return request<PageResult<Organization>>(`/atelier-7f3c9a2e/organizations?page=${page}&page_size=20&q=${encodeURIComponent(q)}`) },
   createOrganization(name: string, initialAdminID: string) { return request<Organization>('/atelier-7f3c9a2e/organizations', { method: 'POST', body: JSON.stringify({ name, initial_admin_user_id: initialAdminID }) }) },
@@ -301,7 +312,7 @@ export const api = {
   /** 当前 refresh token 轮换结果仅含新 token pair。 */
   refresh() { return rotateRefreshToken() },
   /** 撤销当前服务端会话。 */
-  logout() { return request<void>('/auth/logout', { method: 'POST', headers: isAndroid() ? { 'X-Photo-Nini-Session': sessionStamp() } : {} }) },
+  logout() { return request<void>('/auth/logout', { method: 'POST' }) },
   /** 读取当前登录用户资料。 */
   currentUser(signal?: AbortSignal) { return request<UserProfile>('/users/me', { signal }) },
   /** 原子保存当前用户单张统计卡片的图表模式。 */

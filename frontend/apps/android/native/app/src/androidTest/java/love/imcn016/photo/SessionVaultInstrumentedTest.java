@@ -53,4 +53,24 @@ public class SessionVaultInstrumentedTest {
         vault.logout(); assertEquals("", vault.identity());
         try { vault.refresh("fixture-session:17:2", false); fail("退出后不得后台刷新"); } catch (SecurityException expected) { }
     }
+    /** 通知持锁、凭据轮换和退出均不能阻塞或覆盖历史Web恢复文件。 */
+    @Test public void independentNotificationVaultCannotBlockOrEraseWeb() throws Exception {
+        Context context=context();
+        SessionVault web=new SessionVault(context,"https://fixture.invalid");
+        SessionVault notice=new SessionVault(context,"https://fixture.invalid",true);
+        web.accept(pair("web-only",17,1));
+        notice.accept(pair("notice-only",17,1).put("session_id","notice-session"));
+        java.util.concurrent.CountDownLatch locked=new java.util.concurrent.CountDownLatch(1);
+        java.util.concurrent.CountDownLatch release=new java.util.concurrent.CountDownLatch(1);
+        Thread worker=new Thread(() -> { synchronized(notice) { locked.countDown(); try { release.await(); } catch(InterruptedException ignored) { Thread.currentThread().interrupt(); } } });
+        worker.start(); assertTrue(locked.await(2,java.util.concurrent.TimeUnit.SECONDS));
+        try {
+            java.util.concurrent.ExecutorService executor=java.util.concurrent.Executors.newSingleThreadExecutor();
+            try { assertTrue(executor.submit(() -> web.bootstrap()).get(2,java.util.concurrent.TimeUnit.SECONDS).contains("web-only")); }
+            finally { executor.shutdownNow(); }
+        } finally { release.countDown(); worker.join(2000); }
+        notice.logout();
+        assertTrue(new SessionVault(context,"https://fixture.invalid").bootstrap().contains("web-only"));
+        assertFalse(web.bootstrap().contains("notice-only"));
+    }
 }

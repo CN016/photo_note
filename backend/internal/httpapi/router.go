@@ -132,6 +132,7 @@ func Router(dependencies Dependencies) *gin.Engine {
 	registerDeliveryRoutes(api, protected, dependencies.Deliveries, dependencies.MaxUploadBytes)
 	protected.GET("/environments", environmentsHandler(dependencies.Organizations))
 	protected.POST("/auth/logout", logoutHandler(dependencies.Auth))
+	protected.POST("/auth/notification-session", notificationSessionHandler(dependencies.Auth))
 	protected.GET("/files/:storekey/thumbnail", downloadThumbnailHandler(dependencies.Files))
 	protected.POST("/files", uploadFileHandler(dependencies.Files, dependencies.MaxUploadBytes, dependencies.CurrentFileStoreType))
 	protected.POST("/projects/cover-upload", uploadProjectCoverHandler(dependencies.Files, dependencies.MaxUploadBytes, dependencies.CurrentFileStoreType))
@@ -320,6 +321,10 @@ func authenticationMiddleware(tokens accessTokenValidator) gin.HandlerFunc {
 			writeError(c, err)
 			return
 		}
+		if claims.Purpose == "notification" && !notificationTokenRoute(c.Request.Method, c.FullPath()) {
+			writeError(c, fault.New(403, "forbidden", "通知会话仅可读取站内消息或退出", nil, nil))
+			return
+		}
 		c.Request = c.Request.WithContext(context.WithValue(c.Request.Context(), claimsKey{}, claims))
 		c.Next()
 	}
@@ -341,6 +346,10 @@ func optionalAuthenticationMiddleware(tokens accessTokenValidator) gin.HandlerFu
 		claims, err := tokens.ValidateAccess(c.Request.Context(), parts[1])
 		if err != nil {
 			writeError(c, err)
+			return
+		}
+		if claims.Purpose == "notification" && !notificationTokenRoute(c.Request.Method, c.FullPath()) {
+			writeError(c, fault.New(403, "forbidden", "通知会话仅可读取站内消息或退出", nil, nil))
 			return
 		}
 		c.Request = c.Request.WithContext(context.WithValue(c.Request.Context(), claimsKey{}, claims))
@@ -1524,4 +1533,26 @@ func parseTagQuery(c *gin.Context) ([]uuid.UUID, error) {
 		return nil, fault.InvalidRequest("tag_match 只能出现一次")
 	}
 	return result, nil
+}
+
+// notificationTokenRoute 是通知访问令牌的最小能力白名单；刷新端点另由Refresh校验刷新令牌。
+func notificationTokenRoute(method, path string) bool {
+	return (method == "GET" && (path == "/api/v1/notifications" || path == "/api/v1/notifications/unread-count")) || (method == "POST" && path == "/api/v1/auth/logout")
+}
+
+// notificationSessionHandler 只使用当前认证声明签发，不接收客户端用户、组织或权限字段。
+func notificationSessionHandler(auth *service.AuthService) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		claims, err := authContext(c)
+		if err != nil {
+			writeError(c, err)
+			return
+		}
+		pair, err := auth.NotificationSession(c.Request.Context(), claims)
+		if err != nil {
+			writeError(c, err)
+			return
+		}
+		writeData(c, http.StatusOK, gin.H{"tokens": pair})
+	}
 }

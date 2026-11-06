@@ -61,10 +61,15 @@ public class ApkUpdateInstrumentedTest {
 
     @Test public void hourlyJobDialogAndExternalBrowser() throws Exception {
         var instrumentation = InstrumentationRegistry.getInstrumentation(); var context = instrumentation.getTargetContext();
-        var checker = new ApkUpdateChecker(context);
-        SharedPreferences state = context.getSharedPreferences(ApkUpdateChecker.STATE, 0);
-        Map<String, ?> previous = state.getAll();
+        // 进入时的真实异步检查不能覆盖合成版本，弹窗验收使用独立状态域。
+        String prefix="apk-dialog-fixture-"+java.util.UUID.randomUUID();
+        var fixtureContext=new android.content.ContextWrapper(context) {
+            @Override public SharedPreferences getSharedPreferences(String name,int mode) { return super.getSharedPreferences(prefix+name,mode); }
+        };
         long code = context.getPackageManager().getPackageInfo(context.getPackageName(), 0).getLongVersionCode() + 1;
+        var checker = new ApkUpdateChecker(fixtureContext,new JSONObject().put("feedUrl","https://fixture.invalid/release.json").put("downloadUrl","https://fixture.invalid/download"), network -> new JSONObject().put("schema",1).put("versionCode",code).put("version","9.9.9").put("channel","debug").toString().getBytes(java.nio.charset.StandardCharsets.UTF_8));
+        SharedPreferences state = fixtureContext.getSharedPreferences(ApkUpdateChecker.STATE, 0);
+        Map<String, ?> previous = state.getAll();
         state.edit().putLong("available_code", code).putString("available_version", "9.9.9")
             .putLong("last_check", System.currentTimeMillis()).remove("prompted_code").remove("prompted_at").commit();
         AtomicReference<Intent> opened = new AtomicReference<>();
@@ -78,13 +83,18 @@ public class ApkUpdateInstrumentedTest {
         MainActivity activity = null;
         try {
             activity = (MainActivity) instrumentation.startActivitySync(new Intent(context, MainActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
+            MainActivity fixtureActivity=activity;
+            instrumentation.runOnMainSync(() -> {
+                try { var field=MainActivity.class.getDeclaredField("apkUpdates");field.setAccessible(true);field.set(fixtureActivity,checker); }
+                catch(Exception failure){throw new AssertionError(failure);}
+            });
             var device = UiDevice.getInstance(instrumentation);
             var later = device.wait(Until.findObject(By.text(Pattern.compile("稍后再说|Later", Pattern.CASE_INSENSITIVE))), 45000);
             assertNotNull("发现更新应出现原生弹窗", later); later.click();
             MainActivity current = activity;
             instrumentation.runOnMainSync(current::showApkUpdate);
             assertFalse("稍后后立即返回不能重复弹窗", device.hasObject(By.text(Pattern.compile("稍后再说|Later", Pattern.CASE_INSENSITIVE))));
-            assertNull(new ApkUpdateChecker(context).pending(System.currentTimeMillis()));
+            assertNull(checker.pending(System.currentTimeMillis()));
             state.edit().putLong("prompted_at", System.currentTimeMillis() - ApkUpdateChecker.INTERVAL_MS).commit();
             instrumentation.runOnMainSync(current::showApkUpdate);
             var upgrade = device.wait(Until.findObject(By.text(Pattern.compile("前往官网下载|Open download page", Pattern.CASE_INSENSITIVE))), 5000);

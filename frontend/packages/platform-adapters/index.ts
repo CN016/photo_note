@@ -1,3 +1,5 @@
+/** 原生只保存通知专属令牌；结构与后端token pair兼容，不接收密码或Web刷新凭据。 */
+interface NotificationSessionTokens { access_token: string; refresh_token: string; session_id: string; session_version: number; orgid: number; expires_in: number }
 
 /** 系统文件面板的文案由共享界面按当前语言传入，适配层不持有业务文案。 */
 export interface ExportLabels { title: string; save: string; share: string; cancel: string }
@@ -8,9 +10,9 @@ export interface PlatformAdapter {
 interface NativeShell {
   exportFile(options: ExportLabels & { data: string; filename: string; mime: string }): Promise<{ status: ExportResult }>
   setTheme(options: { dark: boolean }): Promise<void>
-  startNotificationMonitor(options: { identity: string }): Promise<void>
+  startNotificationMonitor(options: { identity: string; tokens: NotificationSessionTokens }): Promise<void>
   stopNotificationMonitor(options: { identity: string }): Promise<void>
-  refreshNotificationSession(options: { identity: string; rejectedAccessToken?: string }): Promise<{ status: number; body: string }>
+
   consumeNotificationOpen(): Promise<{ open: boolean }>
 }
 interface BrowserRuntime {
@@ -38,14 +40,13 @@ export const nativeShell: NativeShell = {
   setTheme: options => invoke('setTheme', options),
   startNotificationMonitor: options => invoke('startNotificationMonitor', options),
   stopNotificationMonitor: options => invoke('stopNotificationMonitor', options),
-  refreshNotificationSession: options => invoke('refreshNotificationSession', options, 30_000),
   consumeNotificationOpen: () => invoke('consumeNotificationOpen', {}),
 }
 let notificationSupport: Promise<boolean> | undefined
 /** 老APK没有新桥接时继续沿用HTTP刷新和站内提示，热更新不会使旧壳无法登录。 */
 export function supportsNotificationMonitor(): Promise<boolean> {
   if (!isAndroid()) return Promise.resolve(false)
-  return notificationSupport ??= invoke('notificationCapabilities', {}, 3_000).then(() => true, error => {
+  return notificationSupport ??= invoke('independentNotificationSessions', {}, 3_000).then(() => true, error => {
     // 探测超时并不代表旧壳。此时禁止走HTTP消费可能已被后台轮换的旧刷新令牌，允许下次重新探测。
     if (error instanceof Error && ['native_timeout', 'native_busy'].includes(error.message)) { notificationSupport = undefined; throw error }
     return false

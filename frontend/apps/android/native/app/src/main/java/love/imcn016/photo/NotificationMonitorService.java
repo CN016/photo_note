@@ -48,8 +48,8 @@ public class NotificationMonitorService extends Service {
             vault = createVault(apiBase);
         } catch (Exception unavailable) { stopSelf(); }
     }
-    /** 调试夹具可替换隔离凭据；正式服务始终使用APK配置和共享加密保管库。 */
-    protected SessionVault createVault(String origin) throws Exception { return SessionVault.shared(this, origin); }
+    /** 调试夹具可替换隔离凭据；正式服务仅使用APK配置和通知专属加密保管库。 */
+    protected SessionVault createVault(String origin) throws Exception { return NotificationCredentials.get(this, origin).vault; }
     @Override public int onStartCommand(Intent intent, int flags, int startId) {
         if (vault == null || intent == null) { stopSelf(); return START_NOT_STICKY; }
         String identity = intent.getStringExtra("identity");

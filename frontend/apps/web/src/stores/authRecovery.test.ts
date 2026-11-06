@@ -22,16 +22,13 @@ function seed() { values.set('photo-nini.session', JSON.stringify(tokens)); valu
 function healthy() { return vi.fn(async (path: string) => path.endsWith('/auth/refresh') ? Response.json({ data: { tokens } }) : Response.json({ data: user })) }
 
 describe('页面重载后的登录恢复', () => {
-  it('安卓刷新没有响应时有限等待后进入可重试状态，保留凭据且不发HTTP重复刷新', async () => {
-    vi.useFakeTimers(); seed()
-    const native = vi.fn(async (_: string, message: { method: string }) => message.method === 'notificationCapabilities' ? {} : new Promise(() => {}))
-    vi.stubGlobal('browser', { runtime: { id: 'photo-nini@imcn016.love', sendNativeMessage: native } })
-    const fetch = vi.fn(); vi.stubGlobal('fetch', fetch)
-    const store = await freshStore(); const initialize = store.initialize()
-    await vi.advanceTimersByTimeAsync(30_000); await initialize
-    expect(store.busy).toBe(false); expect(store.recoveryPending).toBe(true); expect(store.user).toBeNull()
-    expect(values.get('photo-nini.refresh-token')).toBe(tokens.refresh_token)
-    expect(fetch).not.toHaveBeenCalled()
+  it('通知桥接不响应时模块重建仍由HTTP恢复账号和空间', async () => {
+    seed()
+    const native=vi.fn(()=>new Promise(()=>{}));vi.stubGlobal('browser',{runtime:{id:'photo-nini@imcn016.love',sendNativeMessage:native}})
+    vi.stubGlobal('fetch',healthy())
+    const store=await freshStore();await store.initialize()
+    expect(store.user?.business_id).toBe(user.business_id);expect(store.ready).toBe(true)
+    expect(native).not.toHaveBeenCalled()
   })
   it('模块和Pinia内存全部重建后从持久凭据恢复用户和空间，不调用登录', async () => {
     seed(); const fetch = healthy(); vi.stubGlobal('fetch', fetch)

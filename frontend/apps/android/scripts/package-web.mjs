@@ -58,7 +58,7 @@ export function packageWeb(env = process.env) {
   if (result.error || result.status !== 0) throw new Error('ZIP生成失败，请配置PHOTO_NINI_PYTHON')
   if (statSync(temporary).size > 128 * 1024 * 1024) { rmSync(temporary); throw new Error('更新包超过128MiB') }
   const bytes = readFileSync(temporary)
-  const payload = { schema: 1, release: record.release, version: record.version, publishedAt: new Date().toISOString(), notes: env.PHOTO_NINI_WEB_UPDATE_NOTES || '', minShellCode: 4, bridgeVersion: 1, apiOrigin: api.href.replace(/\/$/, ''), url: new URL(archiveName, feedUrl).href, bytes: bytes.length, sha256: createHash('sha256').update(bytes).digest('hex'), files }
+  const payload = { schema: 1, release: record.release, version: record.version, publishedAt: new Date().toISOString(), notes: env.PHOTO_NINI_WEB_UPDATE_NOTES || '', minShellCode: JSON.parse(readFileSync(join(root, 'package.json'), 'utf8')).webMinShellCode || 4, bridgeVersion: 1, apiOrigin: api.href.replace(/\/$/, ''), url: new URL(archiveName, feedUrl).href, bytes: bytes.length, sha256: createHash('sha256').update(bytes).digest('hex'), files }
   const privatePem = readFileSync(privateFile)
   const pinned = createPublicKey(readFileSync(env.PHOTO_NINI_WEB_UPDATE_PUBLIC_KEY || join(root, 'assets/web-update-public.pem'))).export({ type: 'spki', format: 'der' })
   if (!pinned.equals(createPublicKey(createPrivateKey(privatePem)).export({ type: 'spki', format: 'der' }))) throw new Error('签名私钥与APK内置公钥不一致')

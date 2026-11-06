@@ -19,10 +19,13 @@ import (
 
 // TokenClaims 是 Redis 中保存的最小会话信息，不含原始 access 或 refresh token。
 type TokenClaims struct {
-	UserBusinessID uuid.UUID `json:"user_business_id"`
-	SessionID      string    `json:"session_id"`
-	OrgID          int64     `json:"orgid"`
-	SessionVersion int64     `json:"session_version"`
+	Purpose         string    `json:"purpose,omitempty"`
+	ParentSessionID string    `json:"parent_session_id,omitempty"`
+	ParentVersion   int64     `json:"parent_version,omitempty"`
+	UserBusinessID  uuid.UUID `json:"user_business_id"`
+	SessionID       string    `json:"session_id"`
+	OrgID           int64     `json:"orgid"`
+	SessionVersion  int64     `json:"session_version"`
 }
 
 // TokenPair 是注册、登录和刷新接口返回的两种不透明随机令牌。
@@ -96,7 +99,7 @@ func (store *TokenStore) Issue(ctx context.Context, userID uuid.UUID) (TokenPair
 
 // validClaims 拒绝升级前缺少组织/版本的旧会话；orgid=0 从不代表个人版。
 func validClaims(claims TokenClaims) bool {
-	return claims.UserBusinessID != uuid.Nil && claims.SessionID != "" && claims.SessionVersion > 0 && (claims.OrgID == -1 || claims.OrgID > 0)
+	return (claims.Purpose == "" || (claims.Purpose == "notification" && claims.ParentSessionID != "" && claims.ParentVersion > 0)) && claims.UserBusinessID != uuid.Nil && claims.SessionID != "" && claims.SessionVersion > 0 && (claims.OrgID == -1 || claims.OrgID > 0)
 }
 
 // readCurrentClaims 在同一 Redis Lua 中检查令牌声明与当前会话状态，避免读取后切换的时间窗口。
@@ -105,6 +108,11 @@ func (store *TokenStore) readCurrentClaims(ctx context.Context, key string) (Tok
       local value=redis.call('GET',KEYS[1]); if not value then return '' end
       local ok,c=pcall(cjson.decode,value); if not ok or not c.session_id or not c.session_version or not c.orgid then return '' end
       if redis.call('GET','auth:session-state:'..c.session_id) ~= value then return '' end
+      if c.purpose=='notification' then
+        local parent=redis.call('GET','auth:session-state:'..c.parent_session_id); if not parent then return '' end
+        local p=cjson.decode(parent)
+        if p.user_business_id~=c.user_business_id or p.orgid~=c.orgid or p.session_version~=c.parent_version then return '' end
+      end
       return value`
 	value, err := store.client.Eval(ctx, script, []string{key}).Text()
 	if err != nil {
@@ -211,6 +219,9 @@ func (store *TokenStore) SwitchEnvironment(ctx context.Context, raw string, orgI
 	claims, err := store.ReadSwitchClaims(ctx, raw, switchID)
 	if err != nil {
 		return TokenPair{}, err
+	}
+	if claims.Purpose != "" {
+		return TokenPair{}, fault.Unauthorized()
 	}
 	oldSerialized, _ := json.Marshal(claims)
 	next := claims

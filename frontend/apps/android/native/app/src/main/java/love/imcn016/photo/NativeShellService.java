@@ -30,6 +30,9 @@ public class NativeShellService {
     private Call saveCall;
     private final ActivityResultLauncher<String> notificationPermission;
     private String monitorIdentity = "";
+    private volatile String monitorOwner = "";
+    private final java.util.concurrent.atomic.AtomicLong noticeGeneration = new java.util.concurrent.atomic.AtomicLong();
+    private final ExecutorService noticeIO = Executors.newSingleThreadExecutor();
     private boolean permissionPending;
     private boolean notificationOpen;
 
@@ -68,26 +71,30 @@ public class NativeShellService {
         if ("exportFile".equals(method)) exportFile(call);
         else if ("setTheme".equals(method)) setTheme(call);
         else if ("minimizeApp".equals(method)) { activity.moveTaskToBack(true); call.resolve(); }
-        else if ("notificationCapabilities".equals(method)) call.resolve();
+        else if ("independentNotificationSessions".equals(method)) call.resolve();
         else if ("startNotificationMonitor".equals(method)) {
-            activity.runOnUiThread(() -> { monitorIdentity = call.getString("identity"); resumeNotifications(); call.resolve(); });
+            String owner=call.getString("identity"); monitorOwner=owner;
+            long epoch=noticeGeneration.incrementAndGet();
+            noticeIO.execute(() -> {
+                try {
+                    if(epoch!=noticeGeneration.get()) { call.resolve();return; }
+                    String identity=noticeCredentials().install(owner,options.getJSONObject("tokens"));
+                    activity.runOnUiThread(() -> {
+                        if(epoch==noticeGeneration.get()) {monitorIdentity=identity; resumeNotifications();}
+                        call.resolve();
+                    });
+                } catch(Exception unavailable) {call.reject("notification_session_failed");}
+            });
         }
         else if ("stopNotificationMonitor".equals(method)) {
-            String identity = call.getString("identity");
-            activity.runOnUiThread(() -> { if (identity.equals(monitorIdentity)) { monitorIdentity = ""; activity.stopService(new Intent(activity, NotificationMonitorService.class)); activity.getSystemService(android.app.NotificationManager.class).cancel(NotificationMonitorService.MESSAGE_ID); } });
-            io.execute(() -> { try { SessionVault vault = noticeVault(); synchronized (vault) { if (identity.equals(vault.identity())) vault.logout(); } call.resolve(); } catch (Exception unavailable) { call.reject("notification_session_failed"); } });
-        }
-        else if ("refreshNotificationSession".equals(method)) {
-            io.execute(() -> {
-                try {
-                    SessionVault vault = noticeVault();
-                    // 新Web传入被拒绝的Access Token；启动恢复传空串。旧Web保持原有强制刷新语义。
-                    JSONObject tokens = options.has("rejectedAccessToken") ? vault.resume(call.getString("identity"), call.getString("rejectedAccessToken")) : vault.refresh(call.getString("identity"), true);
-                    call.resolve(new JSONObject().put("status", 200).put("body", new JSONObject().put("data", new JSONObject().put("tokens", tokens)).toString()));
-                }
-                catch (SecurityException revoked) { try { call.resolve(new JSONObject().put("status", 401).put("body", "{}")); } catch (Exception ignored) { call.reject("notification_session_failed"); } }
-                catch (Exception unavailable) { call.reject("notification_session_failed"); }
+            String owner=call.getString("identity");
+            // 停止只处理通知域；不退出浏览器，不改写Web的refresh token或退出墓碑。
+            if(!monitorOwner.isEmpty() && !owner.equals(monitorOwner)) {call.resolve();return;}
+            noticeGeneration.incrementAndGet();
+            activity.runOnUiThread(() -> {
+                if(owner.equals(monitorOwner) || monitorOwner.isEmpty()) {monitorIdentity="";monitorOwner="";activity.stopService(new Intent(activity,NotificationMonitorService.class));activity.getSystemService(android.app.NotificationManager.class).cancel(NotificationMonitorService.MESSAGE_ID);}
             });
+            noticeIO.execute(() -> {try {noticeCredentials().clear(owner);call.resolve();}catch(Exception unavailable){call.reject("notification_session_failed");}});
         }
         else if ("consumeNotificationOpen".equals(method)) {
             activity.runOnUiThread(() -> { try { call.resolve(new JSONObject().put("open", notificationOpen)); notificationOpen = false; } catch (Exception ignored) { call.reject("notification_open_failed"); } });
@@ -95,11 +102,11 @@ public class NativeShellService {
         else call.reject("unsupported_method");
     }
 
-    /** 仅读取APK固定API配置；网页不得传入上游主机或刷新令牌。 */
-    private SessionVault noticeVault() throws Exception {
+    /** 仅读取APK固定API配置；网页不得指定上游主机；只接收后端另行签发的通知凭据。 */
+    private NotificationCredentials noticeCredentials() throws Exception {
         try (InputStream input = activity.getAssets().open("update-config.json")) {
             String api = new JSONObject(new String(SessionVault.readLimited(input), java.nio.charset.StandardCharsets.UTF_8)).getString("apiOrigin");
-            return SessionVault.shared(activity, api);
+            return NotificationCredentials.get(activity, api);
         }
     }
     /** 默认启用，首次登录自动申请系统权限；拒绝后不反复弹窗，仍保留站内消息。 */
@@ -119,7 +126,7 @@ public class NativeShellService {
     }
     void notificationIntent(Intent intent) { if (NotificationMonitorService.OPEN_MESSAGES.equals(intent.getAction())) notificationOpen = true; }
 
-    public void close() { io.shutdown(); }
+    public void close() { noticeGeneration.incrementAndGet(); noticeIO.shutdown(); io.shutdown(); }
 
     private static final int MAX_BYTES = 32 * 1024 * 1024;
     private File pendingFile;

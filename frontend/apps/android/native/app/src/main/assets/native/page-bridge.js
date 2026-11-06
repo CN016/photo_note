@@ -16,7 +16,7 @@
   const runtime = {
     id: 'photo-nini@imcn016.love',
     sendNativeMessage(app, message) {
-      if (app !== 'photo_nini' || !['exportFile', 'setTheme', 'minimizeApp', 'notificationCapabilities', 'startNotificationMonitor', 'stopNotificationMonitor', 'refreshNotificationSession', 'consumeNotificationOpen'].includes(message?.method)) return Promise.reject(new Error('unsupported_method'));
+      if (app !== 'photo_nini' || !['exportFile', 'setTheme', 'minimizeApp', 'independentNotificationSessions', 'startNotificationMonitor', 'stopNotificationMonitor', 'consumeNotificationOpen'].includes(message?.method)) return Promise.reject(new Error('unsupported_method'));
       if (pending.size >= 8) return Promise.reject(new Error('native_busy'));
       return new Promise((resolve, reject) => {
         const id = ++sequence;

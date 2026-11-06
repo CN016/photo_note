@@ -300,3 +300,14 @@ func validatePassword(password string) error {
 	}
 	return nil
 }
+
+// NotificationSession 在Web登录成功后异步申请通知专属会话；调用失败不影响原有Web会话。
+func (service *AuthService) NotificationSession(ctx context.Context, parent store.TokenClaims) (store.TokenPair, error) {
+	issuer, ok := service.tokens.(interface {
+		IssueNotificationSession(context.Context, store.TokenClaims) (store.TokenPair, error)
+	})
+	if !ok {
+		return store.TokenPair{}, fault.Unavailable(nil)
+	}
+	return issuer.IssueNotificationSession(ctx, parent)
+}
