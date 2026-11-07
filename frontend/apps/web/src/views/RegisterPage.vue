@@ -73,17 +73,17 @@ onBeforeUnmount(() => { if (avatar.value) URL.revokeObjectURL(avatar.value.previ
 </script>
 
 <template>
-  <ContentZoom><main class="auth-page register-page">
+  <ContentZoom><main id="main-content" class="auth-page register-page">
     <section class="auth-art register-art" aria-hidden="true">
       <div class="art-brand"><BrandMark /><span>{{ t('common.brand') }}</span></div>
-      <div class="art-copy"><p class="eyebrow">{{ t('register.eyebrow') }}</p><h1>{{ t('register.title') }}</h1><p>{{ t('register.subtitle') }}</p></div>
+      <div class="art-copy"><p class="eyebrow">{{ t('register.eyebrow') }}</p><h2>{{ t('register.title') }}</h2><p>{{ t('register.subtitle') }}</p></div>
       <div class="register-art-note">{{ t('register.artCaption') }}</div>
       <p class="art-caption">{{ t('common.footer') }}</p>
     </section>
     <section class="auth-panel">
       <div class="auth-topbar"><RouterLink class="mobile-brand" to="/login"><BrandMark />{{ t('common.brand') }}</RouterLink><div class="auth-top-actions"><ThemeSwitcher /><LanguageSwitcher /></div></div>
       <div class="auth-form-wrap register-form-wrap">
-        <div class="auth-heading"><p class="eyebrow">{{ t('register.formHint') }} · {{ step }}/2</p><h2>{{ step === 1 ? t('register.formTitle') : t('register.avatarTitle') }}</h2><p class="register-step-help">{{ step === 1 ? t('register.detailsHelp') : t('register.avatarHelp') }}</p></div>
+        <div class="auth-heading"><p class="eyebrow">{{ t('register.formHint') }} · {{ step }}/2</p><h1>{{ step === 1 ? t('register.formTitle') : t('register.avatarTitle') }}</h1><p class="register-step-help">{{ step === 1 ? t('register.detailsHelp') : t('register.avatarHelp') }}</p></div>
         <el-form class="auth-form" label-position="top" @submit.prevent="step === 1 ? continueToAvatar() : submit()">
           <template v-if="step === 1">
             <el-form-item :label="t('register.phone')"><el-input v-model="phone" type="tel" inputmode="numeric" autocomplete="tel-national" maxlength="11" :placeholder="t('register.phonePlaceholder')" @input="phone = phone.replace(/\D/g, '').slice(0, 11)" /></el-form-item>

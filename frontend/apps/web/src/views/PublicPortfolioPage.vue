@@ -19,11 +19,11 @@ onMounted(async () => {
 })
 </script>
 <template>
-  <main class="portfolio-public">
+  <main id="main-content" class="portfolio-public">
     <header><span>{{ t('publicPortfolio.publicTitle') }}</span><LanguageSwitcher /></header>
     <p v-if="loading" role="status">{{ t('publicPortfolio.loading') }}</p>
     <p v-else-if="error" role="alert">{{ t('publicPortfolio.linkUnavailable') }}</p>
-    <template v-else-if="portfolio"><h1>{{ portfolio.title }}</h1><p>{{ portfolio.description }}</p><div class="portfolio-tags" :aria-label="t('publicPortfolio.tags')"><el-tag v-for="tag in tags.filter(item => portfolio?.tag_ids.includes(item.business_id))" :key="tag.business_id" effect="plain">{{ tag.content }}</el-tag></div><PortfolioGallery :photos="photos" :tags="tags" namespace="publicPortfolio" /></template>
+    <template v-else-if="portfolio"><h1>{{ portfolio.title }}</h1><p>{{ portfolio.description }}</p><div class="portfolio-tags" role="group" :aria-label="t('publicPortfolio.tags')"><el-tag v-for="tag in tags.filter(item => portfolio?.tag_ids.includes(item.business_id))" :key="tag.business_id" effect="plain">{{ tag.content }}</el-tag></div><PortfolioGallery :photos="photos" :tags="tags" namespace="publicPortfolio" /></template>
   </main>
 </template>
 <style scoped>

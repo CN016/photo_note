@@ -4,23 +4,26 @@ import { computed, onBeforeUnmount, ref } from 'vue'
 import { onBeforeRouteLeave } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { ElMessage } from 'element-plus'
-import type { UploadFile } from 'element-plus'
+import { ChatLineRound } from '@element-plus/icons-vue'
 import AppHeader from '../components/AppHeader.vue'
 import { api } from '../api/client'
 import { ApiError } from '../api/types'
 import { prepareImageUpload, type PreparedImageUpload } from '../imageUpload'
 import { useAuthStore } from '../stores/auth'
 import { useAppShellStore } from '../stores/appShell'
+import { useFeedbackStore } from '../stores/feedback'
 
 const { t } = useI18n()
 const auth = useAuthStore()
 const appShell = useAppShellStore()
+const feedback = useFeedbackStore()
 const nickname = ref(auth.user?.nickname ?? '')
 const avatarUrl = computed(() => {
   const user = auth.user
   return user && appShell.avatarBusinessID === user.business_id && appShell.avatarStoreKey === user.avatar_key ? appShell.avatarSrc : ''
 })
 const pendingAvatar = ref<PreparedImageUpload | null>(null)
+const avatarInput = ref<HTMLInputElement>()
 const profileBusy = ref(false)
 const passwordBusy = ref(false)
 const avatarBusy = ref(false)
@@ -31,12 +34,15 @@ const newPassword = ref('')
 const confirmPassword = ref('')
 onBeforeRouteLeave(to => to.path !== '/spaces' || (!profileBusy.value && !passwordBusy.value && !avatarBusy.value && !pendingAvatar.value && nickname.value === auth.user?.nickname && !currentPassword.value && !newPassword.value && !confirmPassword.value))
 
-async function chooseAvatar(file: UploadFile) {
-  if (!file.raw) return
+async function chooseAvatar(event: Event) {
+  const input = event.target as HTMLInputElement
+  const file = input.files?.[0]
+  input.value = ''
+  if (!file) return
   avatarBusy.value = true
   profileError.value = ''
   try {
-    const next = await prepareImageUpload(file.raw)
+    const next = await prepareImageUpload(file)
     if (pendingAvatar.value) URL.revokeObjectURL(pendingAvatar.value.previewUrl)
     pendingAvatar.value = next
   } catch { profileError.value = t('register.avatarInvalid') }
@@ -87,14 +93,14 @@ onBeforeUnmount(() => {
 <template>
   <div class="workspace-page">
     <AppHeader />
-    <ContentZoom><main class="profile-main">
-      <header class="profile-heading"><p class="eyebrow">{{ t('profile.eyebrow') }}</p><h1>{{ t('profile.title') }}</h1><p>{{ t('profile.subtitle') }}</p></header>
+    <ContentZoom><main id="main-content" class="profile-main">
+      <header class="profile-heading"><h1>{{ t('profile.title') }}</h1></header>
       <div class="profile-grid">
         <section class="profile-card">
           <h2>{{ t('profile.eyebrow') }}</h2>
           <div class="profile-avatar-row">
             <el-avatar :size="88" :src="pendingAvatar?.previewUrl || avatarUrl">{{ nickname.slice(0, 1) }}</el-avatar>
-            <div><span class="field-label">{{ t('profile.avatar') }}</span><el-upload action="#" :auto-upload="false" :show-file-list="false" accept="image/*,.heic,.heif" :on-change="chooseAvatar"><el-button :loading="avatarBusy">{{ t('profile.avatarChange') }}</el-button></el-upload><small>{{ t('profile.avatarHelp') }}</small></div>
+            <div><span class="field-label">{{ t('profile.avatar') }}</span><input ref="avatarInput" class="sr-only" type="file" accept="image/*,.heic,.heif" :aria-label="t('profile.avatarChange')" @change="chooseAvatar" /><el-button :loading="avatarBusy" @click="avatarInput?.click()">{{ t('profile.avatarChange') }}</el-button></div>
           </div>
           <el-form label-position="top" @submit.prevent="saveProfile">
             <el-form-item :label="t('profile.nickname')"><el-input v-model="nickname" maxlength="64" :placeholder="t('profile.nicknamePlaceholder')" /></el-form-item>
@@ -112,6 +118,10 @@ onBeforeUnmount(() => {
             <p v-if="passwordError" class="form-error" role="alert">{{ passwordError }}</p>
             <el-button type="primary" native-type="submit" :loading="passwordBusy">{{ t('profile.passwordSave') }}</el-button>
           </el-form>
+        </section>
+        <section class="profile-card profile-feedback">
+          <h2>{{ t('profile.feedbackTitle') }}</h2>
+          <el-button @click="feedback.openPanel"><el-icon aria-hidden="true"><ChatLineRound /></el-icon>{{ t('feedback.open') }}</el-button>
         </section>
       </div>
     </main></ContentZoom>

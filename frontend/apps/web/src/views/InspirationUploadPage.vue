@@ -195,7 +195,7 @@ onBeforeUnmount(() => {
 <template>
   <div class="workspace-page inspiration-upload-page">
     <AppHeader />
-    <ContentZoom><main class="upload-main">
+    <ContentZoom><main id="main-content" class="upload-main">
       <header class="upload-heading">
         <RouterLink class="back-link" to="/inspirations"><el-icon aria-hidden="true"><ArrowLeft /></el-icon>{{ t('common.back') }}</RouterLink>
         <p class="eyebrow">{{ t('common.product') }}</p>

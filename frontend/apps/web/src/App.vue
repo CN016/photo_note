@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, watch, onBeforeUnmount } from 'vue'
+import { computed, nextTick, ref, watch, onBeforeUnmount } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute } from 'vue-router'
 import zhCn from 'element-plus/es/locale/lang/zh-cn'
@@ -28,9 +28,10 @@ onBeforeUnmount(() => {
   document.documentElement.classList.remove('native-content-zoom')
   if (scopedZoom && viewport && originalViewport !== undefined) viewport.content = originalViewport
 })
-const { locale } = useI18n()
+const { locale, t } = useI18n()
 const route = useRoute()
 const auth = useAuthStore()
+const pageAnnouncement = ref('')
 watch(() => `${auth.sessionID}:${auth.orgid}:${auth.sessionVersion}:${auth.user?.business_id ?? ''}`, () => clearGallerySnapshot(), { flush: 'sync' })
 // 等待首个导航完成后再处理失效会话，避免初始路由尚未解析时覆盖公开分享页。
 watch(() => [auth.ready, auth.user] as const, async ([ready, user]) => {
@@ -55,22 +56,29 @@ configureSpaceCoordination({
   loggedOut: async () => { auth.user = null; await router.replace('/login') },
 })
 const elementLocale = computed(() => locale.value === 'en-US' ? en : zhCn)
-const editorRoute = computed(() => route.name === 'new-inspiration' || route.name === 'edit-inspiration' || route.name === 'project-editor')
 const projectEditorRoute = computed(() => route.name === 'project-editor')
-/** 登录后的主要页面共用移动底部导航；游客预约页只保留页面内容与反馈入口。 */
-const hasMobileNav = computed(() => ['workbench', 'portfolios', 'portfolio-detail', 'gallery', 'inspiration-statistics', 'new-inspiration', 'edit-inspiration', 'ledger', 'schedule', 'plans', 'projects', 'project-editor', 'project-reviews', 'project-review-editor', 'messages', 'profile', 'atelier-console'].includes(String(route.name)))
 watch(projectEditorRoute, active => document.body.classList.toggle('project-editor-route', active), { immediate: true })
+
+/** 路由完成后用当前页面主标题更新文档标题，并向读屏器播报一次导航结果。 */
+watch(() => route.fullPath, async () => {
+  await nextTick()
+  const heading = document.querySelector<HTMLElement>('main h1')?.innerText.trim()
+  pageAnnouncement.value = heading || document.title
+  document.title = heading ? `${heading} · ${t('common.brand')}` : t('common.brand')
+}, { immediate: true, flush: 'post' })
 </script>
 
 <template>
   <el-config-provider :locale="elementLocale">
+    <a class="skip-link" href="#main-content">{{ t('common.skipToContent') }}</a>
+    <p class="sr-only route-announcer" role="status" aria-live="polite" aria-atomic="true">{{ pageAnnouncement }}</p>
     <StartupRecovery />
     <GlobalMessageButton v-if="!route.meta.standalone" />
     <GlobalContextMenu v-if="!route.meta.standalone" />
     <RouterView v-slot="{ Component, route: pageRoute }">
       <component :is="Component" v-if="pageRoute.meta.public || auth.user" :key="`${auth.sessionID}:${auth.orgid}:${auth.sessionVersion}:${pageRoute.path}`" />
     </RouterView>
-    <FeedbackWidget v-if="route.name && !route.meta.standalone" :editor-route="editorRoute" :has-mobile-nav="hasMobileNav" />
+    <FeedbackWidget v-if="route.name && !route.meta.standalone" />
     <div v-if="preparingSpaceSwitch" class="space-switch-overlay" role="status" aria-live="polite">{{ $t('spaces.preparing') }}</div>
   </el-config-provider>
 </template>

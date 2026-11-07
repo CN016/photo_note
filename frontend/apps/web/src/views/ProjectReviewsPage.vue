@@ -34,7 +34,7 @@ onBeforeUnmount(() => { generation++; if (searchTimer) clearTimeout(searchTimer)
 
 <template>
   <AppHeader />
-  <ContentZoom><main class="reviews-main gallery-main">
+  <ContentZoom><main id="main-content" class="reviews-main gallery-main">
     <header><h1>{{ t('reviews.title') }}</h1><RouterLink class="el-button" to="/projects">{{ t('reviews.plans') }}</RouterLink></header>
     <el-input v-model="query" class="review-search" clearable :prefix-icon="Search" :placeholder="t('reviews.search')" :aria-label="t('reviews.search')" />
     <p v-if="loading" class="review-state" role="status">{{ t('common.loading') }}</p>

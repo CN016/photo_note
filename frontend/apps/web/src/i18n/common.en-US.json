@@ -26,6 +26,16 @@
   "profile": "Account",
   "mobileProfile": "Profile",
   "navigation": "Main navigation",
+  "desktopNavigation": "Desktop main navigation",
+  "mobileNavigation": "Mobile main navigation",
+  "accountUtilities": "Account utilities",
+  "skipToContent": "Skip to main content",
+  "navigationGroups": {
+    "create": "Create and deliver",
+    "plan": "Schedule and records",
+    "account": "Account",
+    "manage": "Manage"
+  },
   "workbench": "Workbench",
   "mobileWorkbench": "Home",
   "inspirations": "Inspiration Library",

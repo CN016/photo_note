@@ -9,20 +9,24 @@ import { createLongPress } from '../context-menu/longPress'
 import { gallerySnapshot, saveGallerySnapshot, clearGallerySnapshot } from '../context-menu/galleryNavigation'
 import type { InspirationProjectSummary } from '../api/types'
 import { useI18n } from 'vue-i18n'
-import { ArrowRight, PictureFilled, Plus, Search } from '@element-plus/icons-vue'
+import { ArrowDown, Filter, PictureFilled, Search } from '@element-plus/icons-vue'
 import AppHeader from '../components/AppHeader.vue'
+import CreateFab from '../components/CreateFab.vue'
 import InspirationThumbnail from '../components/InspirationThumbnail.vue'
 import InspirationLibraryTools from '../components/InspirationLibraryTools.vue'
 import { useAuthStore } from '../stores/auth'
 import type { InspirationLibraryFilters } from '../api/types'
 import { api } from '../api/client'
 import { ApiError, type InspirationRecord, type TagRecord } from '../api/types'
+import { useCompactViewport } from '../useCompactViewport'
 
 const { t, locale } = useI18n()
 const router = useRouter()
 const galleryRoot = ref<HTMLElement>()
 const libraryTools = ref<InstanceType<typeof InspirationLibraryTools>>()
 const contentZoom = ref<InstanceType<typeof ContentZoom>>()
+const compact = useCompactViewport()
+const moreFiltersOpen = ref(false)
 const scopeKey = () => `${auth.sessionID}:${auth.orgid}:${auth.sessionVersion}:${auth.user?.business_id ?? ''}`
 let restoring = false
 let alive = true
@@ -107,6 +111,7 @@ const libraryFilters = ref<InspirationLibraryFilters>({})
 const libraryRevision = ref(0)
 const hasMore = computed(() => items.value.length < total.value)
 const filtersActive = computed(() => Boolean(searchQuery.value.trim() || selectedTagIDs.value.length || Object.values(libraryFilters.value).some(Boolean)))
+const advancedFilterCount = computed(() => selectedTagIDs.value.length + Object.values(libraryFilters.value).filter(Boolean).length + (sort.value === 'created_desc' ? 0 : 1))
 let requestVersion = 0
 let searchTimer: number | undefined
 let tagsVersion = 0
@@ -221,10 +226,9 @@ onBeforeUnmount(() => { alive = false; disposeMenu?.(); gesture.cancel(); associ
 <template>
   <div ref="galleryRoot" class="workspace-page" @touchstart.passive="touchStart" @touchmove.passive="touchMove" @touchend="gesture.cancel" @touchcancel="gesture.cancel" @click.capture="interceptClick">
     <AppHeader />
-    <ContentZoom ref="contentZoom"><main class="gallery-main">
+    <ContentZoom ref="contentZoom"><main id="main-content" class="gallery-main">
       <section class="gallery-intro">
-        <div><p class="eyebrow">{{ t('common.product') }}</p><h1>{{ t('gallery.title') }}</h1><p class="gallery-subtitle">{{ t('gallery.subtitle') }}</p></div>
-        <RouterLink custom to="/inspirations/new" v-slot="{ navigate }"><el-button class="primary-button add-button" type="primary" :aria-label="t('gallery.newImage')" :title="t('gallery.newImage')" @click="navigate"><el-icon aria-hidden="true"><Plus /></el-icon>{{ t('gallery.newImage') }}</el-button></RouterLink>
+        <div><h1>{{ t('gallery.title') }}</h1></div>
       </section>
 
       <nav class="gallery-subnav" :aria-label="t('gallery.sections')">
@@ -232,24 +236,30 @@ onBeforeUnmount(() => { alive = false; disposeMenu?.(); gesture.cancel(); associ
         <RouterLink class="gallery-subnav-link" to="/inspirations/statistics">{{ t('gallery.statisticsSection') }}</RouterLink>
       </nav>
 
-      <InspirationLibraryTools ref="libraryTools" v-model:filters="libraryFilters" :revision="libraryRevision" :selected-tags="selectedTagIDs" @tag="id => selectedTagIDs = selectedTagIDs.includes(id) ? selectedTagIDs.filter(tag => tag !== id) : [...selectedTagIDs, id]" />
-
       <section class="gallery-tools" :aria-label="t('gallery.filters')">
         <el-input v-model="searchQuery" class="gallery-search" :aria-label="t('gallery.searchPlaceholder')" :placeholder="t('gallery.searchPlaceholder')" clearable>
           <template #prefix><el-icon aria-hidden="true"><Search /></el-icon></template>
         </el-input>
-        <el-select v-model="selectedTagIDs" class="gallery-tag-select" multiple filterable collapse-tags collapse-tags-tooltip :placeholder="t('gallery.filterTags')" :max-collapse-tags="2">
-          <el-option v-for="tag in tags" :key="tag.business_id" :label="tag.content" :value="tag.business_id" />
-        </el-select>
-        <el-select v-if="selectedTagIDs.length" v-model="tagMatch" class="gallery-match-select" :aria-label="t('gallery.tagMatch')">
-          <el-option :label="t('gallery.matchAny')" value="any" />
-          <el-option :label="t('gallery.matchAll')" value="all" />
-        </el-select>
-        <el-select v-model="sort" class="gallery-sort-select" :aria-label="t('gallery.sort')">
-          <el-option :label="t('gallery.sortNewest')" value="created_desc" />
-          <el-option :label="t('gallery.sortOldest')" value="created_asc" />
-          <el-option :label="t('gallery.sortEdited')" value="updated_desc" />
-        </el-select>
+        <button v-if="compact" type="button" class="gallery-filter-toggle" :aria-expanded="moreFiltersOpen" aria-controls="gallery-advanced-filters" @click="moreFiltersOpen = !moreFiltersOpen">
+          <el-icon aria-hidden="true"><Filter /></el-icon>
+          <span>{{ moreFiltersOpen ? t('gallery.hideFilters') : t('gallery.moreFilters') }}</span>
+          <b v-if="advancedFilterCount">{{ advancedFilterCount }}</b>
+          <el-icon class="filter-chevron" :class="{ expanded: moreFiltersOpen }" aria-hidden="true"><ArrowDown /></el-icon>
+        </button>
+        <div v-if="!compact || moreFiltersOpen" id="gallery-advanced-filters" class="gallery-advanced-filters">
+          <el-select v-model="selectedTagIDs" class="gallery-tag-select" multiple filterable collapse-tags collapse-tags-tooltip :placeholder="t('gallery.filterTags')" :aria-label="t('gallery.filterTags')" :max-collapse-tags="2">
+            <el-option v-for="tag in tags" :key="tag.business_id" :label="tag.content" :value="tag.business_id" />
+          </el-select>
+          <el-select v-if="selectedTagIDs.length" v-model="tagMatch" class="gallery-match-select" :aria-label="t('gallery.tagMatch')">
+            <el-option :label="t('gallery.matchAny')" value="any" />
+            <el-option :label="t('gallery.matchAll')" value="all" />
+          </el-select>
+          <el-select v-model="sort" class="gallery-sort-select" :aria-label="t('gallery.sort')">
+            <el-option :label="t('gallery.sortNewest')" value="created_desc" />
+            <el-option :label="t('gallery.sortOldest')" value="created_asc" />
+            <el-option :label="t('gallery.sortEdited')" value="updated_desc" />
+          </el-select>
+        </div>
       </section>
 
       <div v-if="items.length" class="gallery-meta"><span>{{ t('gallery.count', { count: total }) }}</span><span class="gallery-meta-line"></span></div>
@@ -299,12 +309,14 @@ onBeforeUnmount(() => { alive = false; disposeMenu?.(); gesture.cancel(); associ
       <section v-else-if="!loading && !error" class="gallery-empty">
         <div class="empty-art" aria-hidden="true"><el-icon><PictureFilled /></el-icon></div>
         <p class="eyebrow">{{ t('gallery.emptyTitle') }}</p><h2>{{ t('gallery.emptyText') }}</h2>
-        <RouterLink custom to="/inspirations/new" v-slot="{ navigate }"><el-button @click="navigate">{{ t('gallery.uploadFirst') }}<el-icon aria-hidden="true"><ArrowRight /></el-icon></el-button></RouterLink>
       </section>
 
       <div v-if="loading && !items.length" class="gallery-loading" role="status"><span class="loading-dot"></span>{{ t('common.loading') }}</div>
       <div v-if="hasMore" class="load-more-wrap"><el-button :disabled="loading" @click="loadPage(page + 1)">{{ loading ? t('common.loading') : t('gallery.loadMore') }}</el-button></div>
+
+      <InspirationLibraryTools ref="libraryTools" v-model:filters="libraryFilters" :revision="libraryRevision" :selected-tags="selectedTagIDs" @tag="id => selectedTagIDs = selectedTagIDs.includes(id) ? selectedTagIDs.filter(tag => tag !== id) : [...selectedTagIDs, id]" />
     </main></ContentZoom>
+    <CreateFab :label="t('gallery.newImage')" to="/inspirations/new" />
     <footer class="workspace-footer"><span>{{ t('common.brand') }}</span><span>{{ t('common.footer') }}</span></footer>
   </div>
 </template>

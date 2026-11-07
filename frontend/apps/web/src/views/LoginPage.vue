@@ -61,10 +61,10 @@ async function submit() {
 </script>
 
 <template>
-  <ContentZoom><main class="auth-page">
+  <ContentZoom><main id="main-content" class="auth-page">
     <section class="auth-art" aria-hidden="true">
       <div class="art-brand"><BrandMark /><span>{{ t('common.brand') }}</span></div>
-      <div class="art-copy"><p class="eyebrow">{{ t('login.eyebrow') }}</p><h1>{{ t('login.title') }}</h1><p>{{ t('login.subtitle') }}</p></div>
+      <div class="art-copy"><p class="eyebrow">{{ t('login.eyebrow') }}</p><h2>{{ t('login.title') }}</h2><p>{{ t('login.subtitle') }}</p></div>
       <div class="moodboard">
         <div class="mood-card mood-card-one"><div class="sun-disc"></div><div class="sand-hill"></div><span>{{ t('login.moodOne') }}</span></div>
         <div class="mood-card mood-card-two"><div class="leaf-shape"></div><span>{{ t('login.moodTwo') }}</span></div>
@@ -75,7 +75,7 @@ async function submit() {
     <section class="auth-panel">
       <div class="auth-topbar"><RouterLink class="mobile-brand" to="/login"><BrandMark />{{ t('common.brand') }}</RouterLink><div class="auth-top-actions"><ThemeSwitcher /><LanguageSwitcher /></div></div>
       <div class="auth-form-wrap">
-        <div class="auth-heading"><p class="eyebrow">{{ t('login.formHint') }}</p><h2>{{ t('login.formTitle') }}</h2></div>
+        <div class="auth-heading"><p class="eyebrow">{{ t('login.formHint') }}</p><h1>{{ t('login.formTitle') }}</h1></div>
         <section v-if="auth.recoveryPending" class="auth-form" role="status" aria-live="polite">
           <h3>{{ t('login.sessionRecoveryTitle') }}</h3>
           <p>{{ t('login.sessionRecoveryMessage') }}</p>

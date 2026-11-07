@@ -4,8 +4,9 @@ import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { onBeforeRouteLeave, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { ArrowLeft, ArrowRight, Delete, Edit, Plus, TopRight } from '@element-plus/icons-vue'
+import { ArrowLeft, ArrowRight, Delete, Edit, TopRight } from '@element-plus/icons-vue'
 import AppHeader from '../components/AppHeader.vue'
+import CreateFab from '../components/CreateFab.vue'
 import WebhookProviderLogo from '../components/WebhookProviderLogo.vue'
 import { api } from '../api/client'
 import type { NoticeConfig, NoticeDelivery, NoticeMessage } from '../api/types'
@@ -384,12 +385,10 @@ onBeforeUnmount(() => {
 
 <template>
   <AppHeader />
-  <ContentZoom><main class="messages-main">
+  <ContentZoom><main id="main-content" class="messages-main">
     <header class="messages-heading">
       <div>
-        <p class="eyebrow">{{ t('common.brand') }}</p>
         <h1>{{ t('title') }}</h1>
-        <p>{{ t('description') }}</p>
       </div>
       <span v-if="unreadCount" class="messages-unread-total">{{ t('unreadLabel') }} · {{ unreadCount }}</span>
     </header>
@@ -465,7 +464,6 @@ onBeforeUnmount(() => {
           <p>{{ t('webhooks.description') }}</p>
           <small>{{ configCountText }}</small>
         </div>
-        <button class="primary-action" type="button" :disabled="configs.length >= maximumConfigs" @click="openCreateConfig"><el-icon aria-hidden="true"><Plus /></el-icon>{{ t('webhooks.add') }}</button>
       </div>
 
       <div v-if="loadingConfigs" class="messages-empty">{{ t('common.loading') }}</div>
@@ -517,4 +515,5 @@ onBeforeUnmount(() => {
       </template>
     </el-dialog>
   </main></ContentZoom>
+  <CreateFab v-if="activeTab === 'channels'" :label="t('webhooks.add')" :disabled="configs.length >= maximumConfigs" @select="openCreateConfig" />
 </template>

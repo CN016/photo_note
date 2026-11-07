@@ -2,12 +2,13 @@
 import ContentZoom from '../components/ContentZoom.vue'
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { ChatDotRound, Delete, Picture, Plus, Search, Setting, User } from '@element-plus/icons-vue'
+import { ChatDotRound, Delete, Picture, Search, Setting, User } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { onBeforeRouteLeave, useRoute } from 'vue-router'
 import { api } from '../api/client'
 import type { ConsoleConfigRecord, ConsoleFeedbackRecord, ConsoleInspirationRecord, ConsoleUserRecord, Organization } from '../api/types'
 import AppHeader from '../components/AppHeader.vue'
+import CreateFab from '../components/CreateFab.vue'
 import AuthenticatedImageThumbnail from '../components/AuthenticatedImageThumbnail.vue'
 import InspirationThumbnail from '../components/InspirationThumbnail.vue'
 import { useAuthStore } from '../stores/auth'
@@ -355,12 +356,10 @@ onBeforeUnmount(() => {
 <template>
   <div class="workspace-page console-page">
     <AppHeader />
-    <ContentZoom><main class="console-main">
+    <ContentZoom><main id="main-content" class="console-main">
       <header class="console-heading">
         <div>
-          <p class="eyebrow">{{ t('common.product') }}</p>
           <h1>{{ t(platform ? 'console.title' : 'organizationConsole.title') }}</h1>
-          <p>{{ t(platform ? 'console.subtitle' : 'organizationConsole.subtitle') }}</p>
         </div>
         <div class="console-heading-mark" aria-hidden="true"><el-icon><Setting /></el-icon></div>
       </header>
@@ -392,7 +391,7 @@ onBeforeUnmount(() => {
       </section>
 
       <section v-else-if="activeTab === 'configs'" class="console-section">
-        <div class="console-toolbar console-toolbar-spread"><p>{{ t('console.configsDescription') }}</p><el-button class="primary-button" type="primary" @click="openConfigEditor()"><el-icon><Plus /></el-icon>{{ t('console.addConfig') }}</el-button></div>
+        <div class="console-toolbar console-toolbar-spread"></div>
         <div v-if="configs.length" class="console-config-grid">
           <article v-for="config in configs" :key="config.business_id" class="console-config-card">
             <div class="console-config-card-heading"><div><code>{{ config.key }}</code><span class="console-config-badge" :class="{ 'is-secret': config.is_secret }">{{ config.is_secret ? t('console.secretConfig') : config.is_public ? t('console.publicConfig') : t('console.member') }}</span></div><el-button text @click="openConfigEditor(config)">{{ t('console.editConfig') }}</el-button></div>
@@ -465,6 +464,7 @@ onBeforeUnmount(() => {
         <el-button :disabled="currentPage * pageSize >= currentTotal || loading" @click="changePage(1)">{{ t('console.next') }}</el-button>
       </nav>
     </main></ContentZoom>
+    <CreateFab v-if="platform && activeTab === 'configs'" :label="t('console.addConfig')" @select="openConfigEditor()" />
 
     <el-dialog v-model="configDialog" :title="editingConfig ? t('console.editConfig') : t('console.createConfig')" width="min(540px, calc(100vw - 32px))" destroy-on-close>
       <div class="console-config-form">

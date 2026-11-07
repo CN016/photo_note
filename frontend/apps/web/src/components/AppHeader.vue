@@ -3,7 +3,7 @@ import { computed, onBeforeUnmount, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { ElNotification } from 'element-plus'
-import { Calendar, Clock, Files, House, List, Picture, PictureFilled, Setting, User } from '@element-plus/icons-vue'
+import { Calendar, ChatDotRound, Clock, Files, House, List, Picture, PictureFilled, Setting, User } from '@element-plus/icons-vue'
 import { useAuthStore } from '../stores/auth'
 import { useAppShellStore } from '../stores/appShell'
 import BrandMark from './BrandMark.vue'
@@ -72,7 +72,26 @@ function active(path: string): boolean {
   if (path === '/inspirations') return route.path === '/inspirations' || route.path.startsWith('/inspirations/')
   if (path === '/portfolios') return route.path === '/portfolios' || route.path.startsWith('/portfolios/')
   if (path === '/projects') return route.path === '/projects' || route.path.startsWith('/projects/') || route.path.startsWith('/project-reviews')
+  if (path === '/workbench') return ['/schedule', '/plans', '/messages', '/spaces'].includes(route.path)
   return route.path === path
+}
+
+/** 详情页仍属于对应一级栏目；只有一级入口本身才标记为当前页面。 */
+function ariaCurrent(path: string): 'page' | 'location' | undefined {
+  if (!active(path)) return undefined
+  if (path === '/workbench' && route.path !== '/workbench') return 'location'
+  return 'page'
+}
+
+/** 移动底栏把账本归入工作台区域，减少一级入口数量。 */
+function mobileActive(path: string): boolean {
+  if (path === '/workbench') return active('/workbench') || route.path === '/ledger'
+  return active(path)
+}
+
+function ariaMobileCurrent(path: string): 'page' | 'location' | undefined {
+  if (path === '/workbench' && route.path !== '/workbench' && mobileActive(path)) return 'location'
+  return ariaCurrent(path)
 }
 </script>
 
@@ -83,19 +102,25 @@ function active(path: string): boolean {
       <BrandMark />
       <span class="brand-copy"><strong>{{ t('common.brand') }}</strong><small>{{ t('common.product') }}</small></span>
     </RouterLink>
-    <nav class="desktop-nav">
-      <RouterLink class="nav-item" to="/delivery"><el-icon aria-hidden="true"><Files /></el-icon>{{ t('common.delivery') }}</RouterLink>
-      <RouterLink class="nav-item" :class="{ active: active('/inspirations') }" to="/inspirations"><el-icon aria-hidden="true"><Picture /></el-icon>{{ t('common.inspirations') }}</RouterLink>
-      <RouterLink class="nav-item" :class="{ active: active('/portfolios') }" to="/portfolios"><el-icon aria-hidden="true"><PictureFilled /></el-icon>{{ t('common.portfolios') }}</RouterLink>
-      <RouterLink class="nav-item" :class="{ active: active('/projects') }" to="/projects"><el-icon aria-hidden="true"><Files /></el-icon>{{ t('common.projects') }}</RouterLink>
-      <RouterLink class="nav-item" :class="{ active: active('/ledger') }" to="/ledger"><el-icon aria-hidden="true"><Clock /></el-icon>{{ t('common.ledger') }}</RouterLink>
-      <RouterLink class="nav-item" :class="{ active: active('/schedule') }" to="/schedule"><el-icon aria-hidden="true"><Calendar /></el-icon>{{ t('common.schedule') }}</RouterLink>
-      <RouterLink class="nav-item" :class="{ active: active('/plans') }" to="/plans"><el-icon aria-hidden="true"><List /></el-icon>{{ t('common.plans') }}</RouterLink>
-      <RouterLink class="nav-item" :class="{ active: active('/profile') }" to="/profile"><el-icon aria-hidden="true"><User /></el-icon>{{ t('common.profile') }}</RouterLink>
-      <RouterLink v-if="auth.user?.is_admin" class="nav-item" :class="{ active: active('/atelier-7f3c9a2e') }" to="/atelier-7f3c9a2e"><el-icon aria-hidden="true"><Setting /></el-icon>{{ t('common.console') }}</RouterLink>
-      <RouterLink v-if="auth.user?.organization_role === 'admin'" class="nav-item" to="/organization-console"><el-icon aria-hidden="true"><Picture /></el-icon>{{ t('common.organizationConsole') }}</RouterLink>
-      <RouterLink v-if="auth.user?.is_admin || auth.user?.organization_role === 'admin'" class="nav-item" to="/organizations"><el-icon aria-hidden="true"><User /></el-icon>{{ t('common.organizations') }}</RouterLink>
-      <RouterLink class="nav-item" to="/spaces"><el-icon aria-hidden="true"><House /></el-icon>{{ t('common.spaces') }}</RouterLink>
+    <nav class="desktop-nav" :aria-label="t('common.desktopNavigation')">
+      <p class="nav-group-title">{{ t('common.navigationGroups.create') }}</p>
+      <RouterLink class="nav-item" :class="{ active: active('/workbench') }" :aria-current="ariaCurrent('/workbench')" to="/workbench"><el-icon aria-hidden="true"><House /></el-icon>{{ t('common.workbench') }}</RouterLink>
+      <RouterLink class="nav-item" :class="{ active: active('/delivery') }" :aria-current="ariaCurrent('/delivery')" to="/delivery"><el-icon aria-hidden="true"><Files /></el-icon>{{ t('common.delivery') }}</RouterLink>
+      <RouterLink class="nav-item" :class="{ active: active('/inspirations') }" :aria-current="ariaCurrent('/inspirations')" to="/inspirations"><el-icon aria-hidden="true"><Picture /></el-icon>{{ t('common.inspirations') }}</RouterLink>
+      <RouterLink class="nav-item" :class="{ active: active('/portfolios') }" :aria-current="ariaCurrent('/portfolios')" to="/portfolios"><el-icon aria-hidden="true"><PictureFilled /></el-icon>{{ t('common.portfolios') }}</RouterLink>
+      <RouterLink class="nav-item" :class="{ active: active('/projects') }" :aria-current="ariaCurrent('/projects')" to="/projects"><el-icon aria-hidden="true"><Files /></el-icon>{{ t('common.projects') }}</RouterLink>
+      <p class="nav-group-title">{{ t('common.navigationGroups.plan') }}</p>
+      <RouterLink class="nav-item" :class="{ active: active('/ledger') }" :aria-current="ariaCurrent('/ledger')" to="/ledger"><el-icon aria-hidden="true"><Clock /></el-icon>{{ t('common.ledger') }}</RouterLink>
+      <RouterLink class="nav-item" :class="{ active: active('/schedule') }" :aria-current="ariaCurrent('/schedule')" to="/schedule"><el-icon aria-hidden="true"><Calendar /></el-icon>{{ t('common.schedule') }}</RouterLink>
+      <RouterLink class="nav-item" :class="{ active: active('/plans') }" :aria-current="ariaCurrent('/plans')" to="/plans"><el-icon aria-hidden="true"><List /></el-icon>{{ t('common.plans') }}</RouterLink>
+      <RouterLink class="nav-item" :class="{ active: active('/messages') }" :aria-current="ariaCurrent('/messages')" to="/messages"><el-icon aria-hidden="true"><ChatDotRound /></el-icon>{{ t('common.messages') }}</RouterLink>
+      <RouterLink class="nav-item" :class="{ active: active('/profile') }" :aria-current="ariaCurrent('/profile')" to="/profile"><el-icon aria-hidden="true"><User /></el-icon>{{ t('common.profile') }}</RouterLink>
+      <template v-if="auth.user?.is_admin || auth.user?.organization_role === 'admin'">
+        <p class="nav-group-title">{{ t('common.navigationGroups.manage') }}</p>
+        <RouterLink v-if="auth.user?.is_admin" class="nav-item" :class="{ active: active('/atelier-7f3c9a2e') }" :aria-current="ariaCurrent('/atelier-7f3c9a2e')" to="/atelier-7f3c9a2e"><el-icon aria-hidden="true"><Setting /></el-icon>{{ t('common.console') }}</RouterLink>
+        <RouterLink v-if="auth.user?.organization_role === 'admin'" class="nav-item" :class="{ active: active('/organization-console') }" :aria-current="ariaCurrent('/organization-console')" to="/organization-console"><el-icon aria-hidden="true"><Picture /></el-icon>{{ t('common.organizationConsole') }}</RouterLink>
+        <RouterLink class="nav-item" :class="{ active: active('/organizations') }" :aria-current="ariaCurrent('/organizations')" to="/organizations"><el-icon aria-hidden="true"><User /></el-icon>{{ t('common.organizations') }}</RouterLink>
+      </template>
     </nav>
     <div class="navigation-account">
       <RouterLink to="/spaces" class="nav-item">{{ t('common.spaces') }} · {{ auth.orgid === -1 ? t('spaces.personal') : auth.orgid }}</RouterLink>
@@ -103,13 +128,12 @@ function active(path: string): boolean {
       <div class="navigation-preferences"><ThemeSwitcher /><LanguageSwitcher /></div>
       <el-button class="sign-out" text @click="signOut">{{ t('common.logout') }}</el-button>
     </div>
-    <nav class="mobile-nav" :aria-label="t('common.navigation')">
-      <RouterLink class="mobile-nav-item" :class="{ active: active('/workbench') }" to="/workbench" :aria-label="t('common.workbench')"><el-icon aria-hidden="true"><House /></el-icon><small>{{ t('common.mobileWorkbench') }}</small></RouterLink>
-      <RouterLink class="mobile-nav-item" :class="{ active: active('/inspirations') }" to="/inspirations"><el-icon aria-hidden="true"><Picture /></el-icon><small>{{ t('common.inspirations') }}</small></RouterLink>
-      <RouterLink class="mobile-nav-item" :class="{ active: active('/portfolios') }" to="/portfolios"><el-icon aria-hidden="true"><PictureFilled /></el-icon><small>{{ t('common.portfolios') }}</small></RouterLink>
-      <RouterLink class="mobile-nav-item" :class="{ active: active('/projects') }" to="/projects"><el-icon aria-hidden="true"><Files /></el-icon><small>{{ t('common.mobileProjects') }}</small></RouterLink>
-      <RouterLink class="mobile-nav-item" :class="{ active: active('/ledger') }" to="/ledger"><el-icon aria-hidden="true"><Clock /></el-icon><small>{{ t('common.mobileLedger') }}</small></RouterLink>
-      <RouterLink class="mobile-nav-item" :class="{ active: active('/profile') }" to="/profile"><el-icon aria-hidden="true"><User /></el-icon><small>{{ t('common.mobileProfile') }}</small></RouterLink>
+    <nav class="mobile-nav" :aria-label="t('common.mobileNavigation')">
+      <RouterLink class="mobile-nav-item" :class="{ active: mobileActive('/workbench') }" :aria-current="ariaMobileCurrent('/workbench')" to="/workbench" :aria-label="t('common.workbench')"><el-icon aria-hidden="true"><House /></el-icon><small>{{ t('common.mobileWorkbench') }}</small></RouterLink>
+      <RouterLink class="mobile-nav-item" :class="{ active: mobileActive('/inspirations') }" :aria-current="ariaMobileCurrent('/inspirations')" to="/inspirations"><el-icon aria-hidden="true"><Picture /></el-icon><small>{{ t('common.inspirations') }}</small></RouterLink>
+      <RouterLink class="mobile-nav-item" :class="{ active: mobileActive('/portfolios') }" :aria-current="ariaMobileCurrent('/portfolios')" to="/portfolios"><el-icon aria-hidden="true"><PictureFilled /></el-icon><small>{{ t('common.portfolios') }}</small></RouterLink>
+      <RouterLink class="mobile-nav-item" :class="{ active: mobileActive('/projects') }" :aria-current="ariaMobileCurrent('/projects')" to="/projects"><el-icon aria-hidden="true"><Files /></el-icon><small>{{ t('common.mobileProjects') }}</small></RouterLink>
+      <RouterLink class="mobile-nav-item" :class="{ active: mobileActive('/profile') }" :aria-current="ariaMobileCurrent('/profile')" to="/profile"><el-icon aria-hidden="true"><User /></el-icon><small>{{ t('common.mobileProfile') }}</small></RouterLink>
     </nav>
   </aside>
 </template>

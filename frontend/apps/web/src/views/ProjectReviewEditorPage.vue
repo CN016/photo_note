@@ -78,7 +78,7 @@ onBeforeRouteLeave(async () => {
 
 <template>
   <AppHeader />
-  <ContentZoom><main class="review-editor-main gallery-main">
+  <ContentZoom><main id="main-content" class="review-editor-main gallery-main">
     <header><RouterLink class="el-button" to="/project-reviews"><el-icon><ArrowLeft /></el-icon>{{ t('reviewEditor.back') }}</RouterLink><RouterLink v-if="record" :to="`/projects/${record.project_id}`">{{ t('reviewEditor.source') }}</RouterLink></header>
     <p v-if="loading" role="status">{{ t('common.loading') }}</p>
     <div v-else-if="failed" role="alert"><p>{{ t('reviewEditor.loadError') }}</p><el-button @click="load">{{ t('common.retry') }}</el-button></div>

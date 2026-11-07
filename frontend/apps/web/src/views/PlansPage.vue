@@ -6,6 +6,7 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { Calendar, Clock, Delete, Edit, Plus, Refresh, UploadFilled } from '@element-plus/icons-vue'
 import { useI18n } from 'vue-i18n'
 import AppHeader from '../components/AppHeader.vue'
+import CreateFab from '../components/CreateFab.vue'
 import PlanCoverImage from '../components/PlanCoverImage.vue'
 import { api } from '../api/client'
 import type { PlanFields, PlanRecord } from '../api/types'
@@ -264,14 +265,11 @@ onBeforeUnmount(() => {
 
 <template>
   <AppHeader />
-  <ContentZoom><main class="plans-main">
+  <ContentZoom><main id="main-content" class="plans-main">
     <header class="plans-heading">
       <div>
         <h1>{{ t('title') }}</h1>
       </div>
-      <el-button type="primary" class="add-plan-button" @click="openForm()">
-        <el-icon aria-hidden="true"><Plus /></el-icon>{{ t('actions.add') }}
-      </el-button>
     </header>
 
     <nav class="plan-tabs" :aria-label="t('title')" role="tablist">
@@ -315,11 +313,10 @@ onBeforeUnmount(() => {
       <section v-else class="plans-empty">
         <div class="empty-icon"><el-icon aria-hidden="true"><Calendar /></el-icon></div>
         <h2>{{ t(`empty.${activeTab}`) }}</h2>
-        <p>{{ t('empty.hint') }}</p>
-        <el-button v-if="activeTab !== 'completed'" type="primary" plain @click="openForm()"><el-icon aria-hidden="true"><Plus /></el-icon>{{ t('actions.add') }}</el-button>
       </section>
     </template>
   </main></ContentZoom>
+  <CreateFab :label="t('actions.add')" @select="openForm()" />
 
   <el-dialog v-model="dialogOpen" class="plans-dialog" :title="editing ? t('form.editTitle') : t('form.newTitle')" width="min(620px, calc(100vw - 28px))" :close-on-click-modal="!saving && !uploadingCover" :close-on-press-escape="!saving && !uploadingCover" :show-close="!saving && !uploadingCover" destroy-on-close @closed="closeDialog">
     <el-form label-position="top" :disabled="saving || uploadingCover" @submit.prevent="save">
@@ -375,7 +372,7 @@ onBeforeUnmount(() => {
 
 <style scoped>
 /* 界面表面与控件使用全局主题令牌；图片、文档和用户自选封面颜色保持原数据。 */
-.plans-main { width: min(960px, calc(100vw - 310px)); min-height: 100svh; margin: 0 44px 0 calc(228px + max(0px, (100vw - 1708px) / 2)); padding: 48px 0 88px; color: var(--ink); }
+.plans-main { width: min(960px, calc(100vw - 310px)); min-height: 100svh; margin: 0 44px 0 calc(228px + max(0px, (100vw - 1708px) / 2)); padding: 56px 0 88px; color: var(--ink); }
 .plans-heading { display: flex; align-items: center; justify-content: space-between; gap: 20px; }
 .plans-eyebrow { margin: 0 0 4px; color: var(--accent); font-size: 12px; font-weight: 600; letter-spacing: 0; text-transform: none; }
 .plans-heading h1 { margin: 0; font-size: clamp(27px, 3vw, 35px); letter-spacing: 0; }

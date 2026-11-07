@@ -26,6 +26,16 @@
   "profile": "个人中心",
   "mobileProfile": "我的",
   "navigation": "主导航",
+  "desktopNavigation": "桌面主导航",
+  "mobileNavigation": "移动端主导航",
+  "accountUtilities": "账户工具",
+  "skipToContent": "跳到主要内容",
+  "navigationGroups": {
+    "create": "创作与交付",
+    "plan": "日程与记录",
+    "account": "账户",
+    "manage": "管理"
+  },
   "workbench": "工作台",
   "mobileWorkbench": "工作台",
   "inspirations": "灵感库",

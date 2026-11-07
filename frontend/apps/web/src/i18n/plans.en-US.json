@@ -1,6 +1,5 @@
 {
   "title": "Plans",
-  "subtitle": "Plan what is next and get a reminder at the right time.",
   "loading": "Loading plans…",
   "loadError": "Plans are unavailable right now. Check your connection and try again.",
   "retry": "Retry",

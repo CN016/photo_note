@@ -31,8 +31,8 @@ onMounted(load)
 </script>
 
 <template>
-  <div class="workspace-page"><AppHeader /><ContentZoom><main class="space-main" data-space-ready>
-    <h1>{{ t('spaces.title') }}</h1><p>{{ t('spaces.description') }}</p>
+  <div class="workspace-page"><AppHeader /><ContentZoom><main id="main-content" class="space-main" data-space-ready>
+    <h1>{{ t('spaces.title') }}</h1>
     <el-alert v-if="!supported" type="warning" :closable="false" :title="t('spaces.unsupported')" />
     <el-alert v-if="error" type="error" :closable="false" :title="error" />
     <p v-if="loading" role="status">{{ t('common.loading') }}</p>

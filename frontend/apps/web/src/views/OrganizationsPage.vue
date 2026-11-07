@@ -4,8 +4,9 @@ import { computed, onMounted, ref } from 'vue'
 import { onBeforeRouteLeave } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { ElMessageBox } from 'element-plus'
-import { Plus, Search } from '@element-plus/icons-vue'
+import { Search } from '@element-plus/icons-vue'
 import AppHeader from '../components/AppHeader.vue'
+import CreateFab from '../components/CreateFab.vue'
 import { api } from '../api/client'
 import type { Organization, OrganizationMember } from '../api/types'
 import { useAuthStore } from '../stores/auth'
@@ -82,11 +83,11 @@ onMounted(load)
 </script>
 
 <template>
-  <div class="workspace-page"><AppHeader /><ContentZoom><main class="organization-main">
-    <header class="organization-toolbar"><div><h1>{{ t('organizations.title') }}</h1><p>{{ t('organizations.description') }}</p></div><el-button v-if="platform" type="primary" :icon="Plus" @click="createVisible = true">{{ t('organizations.create') }}</el-button></header>
+  <div class="workspace-page"><AppHeader /><ContentZoom><main id="main-content" class="organization-main">
+    <header class="organization-toolbar"><div><h1>{{ t('organizations.title') }}</h1></div></header>
     <el-alert v-if="error" :title="error" type="error" :closable="false" />
     <template v-if="platform">
-      <el-form inline @submit.prevent="page = 1; load()"><el-form-item><el-input v-model="search" :placeholder="t('organizations.search')" clearable /></el-form-item><el-button :icon="Search" @click="page = 1; load()">{{ t('organizations.search') }}</el-button></el-form>
+      <el-form class="organization-search-form" inline @submit.prevent="page = 1; load()"><el-form-item><el-input v-model="search" :placeholder="t('organizations.search')" clearable /></el-form-item><el-button :icon="Search" @click="page = 1; load()">{{ t('organizations.search') }}</el-button></el-form>
       <el-table :data="organizations" v-loading="busy" :empty-text="t('organizations.empty')">
         <el-table-column prop="orgid" :label="t('organizations.orgid')" width="100" /><el-table-column prop="name" :label="t('organizations.name')" />
         <el-table-column :label="t('organizations.status')"><template #default="{ row }">{{ t(`organizations.${row.status}`) }}</template></el-table-column>
@@ -102,7 +103,7 @@ onMounted(load)
       <el-pagination v-if="memberTotal > 20" v-model:current-page="memberPage" :total="memberTotal" :page-size="20" layout="prev,pager,next" @current-change="operation(loadMembers)" />
     </section>
     <el-dialog v-model="createVisible" :title="t('organizations.create')" width="min(520px, 94vw)"><el-form label-position="top"><el-form-item :label="t('organizations.name')"><el-input v-model="name" maxlength="120" /></el-form-item><el-form-item :label="t('organizations.initialAdmin')"><el-input v-model="initialAdmin" /></el-form-item><p>{{ t('organizations.initialAdminHint') }}</p></el-form><template #footer><el-button @click="createVisible = false">{{ t('common.cancel') }}</el-button><el-button type="primary" :loading="busy" :disabled="!name.trim() || !initialAdmin.trim()" @click="create">{{ t('organizations.create') }}</el-button></template></el-dialog>
-  </main></ContentZoom></div>
+  </main></ContentZoom><CreateFab v-if="platform" :label="t('organizations.create')" @select="createVisible = true" /></div>
 </template>
 
 <style scoped>
@@ -112,4 +113,11 @@ onMounted(load)
 .organization-main :deep(.el-alert), .organization-main :deep(.el-pagination) { margin: 20px 0; }
 .organization-members { margin-top: 32px; padding-top: 16px; border-top: 1px solid var(--el-border-color); }
 .organization-main :deep(.el-table) { border: 1px solid var(--el-border-color); border-radius: 12px; }
+@media (max-width: 768px) {
+  .organization-main { width: calc(100% - 32px); margin: 20px auto; }
+  .organization-main :deep(.el-table) { overflow-x: auto; }
+  .organization-search-form :deep(.el-form-item) { width: 100%; margin-right: 0; }
+  .organization-search-form :deep(.el-input) { width: 100%; }
+  .organization-search-form > .el-button { display: none; }
+}
 </style>

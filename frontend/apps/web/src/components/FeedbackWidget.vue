@@ -6,10 +6,18 @@ import type { InputInstance, UploadFile } from 'element-plus'
 import { api } from '../api/client'
 import { ApiError } from '../api/types'
 import { prepareImageUpload, type PreparedImageUpload } from '../imageUpload'
+import { useRoute } from 'vue-router'
+import { useAuthStore } from '../stores/auth'
+import { useFeedbackStore } from '../stores/feedback'
 
-const props = defineProps<{ editorRoute: boolean; hasMobileNav: boolean }>()
 const { t } = useI18n()
-const visible = ref(false)
+const route = useRoute()
+const auth = useAuthStore()
+const feedback = useFeedbackStore()
+const visible = computed({
+  get: () => feedback.open,
+  set: value => { feedback.open = value },
+})
 const mobile = ref(typeof window !== 'undefined' && window.matchMedia('(max-width: 768px)').matches)
 const content = ref('')
 const files = ref(new Map<number, PreparedImageUpload>())
@@ -22,13 +30,16 @@ const contentInput = ref<InputInstance>()
 const direction = computed<'btt' | 'rtl'>(() => mobile.value ? 'btt' : 'rtl')
 const drawerSize = computed(() => mobile.value ? 'min(78vh, 620px)' : '430px')
 const imageCount = computed(() => files.value.size)
+const editorRoute = computed(() => route.name === 'new-inspiration' || route.name === 'edit-inspiration')
+/** 登录后的页面从侧栏或移动顶栏打开反馈，只有登录、公开页和编辑器保留悬浮兜底入口。 */
+const integratedTrigger = computed(() => Boolean(auth.user && !route.meta.public && route.name !== 'project-editor'))
 
 function updateViewport() { mobile.value = window.matchMedia('(max-width: 768px)').matches }
 if (typeof window !== 'undefined') window.addEventListener('resize', updateViewport)
 function beforeClose(done: () => void) { if (!submitting.value) done() }
 function openFeedback() {
   submitted.value = false
-  visible.value = true
+  feedback.openPanel()
 }
 
 /** 抽屉完成动画后聚焦文本框；关闭后仍保留草稿，提交期间冻结输入以避免请求和可见内容不一致。 */
@@ -88,12 +99,12 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div class="feedback-entry" :class="{ 'feedback-entry-editor': props.editorRoute, 'feedback-entry-no-nav': !props.hasMobileNav }">
+  <aside v-if="!integratedTrigger" class="feedback-entry" :class="{ 'feedback-entry-editor': editorRoute, 'feedback-entry-no-nav': !editorRoute }" :aria-label="t('feedback.open')">
     <el-button class="feedback-trigger" :aria-label="t('feedback.open')" :title="t('feedback.open')" @click="openFeedback">
       <el-icon class="feedback-trigger-icon" aria-hidden="true"><ChatLineRound /></el-icon>
       <span class="feedback-trigger-label">{{ t('feedback.open') }}</span>
     </el-button>
-  </div>
+  </aside>
   <el-drawer v-model="visible" :direction="direction" :size="drawerSize" :title="submitted ? t('feedback.successTitle') : t('feedback.title')" :append-to-body="true" :close-on-click-modal="!submitting" :before-close="beforeClose" @opened="focusContent">
     <div v-if="submitted" class="feedback-success" role="status" aria-live="polite">
       <span class="feedback-success-mark" aria-hidden="true"><el-icon><Check /></el-icon></span>
@@ -102,7 +113,6 @@ onBeforeUnmount(() => {
       <el-button type="primary" @click="visible = false">{{ t('feedback.done') }}</el-button>
     </div>
     <div v-else class="feedback-panel">
-      <p class="feedback-description">{{ t('feedback.description') }}</p>
       <el-input ref="contentInput" v-model="content" type="textarea" :rows="6" maxlength="2000" show-word-limit :disabled="submitting" :aria-label="t('feedback.contentPlaceholder')" :placeholder="t('feedback.contentPlaceholder')" />
       <div class="feedback-image-label"><span>{{ t('feedback.images') }}</span><small>{{ t('feedback.imageCount', { count: imageCount }) }}</small></div>
       <el-upload :key="uploadKey" action="#" :auto-upload="false" list-type="picture-card" accept="image/*,.heic,.heif" multiple :limit="5" :on-change="selectImage" :on-remove="removeImage" :disabled="preparing || submitting">

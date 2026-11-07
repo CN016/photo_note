@@ -319,7 +319,7 @@ onBeforeRouteLeave(async () => {
 
 <template>
   <div class="project-app-header"><AppHeader /></div>
-  <main class="project-editor-main" :class="{ 'is-loading': loading, 'workflow-input-focused': workflowInputFocused }" @focusin="trackEditorFocus">
+  <main id="main-content" class="project-editor-main" :class="{ 'is-loading': loading, 'workflow-input-focused': workflowInputFocused }" @focusin="trackEditorFocus">
     <div v-if="loading" class="project-editor-state">{{ t('common.loading') }}</div>
     <div v-else-if="loadFailed || !project" class="project-editor-state project-editor-error"><p>{{ t('projects.loadError') }}</p><el-button @click="loadProject">{{ t('common.retry') }}</el-button></div>
     <template v-else>

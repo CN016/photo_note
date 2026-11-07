@@ -851,7 +851,7 @@ onBeforeUnmount(() => {
 <template>
   <div class="workspace-page editor-page">
     <AppHeader />
-    <ContentZoom><main class="editor-main" :style="anchorDisplayStyle">
+    <ContentZoom><main id="main-content" class="editor-main" :style="anchorDisplayStyle">
       <div class="editor-heading-row">
         <div class="editor-title-group">
           <RouterLink class="back-link" to="/inspirations"><el-icon aria-hidden="true"><ArrowLeft /></el-icon>{{ t('common.back') }}</RouterLink>

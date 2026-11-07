@@ -164,9 +164,9 @@ onBeforeUnmount(() => { requestVersion += 1 })
 <template>
   <div class="workspace-page statistics-page">
     <AppHeader />
-    <ContentZoom><main class="statistics-main">
+    <ContentZoom><main id="main-content" class="statistics-main">
       <section class="gallery-intro statistics-intro">
-        <div><p class="eyebrow">{{ t('common.product') }}</p><h1>{{ t('statistics.title') }}</h1><p class="gallery-subtitle">{{ t('statistics.subtitle') }}</p></div>
+        <div><h1>{{ t('statistics.title') }}</h1></div>
       </section>
 
       <nav class="gallery-subnav" :aria-label="t('statistics.sections')">
@@ -179,7 +179,7 @@ onBeforeUnmount(() => { requestVersion += 1 })
 
       <section v-else-if="statistics && statistics.total_images === 0" class="gallery-empty statistics-empty">
         <div class="empty-art" aria-hidden="true"><el-icon><TrendCharts /></el-icon></div>
-        <p class="eyebrow">{{ t('statistics.title') }}</p><h2>{{ t('statistics.noImagesTitle') }}</h2><p class="statistics-empty-copy">{{ t('statistics.noImagesDescription') }}</p>
+        <h2>{{ t('statistics.noImagesTitle') }}</h2>
         <RouterLink custom to="/inspirations/new" v-slot="{ navigate }"><el-button class="primary-button" type="primary" @click="navigate">{{ t('statistics.addImage') }}</el-button></RouterLink>
       </section>
 

@@ -27,7 +27,7 @@ async function retry() {
 </script>
 
 <template>
-  <main class="maintenance-page">
+  <main id="main-content" class="maintenance-page">
     <header class="maintenance-header">
       <RouterLink class="brand-lockup" to="/maintenance"><BrandMark /><span><strong>{{ t('common.brand') }}</strong><small>{{ t('common.product') }}</small></span></RouterLink>
       <div class="header-actions"><ThemeSwitcher /><LanguageSwitcher /></div>

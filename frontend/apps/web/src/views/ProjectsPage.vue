@@ -4,8 +4,9 @@ import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { onBeforeRouteLeave, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { ArrowLeft, ArrowRight, Delete, Files, More, Plus, Search, UploadFilled } from '@element-plus/icons-vue'
+import { ArrowLeft, ArrowRight, Delete, Files, More, Search, UploadFilled } from '@element-plus/icons-vue'
 import AppHeader from '../components/AppHeader.vue'
+import CreateFab from '../components/CreateFab.vue'
 import ProjectCoverImage from '../components/ProjectCoverImage.vue'
 import { api } from '../api/client'
 import type { PageResult, ProjectSaveInput, ProjectSummary, ProjectStatus, ProjectStatusCounts } from '../api/types'
@@ -142,10 +143,10 @@ onBeforeUnmount(() => {
 
 <template>
   <AppHeader />
-  <ContentZoom><main class="projects-main gallery-main">
+  <ContentZoom><main id="main-content" class="projects-main gallery-main">
     <header class="projects-heading">
       <h1>{{ t('projects.title') }}</h1>
-      <div class="projects-heading-actions"><RouterLink class="el-button" to="/project-reviews">{{ t('projects.workflow.allReviews') }}</RouterLink><el-button class="projects-new" type="primary" :icon="Plus" :title="t('projects.newProject')" :aria-label="t('projects.newProject')" @click="openCreate">{{ t('projects.newProject') }}</el-button></div>
+      <div class="projects-heading-actions"><RouterLink class="el-button" to="/project-reviews">{{ t('projects.workflow.allReviews') }}</RouterLink></div>
     </header>
     <div class="projects-search"><el-input v-model="query" clearable :placeholder="t('projects.searchPlaceholder')"><template #prefix><el-icon><Search /></el-icon></template></el-input></div>
     <div class="project-status-filters" role="group" :aria-label="t('projects.filterStatus')"><button type="button" :aria-pressed="activeStatus === ''" @click="activeStatus = ''">{{ t('projects.allStatuses') }}</button><button v-for="status in statuses" :key="status" type="button" :class="`status-${status}`" :aria-pressed="activeStatus === status" @click="activeStatus = status"><span class="status-dot" aria-hidden="true" />{{ t(`projects.status.${status}`) }}<span class="status-count">{{ new Intl.NumberFormat(locale).format(statusCounts[status]) }}</span></button></div>
@@ -163,11 +164,12 @@ onBeforeUnmount(() => {
         </el-dropdown>
       </article>
     </section>
-    <section v-else class="projects-empty"><el-icon><Files /></el-icon><h2>{{ t('projects.emptyTitle') }}</h2><p>{{ t('projects.emptyDescription') }}</p><el-button type="primary" :icon="Plus" @click="openCreate">{{ t('projects.newProject') }}</el-button></section>
+    <section v-else class="projects-empty"><el-icon><Files /></el-icon><h2>{{ t('projects.emptyTitle') }}</h2></section>
     <div v-if="total > pageSize" class="projects-pagination">
       <el-button :icon="ArrowLeft" :title="t('projects.viewer.previous')" :aria-label="t('projects.viewer.previous')" :disabled="loading || page <= 1" @click="page -= 1" /><span>{{ page }} / {{ Math.ceil(total / pageSize) }}</span><el-button :icon="ArrowRight" :title="t('projects.viewer.next')" :aria-label="t('projects.viewer.next')" :disabled="loading || page >= Math.ceil(total / pageSize)" @click="page += 1" />
     </div>
   </main></ContentZoom>
+  <CreateFab :label="t('projects.newProject')" @select="openCreate" />
 
   <el-dialog v-model="dialogOpen" class="project-create-dialog" width="min(480px, calc(100vw - 30px))" :title="t('projects.createTitle')" destroy-on-close>
     <el-form label-position="top" @submit.prevent="createProject">
@@ -224,6 +226,6 @@ onBeforeUnmount(() => {
 .project-cover-select > img, .project-cover-emoji { display: grid; width: 74px; height: 74px; place-items: center; border-radius: var(--radius-control); background: var(--surface-muted); object-fit: cover; font-size: 36px; }
 .project-cover-select > div { display: flex; flex-wrap: wrap; gap: 8px; }
 .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0,0,0,0); }
-@media (max-width: 768px) { .projects-main { padding-top: 28px; padding-bottom: 104px; } .projects-heading { align-items: center; } .projects-heading h1 { font-size: 34px; } .projects-heading > div > p:last-child { max-width: 235px; font-size: 12px; line-height: 1.5; } .projects-new { width: 44px; min-width: 44px; height: 44px; padding: 0; font-size: 0; } .projects-new .el-icon { font-size: 19px; } .projects-grid { grid-template-columns: 1fr; gap: 8px; } .project-card { gap: 4px; padding: 8px 8px 8px 12px; } .project-card-link { gap: 12px; } }
+@media (max-width: 768px) { .projects-main { padding-top: 20px; padding-bottom: 104px; } .projects-heading { align-items: center; margin-bottom: 14px; } .projects-heading h1 { font-size: 32px; } .projects-heading > div > p:last-child { max-width: 235px; font-size: 12px; line-height: 1.5; } .projects-new { width: 44px; min-width: 44px; height: 44px; padding: 0; font-size: 0; } .projects-new :deep(.el-icon) { font-size: 20px; } .projects-search { margin: 12px 0; } .project-status-filters { flex-wrap: nowrap; gap: 4px; margin: 0 0 16px; overflow-x: auto; padding-bottom: 2px; scrollbar-width: none; } .project-status-filters button { flex: 0 0 auto; padding: 8px 10px; } .projects-grid { grid-template-columns: 1fr; gap: 8px; } .project-card { gap: 4px; padding: 8px 8px 8px 12px; } .project-card-link { gap: 12px; } }
 @media (max-width: 768px) { .project-card :deep(.el-button), .projects-pagination :deep(.el-button) { min-width: 44px; min-height: 44px; } }
 </style>

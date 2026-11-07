@@ -96,7 +96,7 @@ onMounted(() => { void load() })
 </script>
 
 <template>
-  <main class="public-booking-page">
+  <main id="main-content" class="public-booking-page">
     <section class="public-booking-shell">
       <header class="public-booking-header">
         <RouterLink class="public-brand" to="/inspirations"><BrandMark size="small" /><strong>{{ t('common.brand') }}</strong></RouterLink>

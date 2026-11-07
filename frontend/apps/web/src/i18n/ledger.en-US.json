@@ -11,6 +11,7 @@
   "drafts": "Drafts to finish",
   "draftCount": "{count} unfinished",
   "actions": {
+    "more": "More actions",
     "add": "Add entry",
     "exportJson": "Export JSON",
     "exportCsv": "Export CSV",
@@ -32,6 +33,8 @@
     "allMethods": "All methods",
     "allFlags": "All flags",
     "minAmount": "Minimum amount",
+    "more": "More filters",
+    "collapse": "Hide filters",
     "reset": "Clear filters"
   },
   "calendar": {
@@ -159,6 +162,7 @@
     "currency": "CNY"
   },
   "analytics": {
+    "year": "Year",
     "scope": "Statistics follow current filters. Annual comparisons and rankings cover all history. Daily averages use recorded days.",
     "averageTicket": "Average transaction",
     "bestDay": "Highest income day",

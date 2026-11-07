@@ -11,6 +11,7 @@
   "drafts": "待完成草稿",
   "draftCount": "{count} 条待完成",
   "actions": {
+    "more": "更多操作",
     "add": "记一笔",
     "exportJson": "导出 JSON",
     "exportCsv": "导出 CSV",
@@ -32,6 +33,8 @@
     "allMethods": "全部方式",
     "allFlags": "全部标记",
     "minAmount": "最低金额",
+    "more": "更多筛选",
+    "collapse": "收起筛选",
     "reset": "清空筛选"
   },
   "calendar": {
@@ -159,6 +162,7 @@
     "currency": "CNY"
   },
   "analytics": {
+    "year": "年份",
     "scope": "统计跟随当前筛选；年度对比和排行覆盖全部历史记录。日均按有记录天数计算。",
     "averageTicket": "单笔平均金额",
     "bestDay": "最高收入日",
