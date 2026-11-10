@@ -5,7 +5,6 @@ import { onBeforeRouteLeave } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { ElMessageBox } from 'element-plus'
 import { Search } from '@element-plus/icons-vue'
-import AppHeader from '../components/AppHeader.vue'
 import CreateFab from '../components/CreateFab.vue'
 import { api } from '../api/client'
 import type { Organization, OrganizationMember } from '../api/types'
@@ -83,7 +82,7 @@ onMounted(load)
 </script>
 
 <template>
-  <div class="workspace-page"><AppHeader /><ContentZoom><main id="main-content" class="organization-main">
+  <div class="workspace-page"><ContentZoom><main id="main-content" class="organization-main">
     <header class="organization-toolbar"><div><h1>{{ t('organizations.title') }}</h1></div></header>
     <el-alert v-if="error" :title="error" type="error" :closable="false" />
     <template v-if="platform">

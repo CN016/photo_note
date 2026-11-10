@@ -1184,6 +1184,56 @@ html.native-content-zoom { touch-action: pan-x pan-y; }
 .card-caption-meta { gap: 4px 12px; font-variant-numeric: tabular-nums; }
 .card-size { font-family: ui-monospace, SFMono-Regular, Consolas, monospace; }
 .statistics-summary-card strong, .color-metrics dd { font-variant-numeric: tabular-nums; }
+
+/* 移动端以内容为首屏：移除常驻品牌栏与页面标题区，底部导航独立于路由动画保持稳定。 */
+@media (max-width: 768px) {
+  .global-message-bar,
+  .gallery-intro,
+  .projects-heading,
+  .messages-heading,
+  .profile-heading,
+  .workbench-heading,
+  .console-heading,
+  .schedule-heading,
+  .plans-heading,
+  .organization-toolbar {
+    display: none !important;
+  }
+  .space-main > h1,
+  .portfolio-header h1,
+  .portfolio-header > div > p,
+  .upload-heading .eyebrow,
+  .upload-heading h1,
+  .upload-heading .upload-subtitle,
+  .editor-heading-row .eyebrow,
+  .editor-heading-row h1,
+  .editor-subtitle,
+  .reviews-main > header h1 {
+    display: none !important;
+  }
+  .ledger-hero { justify-content: flex-end; }
+  .ledger-hero .hero-copy { display: none !important; }
+  .editor-heading-row { align-items: center; justify-content: space-between; margin-bottom: 12px; }
+  .editor-heading-actions { margin-left: auto; }
+  .portfolio-header { margin-bottom: 12px; }
+  .upload-heading { margin-bottom: 12px; }
+  .gallery-main,
+  .projects-main,
+  .messages-main,
+  .profile-main,
+  .workbench-main,
+  .console-main,
+  .schedule-main,
+  .plans-main,
+  .ledger-main,
+  .statistics-main,
+  .organization-main,
+  .portfolio-main,
+  .editor-main,
+  .upload-main {
+    padding-top: max(18px, env(safe-area-inset-top)) !important;
+  }
+}
 /* 装饰拼贴只承担摄影题材示意，不与表单、标题争夺强调色。 */
 .mood-decoration-icon, .mood-card-four i { display: none; }
 .mood-card > span { color: #253c42; }

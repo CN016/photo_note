@@ -5,7 +5,6 @@ import { onBeforeRouteLeave } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { ArrowDown, ArrowLeft, ArrowRight, BottomRight, Calendar, Close, EditPen, MoreFilled, Search, Switch, TopRight, TrendCharts } from '@element-plus/icons-vue'
-import AppHeader from '../components/AppHeader.vue'
 import CreateFab from '../components/CreateFab.vue'
 import LedgerAnalytics from '../ledger/LedgerAnalytics.vue'
 import { exportFile, FileExportError } from '../platform'
@@ -784,7 +783,6 @@ function heatTitle(day: typeof yearlyHeat.value[number]): string {
 
 <template>
   <div class="workspace-page ledger-page">
-    <AppHeader />
     <ContentZoom><main id="main-content" class="ledger-main">
       <section class="ledger-hero">
         <div class="hero-copy">

@@ -10,7 +10,6 @@ import ProjectWorkflowPanel from '../projects/views/ProjectWorkflowPanel.vue'
 import { useI18n } from 'vue-i18n'
 import { useAuthStore } from '../stores/auth'
 import { gallerySnapshot } from '../context-menu/galleryNavigation'
-import AppHeader from '../components/AppHeader.vue'
 import ProjectCoverImage from '../components/ProjectCoverImage.vue'
 import ProjectInspirationPicker from '../projects/views/ProjectInspirationPicker.vue'
 import { api, getSessionInfo } from '../api/client'
@@ -318,7 +317,6 @@ onBeforeRouteLeave(async () => {
 </script>
 
 <template>
-  <div class="project-app-header"><AppHeader /></div>
   <main id="main-content" class="project-editor-main" :class="{ 'is-loading': loading, 'workflow-input-focused': workflowInputFocused }" @focusin="trackEditorFocus">
     <div v-if="loading" class="project-editor-state">{{ t('common.loading') }}</div>
     <div v-else-if="loadFailed || !project" class="project-editor-state project-editor-error"><p>{{ t('projects.loadError') }}</p><el-button @click="loadProject">{{ t('common.retry') }}</el-button></div>

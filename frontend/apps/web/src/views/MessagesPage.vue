@@ -5,7 +5,6 @@ import { useI18n } from 'vue-i18n'
 import { onBeforeRouteLeave, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { ArrowLeft, ArrowRight, Delete, Edit, TopRight } from '@element-plus/icons-vue'
-import AppHeader from '../components/AppHeader.vue'
 import CreateFab from '../components/CreateFab.vue'
 import WebhookProviderLogo from '../components/WebhookProviderLogo.vue'
 import { api } from '../api/client'
@@ -384,7 +383,6 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <AppHeader />
   <ContentZoom><main id="main-content" class="messages-main">
     <header class="messages-heading">
       <div>

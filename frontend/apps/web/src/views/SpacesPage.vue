@@ -3,7 +3,6 @@ import ContentZoom from '../components/ContentZoom.vue'
 import { onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { OfficeBuilding, User } from '@element-plus/icons-vue'
-import AppHeader from '../components/AppHeader.vue'
 import { api } from '../api/client'
 import type { Environment } from '../api/types'
 import { useAuthStore } from '../stores/auth'
@@ -31,7 +30,7 @@ onMounted(load)
 </script>
 
 <template>
-  <div class="workspace-page"><AppHeader /><ContentZoom><main id="main-content" class="space-main" data-space-ready>
+  <div class="workspace-page"><ContentZoom><main id="main-content" class="space-main" data-space-ready>
     <h1>{{ t('spaces.title') }}</h1>
     <el-alert v-if="!supported" type="warning" :closable="false" :title="t('spaces.unsupported')" />
     <el-alert v-if="error" type="error" :closable="false" :title="error" />

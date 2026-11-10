@@ -7,7 +7,6 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { onBeforeRouteLeave, useRoute } from 'vue-router'
 import { api } from '../api/client'
 import type { ConsoleConfigRecord, ConsoleFeedbackRecord, ConsoleInspirationRecord, ConsoleUserRecord, Organization } from '../api/types'
-import AppHeader from '../components/AppHeader.vue'
 import CreateFab from '../components/CreateFab.vue'
 import AuthenticatedImageThumbnail from '../components/AuthenticatedImageThumbnail.vue'
 import InspirationThumbnail from '../components/InspirationThumbnail.vue'
@@ -355,7 +354,6 @@ onBeforeUnmount(() => {
 
 <template>
   <div class="workspace-page console-page">
-    <AppHeader />
     <ContentZoom><main id="main-content" class="console-main">
       <header class="console-heading">
         <div>

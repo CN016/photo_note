@@ -6,7 +6,6 @@ import { useI18n } from 'vue-i18n'
 import { onBeforeRouteLeave, useRoute, useRouter } from 'vue-router'
 import { ElMessageBox, type UploadFile } from 'element-plus'
 import { ArrowLeft, ArrowRight, Check, Close, Crop, FullScreen, Lock, Plus, Picture, RefreshLeft, RefreshRight, UploadFilled } from '@element-plus/icons-vue'
-import AppHeader from '../components/AppHeader.vue'
 import { api as baseApi } from '../api/client'
 import { ApiError, type InspirationImageMetadata, type InspirationRecord } from '../api/types'
 import { useAnchorDisplayStore } from '../stores/anchorDisplay'
@@ -850,7 +849,6 @@ onBeforeUnmount(() => {
 
 <template>
   <div class="workspace-page editor-page">
-    <AppHeader />
     <ContentZoom><main id="main-content" class="editor-main" :style="anchorDisplayStyle">
       <div class="editor-heading-row">
         <div class="editor-title-group">

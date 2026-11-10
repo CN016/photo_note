@@ -4,7 +4,6 @@ import { onBeforeRouteLeave, useRoute } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { ElMessageBox } from 'element-plus'
 import { ArrowLeft } from '@element-plus/icons-vue'
-import AppHeader from '../components/AppHeader.vue'
 import ContentZoom from '../components/ContentZoom.vue'
 import { api } from '../api/client'
 import { ApiError, type ProjectReview } from '../api/types'
@@ -77,7 +76,6 @@ onBeforeRouteLeave(async () => {
 </script>
 
 <template>
-  <AppHeader />
   <ContentZoom><main id="main-content" class="review-editor-main gallery-main">
     <header><RouterLink class="el-button" to="/project-reviews"><el-icon><ArrowLeft /></el-icon>{{ t('reviewEditor.back') }}</RouterLink><RouterLink v-if="record" :to="`/projects/${record.project_id}`">{{ t('reviewEditor.source') }}</RouterLink></header>
     <p v-if="loading" role="status">{{ t('common.loading') }}</p>

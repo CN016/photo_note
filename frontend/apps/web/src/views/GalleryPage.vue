@@ -10,7 +10,6 @@ import { gallerySnapshot, saveGallerySnapshot, clearGallerySnapshot } from '../c
 import type { InspirationProjectSummary } from '../api/types'
 import { useI18n } from 'vue-i18n'
 import { ArrowDown, Filter, PictureFilled, Search } from '@element-plus/icons-vue'
-import AppHeader from '../components/AppHeader.vue'
 import CreateFab from '../components/CreateFab.vue'
 import InspirationThumbnail from '../components/InspirationThumbnail.vue'
 import InspirationLibraryTools from '../components/InspirationLibraryTools.vue'
@@ -225,7 +224,6 @@ onBeforeUnmount(() => { alive = false; disposeMenu?.(); gesture.cancel(); associ
 
 <template>
   <div ref="galleryRoot" class="workspace-page" @touchstart.passive="touchStart" @touchmove.passive="touchMove" @touchend="gesture.cancel" @touchcancel="gesture.cancel" @click.capture="interceptClick">
-    <AppHeader />
     <ContentZoom ref="contentZoom"><main id="main-content" class="gallery-main">
       <section class="gallery-intro">
         <div><h1>{{ t('gallery.title') }}</h1></div>

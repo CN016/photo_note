@@ -5,7 +5,6 @@ import { onBeforeRouteLeave } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Calendar, Clock, Delete, Edit, Plus, Refresh, UploadFilled } from '@element-plus/icons-vue'
 import { useI18n } from 'vue-i18n'
-import AppHeader from '../components/AppHeader.vue'
 import CreateFab from '../components/CreateFab.vue'
 import PlanCoverImage from '../components/PlanCoverImage.vue'
 import { api } from '../api/client'
@@ -264,7 +263,6 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <AppHeader />
   <ContentZoom><main id="main-content" class="plans-main">
     <header class="plans-heading">
       <div>

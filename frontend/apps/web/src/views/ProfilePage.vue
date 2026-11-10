@@ -5,13 +5,14 @@ import { onBeforeRouteLeave } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { ElMessage } from 'element-plus'
 import { ChatLineRound } from '@element-plus/icons-vue'
-import AppHeader from '../components/AppHeader.vue'
 import { api } from '../api/client'
 import { ApiError } from '../api/types'
 import { prepareImageUpload, type PreparedImageUpload } from '../imageUpload'
 import { useAuthStore } from '../stores/auth'
 import { useAppShellStore } from '../stores/appShell'
 import { useFeedbackStore } from '../stores/feedback'
+import ThemeSwitcher from '../components/ThemeSwitcher.vue'
+import LanguageSwitcher from '../components/LanguageSwitcher.vue'
 
 const { t } = useI18n()
 const auth = useAuthStore()
@@ -92,7 +93,6 @@ onBeforeUnmount(() => {
 
 <template>
   <div class="workspace-page">
-    <AppHeader />
     <ContentZoom><main id="main-content" class="profile-main">
       <header class="profile-heading"><h1>{{ t('profile.title') }}</h1></header>
       <div class="profile-grid">
@@ -123,7 +123,19 @@ onBeforeUnmount(() => {
           <h2>{{ t('profile.feedbackTitle') }}</h2>
           <el-button @click="feedback.openPanel"><el-icon aria-hidden="true"><ChatLineRound /></el-icon>{{ t('feedback.open') }}</el-button>
         </section>
+        <section class="profile-card profile-preferences">
+          <h2>{{ t('profile.preferencesTitle') }}</h2>
+          <div class="profile-preference-row"><span>{{ t('common.theme') }}</span><ThemeSwitcher /></div>
+          <div class="profile-preference-row"><span>{{ t('common.language') }}</span><LanguageSwitcher /></div>
+        </section>
       </div>
     </main></ContentZoom>
   </div>
 </template>
+
+<style scoped>
+.profile-preference-row { display: flex; min-height: 44px; align-items: center; justify-content: space-between; gap: 16px; border-top: 1px solid var(--line); color: var(--ink-soft); font-size: 13px; }
+.profile-preference-row:first-of-type { border-top: 0; }
+.profile-preference-row :deep(.theme-switcher) { margin-left: auto; }
+.profile-preference-row :deep(.language-switcher) { flex: none; }
+</style>

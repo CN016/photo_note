@@ -3,7 +3,6 @@ import ContentZoom from '../components/ContentZoom.vue'
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { Aim, Camera, DataAnalysis, Picture, Sunny, Timer, TrendCharts } from '@element-plus/icons-vue'
-import AppHeader from '../components/AppHeader.vue'
 import StatisticsChart from '../components/StatisticsChart.vue'
 import { api } from '../api/client'
 import { ApiError, type InspirationStatisticBucket, type InspirationStatistics } from '../api/types'
@@ -163,7 +162,6 @@ onBeforeUnmount(() => { requestVersion += 1 })
 
 <template>
   <div class="workspace-page statistics-page">
-    <AppHeader />
     <ContentZoom><main id="main-content" class="statistics-main">
       <section class="gallery-intro statistics-intro">
         <div><h1>{{ t('statistics.title') }}</h1></div>

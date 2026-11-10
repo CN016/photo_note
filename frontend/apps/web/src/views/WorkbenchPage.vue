@@ -3,7 +3,6 @@ import ContentZoom from '../components/ContentZoom.vue'
 import { computed, type Component } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { ArrowRight, Calendar, ChatDotRound, Clock, Files, List, Picture, Setting, User } from '@element-plus/icons-vue'
-import AppHeader from '../components/AppHeader.vue'
 import { useAuthStore } from '../stores/auth'
 
 const { t } = useI18n()
@@ -28,7 +27,6 @@ const menuItems = computed(() => {
 
 <template>
   <div class="workspace-page workbench-page">
-    <AppHeader />
     <ContentZoom><main id="main-content" class="workbench-main">
       <header class="workbench-heading">
         <h1>{{ t('workbench.title') }}</h1>

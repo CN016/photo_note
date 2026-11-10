@@ -5,7 +5,6 @@ import { useI18n } from 'vue-i18n'
 import { ElMessage } from 'element-plus'
 import { onBeforeRouteLeave, RouterLink, useRouter } from 'vue-router'
 import { ArrowLeft, Check, Delete, Picture, Plus, UploadFilled } from '@element-plus/icons-vue'
-import AppHeader from '../components/AppHeader.vue'
 import { ApiError, type InspirationImageMetadata } from '../api/types'
 import { api } from '../api/client'
 import { createEditorDocument } from '../../../../packages/editor-core/src'
@@ -194,7 +193,6 @@ onBeforeUnmount(() => {
 
 <template>
   <div class="workspace-page inspiration-upload-page">
-    <AppHeader />
     <ContentZoom><main id="main-content" class="upload-main">
       <header class="upload-heading">
         <RouterLink class="back-link" to="/inspirations"><el-icon aria-hidden="true"><ArrowLeft /></el-icon>{{ t('common.back') }}</RouterLink>

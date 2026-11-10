@@ -5,7 +5,6 @@ import { onBeforeRouteLeave } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { ArrowLeft, ArrowRight, Share } from '@element-plus/icons-vue'
 import { useI18n } from 'vue-i18n'
-import AppHeader from '../components/AppHeader.vue'
 import CreateFab from '../components/CreateFab.vue'
 import { api } from '../api/client'
 import type { ScheduleBooking, ScheduleFields, ScheduleOccurrence, ScheduleShare } from '../api/types'
@@ -264,7 +263,6 @@ onMounted(() => { void load() })
 </script>
 
 <template>
-  <AppHeader />
   <ContentZoom><main id="main-content" class="schedule-main">
     <header class="schedule-heading">
       <div><h1>{{ t('title') }}</h1></div>

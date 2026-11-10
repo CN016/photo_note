@@ -6,7 +6,6 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { UploadFilled, Picture, Search, Download } from '@element-plus/icons-vue'
 import QRCode from 'qrcode'
 import { portfolioPublicBase } from './portfolioPublicBase'
-import AppHeader from '../components/AppHeader.vue'
 import CreateFab from '../components/CreateFab.vue'
 import ContentZoom from '../components/ContentZoom.vue'
 import InspirationThumbnail from '../components/InspirationThumbnail.vue'
@@ -121,7 +120,7 @@ async function revokeShare(){busy.value=true;try{await api.revokePortfolioShare(
 async function copyLink(){try{await navigator.clipboard.writeText(link.value);ElMessage.success(t('portfolio.copied'))}catch{ElMessage.error(t('portfolio.error'))}}
 </script>
 <template>
- <div class="workspace-page"><AppHeader /><ContentZoom><main id="main-content" class="portfolio-main">
+ <div class="workspace-page"><ContentZoom><main id="main-content" class="portfolio-main">
   <header class="portfolio-header"><div><RouterLink v-if="id" to="/portfolios">{{ t('portfolio.back') }}</RouterLink><h1>{{ current?.title || t('portfolio.title') }}</h1><p v-if="current">{{ current.description }}</p></div>
    <div v-if="id" class="portfolio-actions"><template v-if="current"><el-button :disabled="busy" @click="editPortfolio">{{ t('portfolio.edit') }}</el-button><el-button type="primary" :disabled="busy" @click="shareOpen=true">{{ t('portfolio.share') }}</el-button><el-button :disabled="busy" @click="removePortfolio">{{ t('portfolio.delete') }}</el-button></template></div>
   </header>

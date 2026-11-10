@@ -9,6 +9,7 @@ import GlobalContextMenu from './components/GlobalContextMenu.vue'
 import FeedbackWidget from './components/FeedbackWidget.vue'
 import GlobalMessageButton from './components/GlobalMessageButton.vue'
 import StartupRecovery from './components/StartupRecovery.vue'
+import AppHeader from './components/AppHeader.vue'
 import { useAuthStore } from './stores/auth'
 import { configureSpaceCoordination, preparingSpaceSwitch } from './spaces/coordination'
 import { router, defaultAuthenticatedRoute } from './router'
@@ -66,7 +67,8 @@ watch(projectEditorRoute, active => document.body.classList.toggle('project-edit
 /** 路由完成后用当前页面主标题更新文档标题，并向读屏器播报一次导航结果。 */
 watch(() => route.fullPath, async () => {
   await nextTick()
-  const heading = document.querySelector<HTMLElement>('main h1')?.innerText.trim()
+  // 移动端会隐藏页面标题区，但 textContent 仍可用于文档标题和读屏路由播报。
+  const heading = document.querySelector<HTMLElement>('main h1')?.textContent?.trim() ?? ''
   pageAnnouncement.value = heading || document.title
   document.title = heading ? `${heading} · ${t('common.brand')}` : t('common.brand')
 }, { immediate: true, flush: 'post' })
@@ -78,6 +80,7 @@ watch(() => route.fullPath, async () => {
     <p class="sr-only route-announcer" role="status" aria-live="polite" aria-atomic="true">{{ pageAnnouncement }}</p>
     <StartupRecovery />
     <GlobalMessageButton v-if="!route.meta.standalone" />
+    <AppHeader v-if="auth.user && !route.meta.public && !route.meta.standalone" />
     <GlobalContextMenu v-if="!route.meta.standalone" />
     <RouterView v-slot="{ Component, route: pageRoute }">
       <Transition
