@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { detailParentPath, planRouteMotion, type SharedOrigin } from './routeMotion'
+import { detailParentPath, detailParentPaths, planRouteMotion, type SharedOrigin } from './routeMotion'
 
 const origin: SharedOrigin = {
   x: 24,
@@ -52,6 +52,16 @@ describe('route motion planning', () => {
   it('knows the parent list of every shared detail route', () => {
     expect(detailParentPath({ name: 'portfolio-detail', path: '/portfolios/abc' })).toBe('/portfolios')
     expect(detailParentPath({ name: 'delivery-task', path: '/delivery/tasks/abc' })).toBe('/delivery')
+    expect(detailParentPaths({ name: 'delivery-task', path: '/delivery/tasks/abc' })).toContain('/messages')
     expect(detailParentPath({ name: 'gallery', path: '/inspirations' })).toBeUndefined()
+  })
+
+  it('uses the shared transition when a message card opens a resource detail', () => {
+    expect(planRouteMotion(
+      { name: 'edit-inspiration', path: '/inspirations/abc' },
+      { name: 'messages', path: '/messages' },
+      origin,
+      null,
+    )).toEqual({ kind: 'shared-forward', origin })
   })
 })

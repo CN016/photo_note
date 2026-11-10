@@ -25,20 +25,25 @@ export type RouteMotion =
   | { kind: 'page' }
   | { kind: 'none' }
 
-/** 详情路由对应的列表父路由；只有这些页面使用卡片到全屏的共享元素动画。 */
-const DETAIL_PARENT_BY_ROUTE: Record<string, string> = {
-  'edit-inspiration': '/inspirations',
-  'project-editor': '/projects',
-  'project-review-editor': '/project-reviews',
-  'portfolio-detail': '/portfolios',
-  'delivery-task': '/delivery',
-  'organization-edit-inspiration': '/organization-console',
-  'platform-edit-inspiration': '/atelier-7f3c9a2e',
+/** 详情路由可返回的列表入口；消息中心和作品集等页面也能成为卡片动画来源。 */
+const DETAIL_PARENTS_BY_ROUTE: Record<string, readonly string[]> = {
+  'edit-inspiration': ['/inspirations', '/messages'],
+  'project-editor': ['/projects'],
+  'project-review-editor': ['/project-reviews'],
+  'portfolio-detail': ['/portfolios'],
+  'delivery-task': ['/delivery', '/messages'],
+  'organization-edit-inspiration': ['/organization-console'],
+  'platform-edit-inspiration': ['/atelier-7f3c9a2e'],
 }
 
-/** 返回详情页对应的列表入口，供页面返回按钮与浏览器返回共同识别。 */
+/** 返回详情路由支持的首个列表入口，供返回按钮与浏览器返回共同识别。 */
 export function detailParentPath(route: MotionRoute | null | undefined): string | undefined {
-  return route?.name ? DETAIL_PARENT_BY_ROUTE[String(route.name)] : undefined
+  return detailParentPaths(route)[0]
+}
+
+/** 读取一个详情路由全部合法来源，避免消息中心等二级入口退回普通淡入动画。 */
+export function detailParentPaths(route: MotionRoute | null | undefined): readonly string[] {
+  return route?.name ? DETAIL_PARENTS_BY_ROUTE[String(route.name)] ?? [] : []
 }
 
 /**
@@ -51,11 +56,9 @@ export function planRouteMotion(
   capturedOrigin: SharedOrigin | null,
   rememberedOrigin: SharedOrigin | null,
 ): RouteMotion {
-  const forwardParent = detailParentPath(to)
-  if (forwardParent === from.path && capturedOrigin) return { kind: 'shared-forward', origin: capturedOrigin }
+  if (detailParentPaths(to).includes(from.path) && capturedOrigin) return { kind: 'shared-forward', origin: capturedOrigin }
 
-  const backParent = detailParentPath(from)
-  if (backParent === to.path && rememberedOrigin) return { kind: 'shared-back', origin: rememberedOrigin }
+  if (detailParentPaths(from).includes(to.path) && rememberedOrigin) return { kind: 'shared-back', origin: rememberedOrigin }
 
   if (to.path === from.path) return { kind: 'none' }
   return { kind: 'page' }
