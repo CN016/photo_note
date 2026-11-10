@@ -154,7 +154,7 @@ onBeforeUnmount(() => {
     <div v-else-if="failed" class="projects-status projects-error"><p>{{ t('projects.loadError') }}</p><el-button @click="loadProjects">{{ t('common.retry') }}</el-button></div>
     <section v-else-if="records.length" class="projects-grid" :aria-label="t('projects.title')">
       <article v-for="record in records" :key="record.business_id" class="project-card">
-        <RouterLink class="project-card-link" :to="`/projects/${record.business_id}`">
+        <RouterLink class="project-card-link" :data-shared-transition="record.business_id" :to="`/projects/${record.business_id}`">
           <ProjectCoverImage :storekey="record.cover_image_key" :emoji="record.cover_emoji" :label="record.title" />
           <span class="project-card-copy"><strong>{{ record.title }}</strong><small>{{ new Intl.DateTimeFormat(locale, { dateStyle: 'medium' }).format(new Date(record.updated_at)) }}</small><small class="execution-label" :class="`status-${record.status}`"><span class="status-dot" aria-hidden="true" />{{ t(`projects.status.${record.status}`) }}</small></span>
         </RouterLink>

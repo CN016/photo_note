@@ -28,6 +28,12 @@ Its license text is included in exifr-LICENSE.txt. The parser is used on the
 original selected file before a working canvas copy is created; format support
 for EXIF, IPTC and XMP varies by file type.
 
+The web application uses the following animation library:
+
+GSAP 3.15.1 (Webflow Standard "No Charge" License)
+https://gsap.com/standard-license
+Its license text is included in gsap-STANDARD-LICENSE.txt.
+
 Webhook provider artwork in ../brand-logos/ is the unmodified official app icon artwork
 served by Apple App Store product pages. It is bundled locally for provider identification:
 - wecom.jpg — 企业微信, Tencent Technology (Shenzhen) Company Limited:

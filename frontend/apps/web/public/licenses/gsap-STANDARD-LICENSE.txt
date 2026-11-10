@@ -1,0 +1,69 @@
+GSAP Standard "No Charge" License
+https://gsap.com/standard-license
+
+Copyright (c) 2025, Webflow
+
+Plain English Summary
+
+You may use the code at no charge in commercial or non-commercial apps, web
+sites, games, components, and other software as long as end users are not
+charged a fee of any kind to use your product or gain access to any part of it.
+If your client pays you a one-time fee to create the site/product, that is
+permitted under the No Charge license. If end users are charged a
+usage/access/license fee, a Business Club GSAP membership is required.
+
+Use at your own risk. No warranties are offered. Respect the copyright.
+
+I. DEFINITIONS
+
+"GSAP License" means the terms and conditions of this GSAP Software License
+Agreement.
+
+"GSAP Products" means any Software made available at gsap.com or any successor
+sites, including the GSAP animation library and related plugins, tools, or
+extensions.
+
+"Permitted Uses" means the implementation and/or use of GSAP Products on any
+website, web application, or digital interface by any person or entity.
+
+"Prohibited Uses" means implementation and/or use of GSAP Products in tools
+that allow users to build visual animations without code that encourages,
+induces, or materially assists in creating a solution that competes with
+Webflow's visual animation building capabilities.
+
+"Competitive Products" means software, tools, or services that enable users to
+create, edit, or manage animations through a visual interface or builder
+similar to Webflow.
+
+II. GRANT OF LICENSE
+
+Subject to the terms and conditions of this GSAP License, Webflow grants a
+non-exclusive, worldwide license to use, reproduce, display, and implement GSAP
+Products solely for Permitted Uses.
+
+III. RESTRICTIONS
+
+You may not use GSAP Products for Prohibited Uses without prior written
+consent; reverse engineer GSAP Products to create Competitive Products; or
+remove or alter proprietary notices or branding from GSAP Products.
+
+IV. OWNERSHIP AND INTELLECTUAL PROPERTY
+
+All intellectual property rights in GSAP Products, including copyright,
+patents, trademarks, and trade secrets, remain the exclusive property of
+Webflow. This GSAP License does not transfer ownership of GSAP Products.
+
+V. TERMINATION
+
+Webflow may terminate this GSAP License if you fail to comply with its terms.
+On termination, all use of GSAP Products must cease and all copies must be
+destroyed.
+
+VI. MISCELLANEOUS PROVISIONS
+
+This GSAP License is subject to Webflow's Terms of Service. In case of conflict,
+the GSAP License governs GSAP Product use. Webflow may revise the license by
+posting revised terms. Failure to enforce a provision is not a waiver.
+
+Effective date: April 30, 2025
+Last modified date: May 30, 2025

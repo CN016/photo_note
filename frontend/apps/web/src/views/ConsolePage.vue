@@ -417,7 +417,7 @@ onBeforeUnmount(() => {
           <article v-for="item in inspirations" :key="item.business_id" class="console-inspiration-card">
             <button class="console-inspiration-image" type="button" :aria-label="t('console.openImage', { name: item.file_name })" @click="openPreview(item.image_key, item.file_name, item.business_id)"><InspirationThumbnail :record="item" :load-image="managedLoader(item)" /></button>
             <div class="console-inspiration-caption"><strong>{{ item.file_name || t('gallery.untitled') }}</strong><span>{{ t('console.submittedBy', { name: item.owner_nickname }) }}</span><small>{{ displayDate(item.created_at) }}</small></div>
-            <div><RouterLink :to="{ path: `${platform ? '/atelier-7f3c9a2e' : '/organization-console'}/inspirations/${item.business_id}`, query: platform ? { orgid: selectedOrg } : {} }"><el-button text>{{ t('organizations.editImage') }}</el-button></RouterLink><el-button text type="danger" :disabled="saving" @click="deleteManagedImage(item)">{{ t('organizations.deleteImage') }}</el-button></div>
+            <div><RouterLink :data-shared-transition="item.business_id" :to="{ path: `${platform ? '/atelier-7f3c9a2e' : '/organization-console'}/inspirations/${item.business_id}`, query: platform ? { orgid: selectedOrg } : {} }"><el-button text>{{ t('organizations.editImage') }}</el-button></RouterLink><el-button text type="danger" :disabled="saving" @click="deleteManagedImage(item)">{{ t('organizations.deleteImage') }}</el-button></div>
           </article>
         </div>
         <div v-else-if="!loading" class="console-empty">{{ t('console.noInspirations') }}</div>

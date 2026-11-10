@@ -13,6 +13,7 @@ import './style.css'
 import { initializeTheme } from './theme'
 import { installBackendHealthMonitor } from './backendHealth'
 import { initializePlatform } from './platform'
+import { installNavigationMotion } from './motion/navigationMotion'
 
 /** SPA 启动时同步根节点语言状态，再挂载共享 Web 应用。 */
 document.documentElement.lang = i18n.global.locale.value
@@ -24,5 +25,6 @@ app.use(i18n)
 app.use(router)
 app.provide('setLocale', setLocale)
 installBackendHealthMonitor(router)
+installNavigationMotion(router)
 app.mount('#app')
 initializePlatform(router)

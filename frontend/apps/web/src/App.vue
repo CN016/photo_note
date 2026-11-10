@@ -12,6 +12,7 @@ import StartupRecovery from './components/StartupRecovery.vue'
 import { useAuthStore } from './stores/auth'
 import { configureSpaceCoordination, preparingSpaceSwitch } from './spaces/coordination'
 import { router, defaultAuthenticatedRoute } from './router'
+import { beforeRouteEnter, enterRoute, leaveRoute, resetNavigationMotion } from './motion/navigationMotion'
 
 import { isAndroid } from '../../../packages/platform-adapters'
 
@@ -32,7 +33,10 @@ const { locale, t } = useI18n()
 const route = useRoute()
 const auth = useAuthStore()
 const pageAnnouncement = ref('')
-watch(() => `${auth.sessionID}:${auth.orgid}:${auth.sessionVersion}:${auth.user?.business_id ?? ''}`, () => clearGallerySnapshot(), { flush: 'sync' })
+watch(() => `${auth.sessionID}:${auth.orgid}:${auth.sessionVersion}:${auth.user?.business_id ?? ''}`, () => {
+  clearGallerySnapshot()
+  resetNavigationMotion()
+}, { flush: 'sync' })
 // 等待首个导航完成后再处理失效会话，避免初始路由尚未解析时覆盖公开分享页。
 watch(() => [auth.ready, auth.user] as const, async ([ready, user]) => {
   if (!ready || user) return
@@ -76,7 +80,20 @@ watch(() => route.fullPath, async () => {
     <GlobalMessageButton v-if="!route.meta.standalone" />
     <GlobalContextMenu v-if="!route.meta.standalone" />
     <RouterView v-slot="{ Component, route: pageRoute }">
-      <component :is="Component" v-if="pageRoute.meta.public || auth.user" :key="`${auth.sessionID}:${auth.orgid}:${auth.sessionVersion}:${pageRoute.path}`" />
+      <Transition
+        :css="false"
+        @before-enter="beforeRouteEnter"
+        @enter="enterRoute"
+        @leave="leaveRoute"
+      >
+        <div
+          v-if="pageRoute.meta.public || auth.user"
+          :key="`${auth.sessionID}:${auth.orgid}:${auth.sessionVersion}:${pageRoute.path}`"
+          class="route-page-frame"
+        >
+          <component :is="Component" />
+        </div>
+      </Transition>
     </RouterView>
     <FeedbackWidget v-if="route.name && !route.meta.standalone" />
     <div v-if="preparingSpaceSwitch" class="space-switch-overlay" role="status" aria-live="polite">{{ $t('spaces.preparing') }}</div>

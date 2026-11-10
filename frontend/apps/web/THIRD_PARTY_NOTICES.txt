@@ -8,6 +8,10 @@
 拍摄统计图表使用 Apache ECharts 6.1.0（Apache-2.0）：https://echarts.apache.org/ 。
 Copyright 2017-2026 The Apache Software Foundation。
 
+页面共享元素与路由动画使用 GSAP 3.15.1（Webflow Standard "No Charge"
+License）：https://gsap.com/standard-license 。
+许可副本位于 public/licenses/gsap-STANDARD-LICENSE.txt。
+
 
 拍摄策划文档编辑器：
 - tiptap-vue-pro-element-plus 0.2.6、tiptap-vue-pro-core 0.2.6：MIT。来源：https://github.com/twoer/tiptap-vue-pro 。保留上游组件的工具栏与基础排版，业务资源通过自有适配层接入；许可副本位于 public/licenses/tiptap-vue-pro-LICENSE.txt。

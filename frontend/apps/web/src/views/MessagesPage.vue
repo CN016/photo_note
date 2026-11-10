@@ -417,7 +417,7 @@ onBeforeUnmount(() => {
       <div v-else-if="messages.length === 0" class="messages-empty">{{ t('empty') }}</div>
 
       <div v-else class="notification-list">
-        <article v-for="item in messages" :key="item.business_id" class="notification-card" :class="{ unread: !item.read_at }" role="button" tabindex="0" :aria-label="`${messageTitle(item)}. ${messageBody(item)}`" @click="openMessage(item)" @keydown.enter.self.prevent="openMessage(item)" @keydown.space.self.prevent="openMessage(item)">
+        <article v-for="item in messages" :key="item.business_id" class="notification-card" :class="{ unread: !item.read_at }" role="button" tabindex="0" :data-shared-transition="item.business_id" :aria-label="`${messageTitle(item)}. ${messageBody(item)}`" @click="openMessage(item)" @keydown.enter.self.prevent="openMessage(item)" @keydown.space.self.prevent="openMessage(item)">
           <div class="notification-marker" aria-hidden="true"></div>
           <div class="notification-content">
             <div class="notification-title-row">

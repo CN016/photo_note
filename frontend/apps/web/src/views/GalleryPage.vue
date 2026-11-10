@@ -268,7 +268,7 @@ onBeforeUnmount(() => { alive = false; disposeMenu?.(); gesture.cancel(); associ
 
       <section v-if="items.length" class="inspiration-grid" :aria-label="t('gallery.title')">
         <article v-for="(item, index) in items" :key="item.business_id" class="inspiration-card" tabindex="0" :data-inspiration-card="item.business_id" :style="{ '--card-index': index % 8 }">
-          <RouterLink class="inspiration-link" :to="`/inspirations/${item.business_id}`" :aria-label="t('gallery.openImage', { name: item.file_name || t('gallery.untitled') })">
+          <RouterLink class="inspiration-link" :data-shared-transition="item.business_id" :to="`/inspirations/${item.business_id}`" :aria-label="t('gallery.openImage', { name: item.file_name || t('gallery.untitled') })">
             <InspirationThumbnail :record="item" />
             <div class="card-caption">
               <span class="card-title">{{ item.file_name || t('gallery.untitled') }}</span>
