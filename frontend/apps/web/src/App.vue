@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, ref, watch, onBeforeUnmount } from 'vue'
+import { computed, defineComponent, h, nextTick, ref, watch, onBeforeUnmount } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute } from 'vue-router'
 import zhCn from 'element-plus/es/locale/lang/zh-cn'
@@ -33,6 +33,12 @@ onBeforeUnmount(() => {
 const { locale, t } = useI18n()
 const route = useRoute()
 const auth = useAuthStore()
+// 仅缓存图库路由框；账号、空间或会话变化会销毁整个缓存，私有图片不跨范围复用。
+const galleryScope = computed(() => `${auth.sessionID}:${auth.orgid}:${auth.sessionVersion}:${auth.user?.business_id ?? ''}`)
+// 进入上传或其他业务页时释放图库，下次进入重新查询，避免长期缓存掩盖新增和删除。
+const cachedGallery = computed(() => ['gallery', 'edit-inspiration', 'inspiration-statistics'].includes(String(route.name)) || (route.name === 'project-editor' && route.query.from === 'gallery') ? 'GalleryRouteFrame' : '')
+const GalleryRouteFrame = defineComponent({ name: 'GalleryRouteFrame', setup: (_, { slots }) => () => h('div', { class: 'route-page-frame' }, slots.default?.()) })
+const RoutePageFrame = defineComponent({ name: 'RoutePageFrame', setup: (_, { slots }) => () => h('div', { class: 'route-page-frame' }, slots.default?.()) })
 const pageAnnouncement = ref('')
 watch(() => `${auth.sessionID}:${auth.orgid}:${auth.sessionVersion}:${auth.user?.business_id ?? ''}`, () => {
   clearGallerySnapshot()
@@ -89,13 +95,15 @@ watch(() => route.fullPath, async () => {
         @enter="enterRoute"
         @leave="leaveRoute"
       >
-        <div
-          v-if="pageRoute.meta.public || auth.user"
-          :key="`${auth.sessionID}:${auth.orgid}:${auth.sessionVersion}:${pageRoute.path}`"
-          class="route-page-frame"
-        >
-          <component :is="Component" />
-        </div>
+        <KeepAlive :key="galleryScope" :include="cachedGallery" :max="1">
+          <component
+            :is="pageRoute.name === 'gallery' ? GalleryRouteFrame : RoutePageFrame"
+            v-if="pageRoute.meta.public || auth.user"
+            :key="`${galleryScope}:${pageRoute.path}`"
+          >
+            <component :is="Component" />
+          </component>
+        </KeepAlive>
       </Transition>
     </RouterView>
     <FeedbackWidget v-if="route.name && !route.meta.standalone" />

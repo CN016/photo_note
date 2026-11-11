@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { useGallerySectionSwipe } from '../useGallerySectionSwipe'
 import ContentZoom from '../components/ContentZoom.vue'
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
@@ -10,6 +11,8 @@ import { useAuthStore } from '../stores/auth'
 import { ElMessage } from 'element-plus'
 
 const { t, locale } = useI18n()
+const sectionRoot = ref<HTMLElement>()
+useGallerySectionSwipe(sectionRoot, 'statistics')
 const statistics = ref<InspirationStatistics | null>(null)
 const auth = useAuthStore()
 const chartModes = ref<Record<string, string>>({})
@@ -161,7 +164,7 @@ onBeforeUnmount(() => { requestVersion += 1 })
 </script>
 
 <template>
-  <div class="workspace-page statistics-page">
+  <div ref="sectionRoot" class="workspace-page statistics-page">
     <ContentZoom><main id="main-content" class="statistics-main">
       <section class="gallery-intro statistics-intro">
         <div><h1>{{ t('statistics.title') }}</h1></div>
@@ -228,3 +231,7 @@ onBeforeUnmount(() => { requestVersion += 1 })
     <footer class="workspace-footer"><span>{{ t('common.brand') }}</span><span>{{ t('common.footer') }}</span></footer>
   </div>
 </template>
+
+<style scoped>
+@media (max-width: 768px) { .statistics-main { padding-top: 0; } .gallery-subnav { margin-top: 0; } }
+</style>

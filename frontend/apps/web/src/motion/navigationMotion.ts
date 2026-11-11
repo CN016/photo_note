@@ -139,9 +139,10 @@ function runSharedBack(element: HTMLElement, origin: SharedOrigin, done: () => v
   const timeline = gsap.timeline({
     onComplete: () => {
       originTarget.remove()
+      // 先移除仍固定定位的详情，再清理样式；先恢复文档流会触发浏览器滚动锚定，把列表拉走。
+      done()
       releaseRouteRoot(element)
       restoreScroll(origin)
-      done()
     },
   })
   const shrink = Flip.fit(element, originTarget, {
@@ -160,17 +161,20 @@ function runSharedBack(element: HTMLElement, origin: SharedOrigin, done: () => v
     }, 0)
 }
 
-/** 等待列表重新布局后恢复滚动；首次立即恢复，较长页面加载完成后再校准一次。 */
+/** 缓存列表已保留布局，即时恢复位置，禁止延迟二次滚动覆盖用户返回后的操作。 */
 function restoreScroll(origin: SharedOrigin): void {
   const restore = () => window.scrollTo({ left: origin.scrollX, top: origin.scrollY, behavior: 'instant' as ScrollBehavior })
   restore()
-  window.setTimeout(restore, 260)
+
 }
 
 /** Vue Transition 进入前钩子：仅准备共享详情起点，普通页面保留浏览器原生布局。 */
 export function beforeRouteEnter(element: Element): void {
   const node = element as HTMLElement
+  gsap.set(node, { clearProps: 'opacity,transform' })
   node.dataset.routeMotion = pendingMotion.kind
+  // 返回列表在首帧绘制前就到达原位置；离开的详情覆盖在其上执行缩回动画。
+  if (pendingMotion.kind === 'shared-back') { restoreScroll(pendingMotion.origin); return }
   if (pendingMotion.kind !== 'shared-forward' || reducedMotion) return
   pinRouteRoot(node)
   const target = createBoundsTarget(pendingMotion.origin)
@@ -183,6 +187,7 @@ export function beforeRouteEnter(element: Element): void {
 export function enterRoute(element: Element, done: () => void): void {
   const node = element as HTMLElement
   if (pendingMotion.kind === 'shared-forward' && !reducedMotion) runSharedForward(node, pendingMotion.origin, done)
+  else if (pendingMotion.kind === 'shared-back') { gsap.set(node, { clearProps: 'opacity,transform' }); restoreScroll(pendingMotion.origin); done() }
   else runPageEnter(node, done)
 }
 

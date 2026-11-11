@@ -1,7 +1,8 @@
 <script setup lang="ts">
+import { useGallerySectionSwipe } from '../useGallerySectionSwipe'
 import ContentZoom from '../components/ContentZoom.vue'
-import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { useRouter } from 'vue-router'
+import { computed, nextTick, onActivated, onDeactivated, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { onBeforeRouteLeave, useRoute, useRouter } from 'vue-router'
 import { registerMenu, openMenu, updateMenu, menuState, type MenuEntry } from '../context-menu/menu'
 import { clipboardAdapter } from '../../../../packages/platform-adapters'
 import { copyImage } from '../context-menu/clipboard'
@@ -9,7 +10,7 @@ import { createLongPress } from '../context-menu/longPress'
 import { gallerySnapshot, saveGallerySnapshot, clearGallerySnapshot } from '../context-menu/galleryNavigation'
 import type { InspirationProjectSummary } from '../api/types'
 import { useI18n } from 'vue-i18n'
-import { ArrowDown, Filter, PictureFilled, Search } from '@element-plus/icons-vue'
+import { ArrowDown, Filter, PictureFilled, Search, User } from '@element-plus/icons-vue'
 import CreateFab from '../components/CreateFab.vue'
 import InspirationThumbnail from '../components/InspirationThumbnail.vue'
 import InspirationLibraryTools from '../components/InspirationLibraryTools.vue'
@@ -21,7 +22,37 @@ import { useCompactViewport } from '../useCompactViewport'
 
 const { t, locale } = useI18n()
 const router = useRouter()
+const route = useRoute()
+const showPeople = ref(false)
+const active = ref(true)
+let savedScroll = 0
+let openedImageID = ''
+// 离开前记录真实位置；激活发生在浏览器绘制之前，缩略图和筛选均沿用原实例。
+onBeforeRouteLeave(to => { savedScroll = window.scrollY; openedImageID = to.name === 'edit-inspiration' ? String(to.params.id) : '' })
+onDeactivated(() => { active.value = false; gesture.cancel(); associationVersion += 1 })
+onActivated(() => {
+  active.value = true
+  window.scrollTo({ top: savedScroll, behavior: 'instant' as ScrollBehavior })
+  // 详情可能保存了图片或标签，只更新对应记录；不清空列表、不重置分页或重新下载未变化的缩略图。
+  if (openedImageID) {
+    const id = openedImageID, scope = scopeKey()
+    openedImageID = ''
+    void api.inspiration(id).then(record => {
+      if (!alive || !active.value || scope !== scopeKey()) return
+      const index = items.value.findIndex(item => item.business_id === id)
+      if (index >= 0) items.value[index] = record
+    }).catch(() => { /* 单条刷新失败保留已显示内容，列表重试仍通过原入口进行。 */ })
+  }
+  const saved = gallerySnapshot(scopeKey(), history.state.galleryReturnKey)
+  if (saved && saved.key === history.state.galleryReturnKey && saved.position === history.state.position) void nextTick(() => {
+    if (!active.value || route.name !== 'gallery') return
+    const card = galleryRoot.value?.querySelector<HTMLElement>(`[data-inspiration-card="${saved.imageID}"]`)
+    const item = items.value.find(item => item.business_id === saved.imageID)
+    if (card && item) showProjects(item, card, saved.x, saved.y, saved.menuPage, saved.menuScroll)
+  })
+})
 const galleryRoot = ref<HTMLElement>()
+useGallerySectionSwipe(galleryRoot, 'list')
 const libraryTools = ref<InstanceType<typeof InspirationLibraryTools>>()
 const contentZoom = ref<InstanceType<typeof ContentZoom>>()
 const compact = useCompactViewport()
@@ -151,7 +182,7 @@ async function loadTags() {
 
 /** 筛选条件变化后短暂合并连续输入，并从第一页重新查询。 */
 watch([searchQuery, selectedTagIDs, tagMatch, sort, libraryFilters], () => {
-  if (restoring) return
+  if (restoring || !active.value) return
   if (searchTimer !== undefined) window.clearTimeout(searchTimer)
   searchTimer = window.setTimeout(() => { void loadPage(1) }, 220)
 })
@@ -169,29 +200,11 @@ function resetFilters() {
 
 watch(() => [auth.orgid, auth.user?.business_id, auth.sessionVersion], () => {
   clearGallerySnapshot(); associationVersion += 1; requestVersion += 1; items.value = []; total.value = 0; libraryFilters.value = {}; selectedTagIDs.value = []; tags.value = []
-  void loadPage(); void loadTags()
+  if (active.value && route.name === 'gallery') { void loadPage(); void loadTags() }
 })
 
-/** 使用当前界面语言格式化灵感图创建日期。 */
-function displayDate(value: string): string {
-  return new Intl.DateTimeFormat(locale.value, { year: 'numeric', month: 'short', day: 'numeric' }).format(new Date(value))
-}
-
-/** 将后端记录的编辑副本字节数格式化为当前语言下易读的单位。 */
-function displayFileSize(bytes: number | null | undefined): string {
-  if (bytes === null || bytes === undefined || !Number.isFinite(bytes) || bytes < 0) return ''
-  const units = ['B', 'KB', 'MB', 'GB', 'TB']
-  let value = bytes
-  let unitIndex = 0
-  while (value >= 1024 && unitIndex < units.length - 1) {
-    value /= 1024
-    unitIndex += 1
-  }
-  return `${new Intl.NumberFormat(locale.value, { maximumFractionDigits: 1 }).format(value)} ${units[unitIndex]}`
-}
-
 /** 只在当前页有未完成任务且页面可见时刷新，异步结果不依赖用户手动切换筛选。 */
-const processingTimer = window.setInterval(() => { if (document.visibilityState === 'visible' && page.value === 1 && !loading.value && items.value.some(item => ['pending_compression','compressing','pending_analysis','analyzing'].includes(item.analysis_status || ''))) void loadPage() }, 30_000)
+const processingTimer = window.setInterval(() => { if (active.value && document.visibilityState === 'visible' && page.value === 1 && !loading.value && items.value.some(item => ['pending_compression','compressing','pending_analysis','analyzing'].includes(item.analysis_status || ''))) void loadPage() }, 30_000)
 onMounted(async () => {
   if (galleryRoot.value) disposeMenu = registerMenu(galleryRoot.value, event => {
     const card = (event.target as Element).closest<HTMLElement>('[data-inspiration-card]')
@@ -260,7 +273,7 @@ onBeforeUnmount(() => { alive = false; disposeMenu?.(); gesture.cancel(); associ
         </div>
       </section>
 
-      <div v-if="items.length" class="gallery-meta"><span>{{ t('gallery.count', { count: total }) }}</span><span class="gallery-meta-line"></span></div>
+      <div v-if="items.length" class="gallery-meta"><span>{{ t('gallery.count', { count: total }) }}</span><button type="button" class="gallery-people-toggle" :class="{ 'is-active': showPeople }" :aria-pressed="showPeople" :aria-label="t('gallery.togglePeople')" :title="t('gallery.togglePeople')" @click="showPeople = !showPeople"><el-icon aria-hidden="true"><User /></el-icon></button></div>
 
       <div v-if="error" class="inline-error" role="alert"><span>{{ error }}</span><el-button text :disabled="loading" @click="loadPage(page)">{{ t('gallery.retry') }}</el-button></div>
 
@@ -268,30 +281,9 @@ onBeforeUnmount(() => { alive = false; disposeMenu?.(); gesture.cancel(); associ
         <article v-for="(item, index) in items" :key="item.business_id" class="inspiration-card" tabindex="0" :data-inspiration-card="item.business_id" :style="{ '--card-index': index % 8 }">
           <RouterLink class="inspiration-link" :data-shared-transition="item.business_id" :to="`/inspirations/${item.business_id}`" :aria-label="t('gallery.openImage', { name: item.file_name || t('gallery.untitled') })">
             <InspirationThumbnail :record="item" />
-            <div class="card-caption">
-              <span class="card-title">{{ item.file_name || t('gallery.untitled') }}</span>
-              <div v-if="item.tag_names?.length" class="card-tags" :aria-label="t('gallery.tags')">
-                <el-tag v-for="name in (item.tag_names ?? []).slice(0, 3)" :key="name" class="inspiration-card-tag" effect="plain" size="small">{{ name }}</el-tag>
-                <el-tooltip
-                  v-if="(item.tag_names?.length ?? 0) > 3"
-                  :content="(item.tag_names ?? []).slice(3).join(' · ')"
-                  placement="top"
-                >
-                  <el-tag
-                    class="inspiration-card-tag inspiration-card-tag-overflow"
-                    effect="plain"
-                    size="small"
-                    :aria-label="t('gallery.moreTagsTooltip', { tags: (item.tag_names ?? []).slice(3).join(' · ') })"
-                  >{{ t('gallery.moreTags', { count: (item.tag_names?.length ?? 0) - 3 }) }}</el-tag>
-                </el-tooltip>
-              </div>
-              <div class="card-caption-meta">
-                <span class="card-date">{{ t('gallery.created', { date: displayDate(item.created_at) }) }}</span>
-                <span v-if="item.file_size != null" class="card-size">{{ t('gallery.editCopySize', { size: displayFileSize(item.file_size) }) }}</span>
-              </div>
-            </div>
+
           </RouterLink>
-          <div v-if="item.analysis_status" class="gallery-analysis">
+          <div v-if="showPeople && item.analysis_status" class="gallery-analysis">
             <span v-if="item.analysis_status === 'succeeded'">{{ item.people_count === 0 ? t('gallery.library.emptyOnly') : t('gallery.library.personCount', { count: item.people_count }) }}<i v-if="item.dominant_color" :style="{ background: item.dominant_color }" :title="item.color_bucket ? t(`gallery.library.colorNames.${item.color_bucket}`) : ''" /></span>
             <span v-else role="status">{{ t(`gallery.library.states.${item.analysis_status}`) }}</span>
           </div>
@@ -325,4 +317,30 @@ onBeforeUnmount(() => { alive = false; disposeMenu?.(); gesture.cancel(); associ
 <style scoped>
 .inspiration-card { -webkit-touch-callout: none; }
 .inspiration-card img { -webkit-user-drag: none; }
+</style>
+
+<style scoped>
+/* 双列优先呈现图片，元信息保留在详情；人数是可选的图上角标，不改变卡片高度。 */
+.gallery-main { padding-top: 20px; }
+.gallery-subnav { margin-top: 0; }
+.gallery-tools { display: flex; flex-wrap: wrap; padding: 0; margin-top: 12px; border: 0; box-shadow: none; background: transparent; }
+.gallery-search { flex: 1; min-width: 100px; max-width: 360px; }
+.gallery-advanced-filters { flex: 1; }
+.gallery-meta { justify-content: space-between; margin: 8px 0; }
+.gallery-people-toggle { display: grid; place-items: center; width: 36px; height: 36px; border: 1px solid var(--line); border-radius: 50%; background: var(--surface); color: var(--muted); cursor: pointer; }
+.gallery-people-toggle.is-active { color: var(--accent); background: var(--accent-soft); border-color: var(--accent); }
+.gallery-people-toggle:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.inspiration-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.inspiration-card { position: relative; }
+.gallery-analysis { position: absolute; left: 8px; bottom: 8px; max-width: calc(100% - 16px); padding: 5px 8px; border-radius: 999px; background: var(--surface); color: var(--ink); pointer-events: none; }
+@media (max-width: 768px) {
+  .gallery-main { width: calc(100% - 20px); padding-top: 0; }
+  .gallery-subnav { gap: 24px; padding-inline: 4px; }
+  .gallery-search { max-width: none; }
+  .gallery-filter-toggle { min-height: 38px; height: 38px; width: 40px; }
+  .gallery-tools :deep(.el-input__wrapper) { min-height: 36px; }
+  .gallery-advanced-filters { flex-basis: 100%; }
+  .inspiration-grid { gap: 8px; }
+  .inspiration-card :deep(.thumbnail-frame) { border-radius: 14px; }
+}
 </style>
