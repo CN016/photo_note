@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { RouteMotion } from './routeMotion'
 
 const fixture = vi.hoisted(() => ({ planned: { kind: 'page' } as RouteMotion, timelines: [] as any[] }))
+vi.mock('./imageMotion', () => ({ attachListImage: vi.fn(), captureListImage: vi.fn(), completeImageOpen: vi.fn(), discardPendingImage: vi.fn(), removeMotionImage: vi.fn(), resetMotionImages: vi.fn() }))
 vi.mock('./routeMotion', () => ({ planRouteMotion: () => fixture.planned }))
 vi.mock('gsap/Flip', () => ({ Flip: { fit: vi.fn(), killFlipsOf: vi.fn() } }))
 vi.mock('gsap', () => ({ gsap: {
@@ -53,6 +54,7 @@ describe('可中断窗口动画', () => {
     plan('shared-back'); motion.leaveRoute(node, done)
     expect(fixture.timelines).toHaveLength(1)
     expect(fixture.timelines[0].reverse).toHaveBeenCalledOnce()
+    expect(fixture.timelines[0].timeScale).toHaveBeenLastCalledWith(0.18 / 0.7)
     expect(done).not.toHaveBeenCalled()
     expect(document.body.style.minHeight).toBe('4200px')
     fixture.timelines[0].callbacks.onReverseComplete()
@@ -70,6 +72,7 @@ describe('可中断窗口动画', () => {
     expect(gsap.killTweensOf).toHaveBeenCalledTimes(kills)
     expect(fixture.timelines).toHaveLength(1)
     expect(fixture.timelines[0].reverse).toHaveBeenCalledOnce()
+    expect(fixture.timelines[0].timeScale).toHaveBeenLastCalledWith(0.18 / 0.7)
     expect(document.body.style.minHeight).toBe('4200px')
   })
   it('列表激活取消旧离场 Tween，避免迟到回调隐藏列表', async () => {

@@ -1,3 +1,4 @@
+import { attachListImage, captureListImage, completeImageOpen, discardPendingImage, removeMotionImage, resetMotionImages } from './imageMotion'
 import { gsap } from 'gsap'
 import { Flip } from 'gsap/Flip'
 import type { Router } from 'vue-router'
@@ -5,6 +6,8 @@ import { planRouteMotion, type MotionRoute, type RouteMotion, type SharedOrigin 
 
 gsap.registerPlugin(Flip)
 
+// 开合统一700ms，中途返回按剩余轨迹调整timeScale，不再突然快速收回。
+const WINDOW_MOTION_DURATION = 0.7
 type CapturedOrigin = SharedOrigin
 
 let installed = false
@@ -35,7 +38,10 @@ function captureSharedOrigin(event: Event): void {
   if (event instanceof MouseEvent && (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey)) return
   const marker = event.target.closest<HTMLElement>('[data-shared-transition]')
   if (!marker || marker.closest('[aria-disabled="true"]')) return
-  capturedOrigin = readOrigin(marker)
+  const thumbnail = marker.querySelector<HTMLElement>('.thumbnail-frame')
+  const hasPreview = captureListImage(marker)
+  // 尚未加载出图片时不把占位框当成真实图放大；正常详情仍可打开并显示读取状态。
+  capturedOrigin = thumbnail && !hasPreview ? null : readOrigin(thumbnail ?? marker)
 }
 
 /** 检查系统减弱动态效果设置；开启时保留即时页面切换，不执行缩放与位移动画。 */
@@ -146,7 +152,7 @@ function runSharedForward(element: HTMLElement, origin: SharedOrigin, done: () =
     existing.timeline.eventCallback('onReverseComplete', null)
     existing.timeline.eventCallback('onComplete', () => {
       releaseRouteRoot(element); existing.pinned = false; freeScrollExtent(element)
-      window.scrollTo({ top: 0, left: 0, behavior: 'instant' as ScrollBehavior }); done()
+      window.scrollTo({ top: 0, left: 0, behavior: 'instant' as ScrollBehavior }); completeImageOpen(element); done()
     })
     existing.timeline.play()
     return
@@ -163,7 +169,7 @@ function runSharedForward(element: HTMLElement, origin: SharedOrigin, done: () =
   timeline.to(element, {
     x: 0, y: 0, scaleX: 1, scaleY: 1, borderRadius: 0,
     boxShadow: '0 0 0 rgb(0 0 0 / 0%)',
-    duration: 0.7, ease: 'back.out(1.35)',
+    duration: WINDOW_MOTION_DURATION, ease: 'back.out(1.35)',
   })
   timeline.eventCallback('onComplete', () => {
     if (state.reversing) return
@@ -171,8 +177,10 @@ function runSharedForward(element: HTMLElement, origin: SharedOrigin, done: () =
     state.pinned = false
     freeScrollExtent(element)
     window.scrollTo({ top: 0, left: 0, behavior: 'instant' as ScrollBehavior })
+    completeImageOpen(element)
     done()
   })
+  attachListImage(element)
   timeline.play(0)
 }
 
@@ -197,6 +205,7 @@ function runSharedBack(element: HTMLElement, origin: SharedOrigin, done: () => v
     state!.timeline.kill()
     windowMotions.delete(element)
     // 保持详情固定定位直至移除，避免退出最后一帧触发滚动锚定。
+    removeMotionImage(element)
     done()
     releaseRouteRoot(element)
     freeScrollExtent(element)
@@ -205,7 +214,7 @@ function runSharedBack(element: HTMLElement, origin: SharedOrigin, done: () => v
   state.timeline.eventCallback('onComplete', null)
   state.timeline.eventCallback('onReverseComplete', finish)
   if (state.timeline.time() <= 0.001) finish()
-  else state.timeline.timeScale(1).reverse()
+  else state.timeline.timeScale(state.timeline.time() / WINDOW_MOTION_DURATION).reverse()
 }
 
 /** Vue 取消进入动画时只暂停；随后 leave 钩子会倒放同一条时间线。 */
@@ -267,6 +276,7 @@ export function leaveRoute(element: Element, done: () => void): void {
   const previous = windowMotions.get(node)
   if (previous) { previous.timeline.kill(); windowMotions.delete(node); freeScrollExtent(node) }
   if (reducedMotion) {
+    removeMotionImage(node)
     releaseRouteRoot(node)
     done()
     return
@@ -277,6 +287,7 @@ export function leaveRoute(element: Element, done: () => void): void {
     duration: 0.18,
     ease: 'power2.in',
     onComplete: () => {
+      removeMotionImage(node)
       releaseRouteRoot(node)
       done()
     },
@@ -287,6 +298,7 @@ export function leaveRoute(element: Element, done: () => void): void {
 export function resetNavigationMotion(): void {
   for (const [node, state] of windowMotions) { state.timeline.kill(); releaseRouteRoot(node); freeScrollExtent(node) }
   windowMotions.clear()
+  resetMotionImages()
   capturedOrigin = null
   rememberedOrigins.clear()
   pendingMotion = { kind: 'page' }
@@ -309,6 +321,7 @@ export function installNavigationMotion(router: Router): void {
       capturedOrigin,
       rememberedOrigins.get(fromRoute.fullPath ?? fromRoute.path) ?? null,
     )
+    if (pendingMotion.kind !== 'shared-forward') discardPendingImage()
     if (pendingMotion.kind === 'shared-forward') rememberedOrigins.set(toRoute.fullPath ?? toRoute.path, pendingMotion.origin)
     capturedOrigin = null
     return true

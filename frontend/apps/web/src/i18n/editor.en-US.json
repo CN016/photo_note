@@ -1,4 +1,7 @@
 {
+  "imageNote": "Note",
+  "imageNotePlaceholder": "Add an image note",
+
   "toolbarAnchors": "Anchors",
   "tools": "Image editing tools",
   "adjust": "Adjust",

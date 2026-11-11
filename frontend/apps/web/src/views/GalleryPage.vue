@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { useGallerySectionSwipe } from '../useGallerySectionSwipe'
+import { imageNote } from '../images/imageNote'
 import ContentZoom from '../components/ContentZoom.vue'
 import { computed, nextTick, onActivated, onDeactivated, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { onBeforeRouteLeave, useRoute, useRouter } from 'vue-router'
@@ -281,6 +282,7 @@ onBeforeUnmount(() => { alive = false; disposeMenu?.(); gesture.cancel(); associ
         <article v-for="(item, index) in items" :key="item.business_id" class="inspiration-card" tabindex="0" :data-inspiration-card="item.business_id" :style="{ '--card-index': index % 8 }">
           <RouterLink class="inspiration-link" :data-shared-transition="item.business_id" :to="`/inspirations/${item.business_id}`" :aria-label="t('gallery.openImage', { name: item.file_name || t('gallery.untitled') })">
             <InspirationThumbnail :record="item" />
+            <p v-if="imageNote(item.data)" class="gallery-image-note" :title="imageNote(item.data)">{{ imageNote(item.data) }}</p>
 
           </RouterLink>
           <div v-if="showPeople && item.analysis_status" class="gallery-analysis">
@@ -349,4 +351,9 @@ onBeforeUnmount(() => { alive = false; disposeMenu?.(); gesture.cancel(); associ
 /* 手机双列；桌面按可用区域自动增加列数，保持卡片至少约 210px 宽。 */
 @media (min-width: 769px) { .inspiration-grid { grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 16px; } }
 @media (min-width: 1600px) { .gallery-main { max-width: none; } }
+</style>
+
+<style scoped>
+.gallery-image-note { overflow: hidden; margin: 0; padding: 7px 2px 2px; color: var(--ink); font-size: 13px; line-height: 1.5; white-space: nowrap; text-overflow: ellipsis; }
+.gallery-analysis { top: 8px; bottom: auto; }
 </style>

@@ -1,4 +1,7 @@
 {
+  "imageNote": "备注",
+  "imageNotePlaceholder": "添加图片备注",
+
   "toolbarAnchors": "锚点",
   "tools": "图片编辑工具",
   "adjust": "调整",

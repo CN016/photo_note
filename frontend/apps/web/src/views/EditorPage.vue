@@ -1,11 +1,13 @@
 <script setup lang="ts">
+import EditorToolSurface from '../components/EditorToolSurface.vue'
+import { captureDetailImage, detailImageReady } from '../motion/imageMotion'
 import ContentZoom from '../components/ContentZoom.vue'
 import { friendlyExtra, formatMetadataValue as formatImageMetadataValue, rawMetadataValue, gpsMapUrl } from './imageMetadataDisplay'
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, shallowRef } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { onBeforeRouteLeave, useRoute, useRouter } from 'vue-router'
 import { ElMessageBox, type UploadFile } from 'element-plus'
-import { ArrowLeft, ArrowRight, Check, Close, Crop, FullScreen, Plus, RefreshLeft, RefreshRight, UploadFilled, MoreFilled, Edit, PriceTag, Aim, Operation } from '@element-plus/icons-vue'
+import { ArrowLeft, ArrowRight, Check, Close, Crop, FullScreen, Plus, RefreshLeft, RefreshRight, UploadFilled, MoreFilled, Edit, PriceTag, Aim, Operation, Document } from '@element-plus/icons-vue'
 import { api as baseApi } from '../api/client'
 import { ApiError, type InspirationImageMetadata, type InspirationRecord } from '../api/types'
 import { useAnchorDisplayStore } from '../stores/anchorDisplay'
@@ -43,8 +45,20 @@ const api = {
 const isExisting = computed(() => itemId.value.length > 0)
 const isEditing = ref(false)
 // 属性和工具按需打开，不把拍摄参数、标签与编辑控件堆在图片下方。
-const toolPanel = ref<'properties' | 'tags' | 'anchors' | 'adjust' | null>(null)
-const toolTitle = computed(() => t(toolPanel.value === 'properties' ? 'editor.metadataPanelTitle' : toolPanel.value === 'tags' ? 'editor.tags' : toolPanel.value === 'anchors' ? 'editor.anchors' : 'editor.adjust'))
+const toolPanel = ref<'properties' | 'tags' | 'anchors' | 'adjust' | 'note' | null>(null)
+const toolAnchor = shallowRef<HTMLElement>()
+const noteText = computed(() => typeof documentData.value.image_note === 'string' ? documentData.value.image_note : '')
+/** 图片备注沿用文档扩展JSON和已有保存接口，进入撤销历史，不增加数据库字段。 */
+function updateImageNote(value: string | number) { commit({ ...documentData.value, image_note: String(value).slice(0, 500) }) }
+/** 参数浮层不阻挡画布；锚点一键进入编辑和点按添加状态。 */
+function openTool(panel: 'tags' | 'anchors' | 'adjust' | 'note', event: MouseEvent) {
+  toolAnchor.value = event.currentTarget as HTMLElement
+  if (panel !== 'tags' && !isEditing.value) beginEditing()
+  if (panel === 'anchors') { anchorMode.value = true; cropMode.value = false }
+  else anchorMode.value = false
+  toolPanel.value = toolPanel.value === panel ? null : panel
+}
+const toolTitle = computed(() => t(toolPanel.value === 'properties' ? 'editor.metadataPanelTitle' : toolPanel.value === 'tags' ? 'editor.tags' : toolPanel.value === 'anchors' ? 'editor.toolbarAnchors' : toolPanel.value === 'note' ? 'editor.imageNote' : 'editor.adjust'))
 /** 锚点添加需要回到画布接收点击，先关闭工具浮窗，保留当前编辑状态。 */
 function toggleAnchorTool() { anchorMode.value = !anchorMode.value; toolPanel.value = null }
 
@@ -279,6 +293,7 @@ async function cancelEditing(): Promise<void> {
   historyRevision.value += 1
   editSnapshot.value = ''
   isEditing.value = false
+  toolPanel.value = null
   anchorMode.value = false
   cropMode.value = false
   cropSelection.value = null
@@ -420,12 +435,14 @@ async function loadSelectedFile(file: File): Promise<void> {
 
 /** 打开既有记录时读取压缩后的工作图，避免依赖后台会回收的原图 key。 */
 async function loadExisting(): Promise<void> {
+  const version = ++decodeVersion
   loading.value = true
   error.value = ''
   colorAnalysis.value = null
   colorAnalysisError.value = ''
   try {
     const loaded = await api.inspiration(itemId.value)
+    if (version !== decodeVersion) return
     record.value = loaded
     tagNames.value = [...(loaded.tag_names ?? [])]
     tagOptions.value = [...tagNames.value]
@@ -435,7 +452,9 @@ async function loadExisting(): Promise<void> {
     documentData.value = parseEditorDocument(loaded.data)
     history = new DocumentHistory(documentData.value)
     const workImage = await api.download(loaded.image_key)
+    if (version !== decodeVersion) return
     const decoded = await decodeImagePreview(workImage)
+    if (version !== decodeVersion) { releaseCanvas(decoded.canvas); return }
     sourceCanvas.value = decoded.canvas
     downsampled.value = decoded.wasDownsampled
     const storedProfile = isColorAnalysis(loaded.data.color_analysis) ? loaded.data.color_analysis : null
@@ -453,8 +472,8 @@ async function loadExisting(): Promise<void> {
     scheduleRender()
     await nextTick()
     observeStage()
-  } catch (cause) { error.value = localError(cause, t('editor.loadError')) }
-  finally { loading.value = false }
+  } catch (cause) { if (version === decodeVersion) error.value = localError(cause, t('editor.loadError')) }
+  finally { if (version === decodeVersion) loading.value = false }
 }
 
 /** 通过带用户范围的分页接口远程检索标签名称，保留当前已选项供多选框稳定显示。 */
@@ -537,6 +556,7 @@ function scheduleRender(): void {
       const context = target.getContext('2d')
       if (context) context.drawImage(output, 0, 0)
       releaseCanvas(output)
+      detailImageReady(target)
     } catch { error.value = t('editor.decodeFailed') }
   })
 }
@@ -579,6 +599,7 @@ function onStageClick(event: MouseEvent): void {
   const point = { x: Math.max(0, Math.min(1, (event.clientX - bounds.left) / bounds.width)), y: Math.max(0, Math.min(1, (event.clientY - bounds.top) / bounds.height)) }
   const source = viewToSource(point, documentData.value)
   anchorDraft.value = { id: null, x: source.x, y: source.y, note: '' }
+  toolPanel.value = null
   anchorDialog.value = true
 }
 
@@ -587,6 +608,7 @@ function addAnchorAtCenter(): void {
   if (!anchorMode.value || cropMode.value) return
   const source = viewToSource({ x: 0.5, y: 0.5 }, documentData.value)
   anchorDraft.value = { id: null, x: source.x, y: source.y, note: '' }
+  toolPanel.value = null
   anchorDialog.value = true
 }
 
@@ -594,6 +616,7 @@ function addAnchorAtCenter(): void {
 function editAnchor(anchor: ImageAnchor): void {
   toolPanel.value = null
   anchorDraft.value = { ...anchor }
+  toolPanel.value = null
   anchorDialog.value = true
 }
 
@@ -698,7 +721,7 @@ function saveAnchor(): void {
   commit(next)
   anchorDialog.value = false
   anchorDraft.value = null
-  anchorMode.value = false
+  // 添加模式保持开启，保存备注后可继续点按图片添加下一个锚点。
   error.value = ''
 }
 
@@ -761,6 +784,7 @@ async function save(): Promise<void> {
   status.value = ''
   if (!isExisting.value && (!imageFile.value || !sourceCanvas.value)) { error.value = t('editor.imageRequired'); return }
   finishRgbChange()
+  toolPanel.value = null
   saving.value = true
   try {
     if (isExisting.value) {
@@ -848,6 +872,8 @@ onBeforeRouteLeave(async to => {
 })
 
 onBeforeUnmount(() => {
+  // 先交出真实渲染像素，再释放原画布；退出动画不依赖已经卸载的编辑组件。
+  captureDetailImage(previewCanvas.value)
   decodeVersion += 1
   tagSearchVersion += 1
   if (tagSearchTimer !== undefined) window.clearTimeout(tagSearchTimer)
@@ -921,9 +947,10 @@ onBeforeUnmount(() => {
     <div v-if="imageReady" class="image-edit-dock" :class="{ 'is-editing': isEditing }" role="region" :aria-label="t('editor.tools')">
       <div class="image-dock-tools" role="toolbar" :aria-label="t('editor.tools')">
         <button type="button" :class="{ active: isEditing }" :disabled="loading || saving" @click="isEditing ? cancelEditing() : beginEditing()"><el-icon aria-hidden="true"><Edit /></el-icon><span>{{ isEditing ? t('editor.cancelEdit') : t('editor.edit') }}</span></button>
-        <button v-if="isExisting" type="button" :class="{ active: toolPanel === 'tags' }" @click="toolPanel = 'tags'"><el-icon aria-hidden="true"><PriceTag /></el-icon><span>{{ t('editor.tags') }}</span></button>
-        <button type="button" :class="{ active: anchorMode || toolPanel === 'anchors' }" @click="toolPanel = 'anchors'"><el-icon aria-hidden="true"><Aim /></el-icon><span>{{ t('editor.toolbarAnchors') }}</span></button>
-        <button type="button" :disabled="!isEditing" :class="{ active: toolPanel === 'adjust' }" @click="toolPanel = 'adjust'"><el-icon aria-hidden="true"><Operation /></el-icon><span>{{ t('editor.adjust') }}</span></button>
+        <button v-if="isExisting" type="button" :class="{ active: toolPanel === 'tags' }" @click="openTool('tags', $event)"><el-icon aria-hidden="true"><PriceTag /></el-icon><span>{{ t('editor.tags') }}</span></button>
+        <button type="button" :class="{ active: anchorMode || toolPanel === 'anchors' }" @click="openTool('anchors', $event)"><el-icon aria-hidden="true"><Aim /></el-icon><span>{{ t('editor.toolbarAnchors') }}</span></button>
+        <button type="button" :disabled="saving || cropMode" :class="{ active: toolPanel === 'adjust' }" @click="openTool('adjust', $event)"><el-icon aria-hidden="true"><Operation /></el-icon><span>{{ t('editor.adjust') }}</span></button>
+        <button type="button" :disabled="saving" :class="{ active: toolPanel === 'note' }" @click="openTool('note', $event)"><el-icon aria-hidden="true"><Document /></el-icon><span>{{ t('editor.imageNote') }}</span></button>
       </div>
       <div v-if="isEditing" class="image-dock-save">
         <el-button circle :disabled="!canUndo || saving" :aria-label="t('editor.undo')" :title="t('editor.undo')" @click="undo"><el-icon aria-hidden="true"><RefreshLeft /></el-icon></el-button>
@@ -934,8 +961,9 @@ onBeforeUnmount(() => {
       <p v-else-if="busyPhase" class="image-dock-status" role="status">{{ busyPhase }}</p>
       <p v-else-if="status" class="image-dock-status success-message" role="status">{{ status }}</p>
     </div>
-    <el-dialog :model-value="toolPanel !== null" :title="toolTitle" width="min(560px, calc(100vw - 32px))" class="image-tools-dialog" append-to-body @close="toolPanel = null">
+    <EditorToolSurface v-if="toolPanel" :panel="toolPanel" :title="toolTitle" :anchor="toolAnchor" @close="panel => { if (toolPanel === panel) toolPanel = null }">
         <div class="image-tool-panel">
+          <el-input v-if="toolPanel === 'note'" :model-value="noteText" type="textarea" :rows="3" maxlength="500" show-word-limit :aria-label="t('editor.imageNote')" :placeholder="t('editor.imageNotePlaceholder')" @update:model-value="updateImageNote" />
           <dl v-if="toolPanel === 'properties' && sourceCanvas" class="image-metadata-list basic-image-properties">
             <div><dt>{{ t('editor.metadataWidth') }}</dt><dd>{{ new Intl.NumberFormat(locale).format(sourceCanvas.width) }}</dd></div>
             <div><dt>{{ t('editor.metadataHeight') }}</dt><dd>{{ new Intl.NumberFormat(locale).format(sourceCanvas.height) }}</dd></div>
@@ -982,7 +1010,7 @@ onBeforeUnmount(() => {
               collapse-tags
               collapse-tags-tooltip
               :max-collapse-tags="2"
-              append-to=".image-tools-dialog"
+              append-to=".image-tool-popover"
               :remote-method="searchTagOptions"
               :loading="tagOptionsLoading"
               :disabled="tagSaving || loading"
@@ -1019,7 +1047,7 @@ onBeforeUnmount(() => {
           <section v-if="toolPanel === 'anchors'" class="control-section anchor-size-section">
             <div class="section-title-row"><h2>{{ t('editor.anchorDisplaySize') }}</h2><output class="anchor-size-value">{{ anchorDisplayStore.size }}%</output></div>
             <el-slider :model-value="anchorDisplayStore.size" :min="70" :max="150" :step="5" :aria-label="t('editor.anchorDisplaySize')" @input="anchorDisplayStore.setSize(Number($event))" />
-            <p class="anchor-size-help">{{ t('editor.anchorDisplaySizeHelp') }}</p>
+
           </section>
 
           <template v-if="isEditing && (toolPanel === 'adjust' || toolPanel === 'anchors')">
@@ -1039,9 +1067,9 @@ onBeforeUnmount(() => {
               <label class="color-slider blue-slider"><span>{{ t('editor.blue') }}</span><el-slider :model-value="documentData.rgb.blue" :min="-100" :max="100" :aria-label="t('editor.blue')" @input="updateRgb('blue', String($event))" @change="finishRgbChange" /><output>{{ documentData.rgb.blue }}</output></label>
             </section>
 
-            <section v-if="toolPanel === 'anchors'" class="control-section notes-section">
+            <section v-if="toolPanel === 'anchors' && documentData.anchors.length" class="control-section notes-section">
               <div class="section-title-row"><div><h2>{{ t('editor.anchors') }}</h2><span class="notes-count">{{ documentData.anchors.length }}</span></div></div>
-              <el-button class="note-mode-button" :class="{ active: anchorMode }" :disabled="cropMode" @click="toggleAnchorTool"><el-icon aria-hidden="true"><Plus /></el-icon>{{ anchorMode ? t('editor.anchorModeOn') : t('editor.anchorMode') }}</el-button>
+
               <p v-if="!documentData.anchors.length" class="notes-empty">{{ t('editor.anchorEmpty') }}</p>
               <div v-else class="note-list">
                 <div v-for="(anchor, index) in documentData.anchors" :key="anchor.id" class="note-list-item-row">
@@ -1058,7 +1086,7 @@ onBeforeUnmount(() => {
           </section>
           <p v-if="status && !isEditing" class="success-message" role="status">{{ status }}</p>
         </div>
-    </el-dialog>
+    </EditorToolSurface>
 
     <el-dialog :model-value="!!transformDialog" :title="t('editor.transformTitle')" width="min(500px, calc(100vw - 32px))" @close="transformDialog = null">
       <p>{{ t('editor.transformText') }}</p>
@@ -1126,4 +1154,15 @@ onBeforeUnmount(() => {
   .image-dock-save { width: 100%; padding-top: 6px; border-top: 1px solid var(--line); }
   .image-dock-save .el-button:last-child { margin-left: auto; }
 }
+</style>
+
+<style scoped>
+/* 预览快照在画布上方，保留可见、可点按的返回和属性按钮。 */
+.image-detail-header { position: relative; z-index: 2; }
+.image-dock-tools button { min-width: 58px; }
+@media (max-width: 768px) { .image-dock-tools button { min-width: 0; } }
+</style>
+
+<style scoped>
+.editor-load-error { position: relative; z-index: 2; padding: 12px; border-radius: 12px; background: var(--surface); }
 </style>

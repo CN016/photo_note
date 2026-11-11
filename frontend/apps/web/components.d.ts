@@ -18,6 +18,7 @@ declare module 'vue' {
     CreateFab: typeof import('./src/components/CreateFab.vue')['default']
     DeliveryImage: typeof import('./src/components/DeliveryImage.vue')['default']
     DeliveryWorkspace: typeof import('./src/components/DeliveryWorkspace.vue')['default']
+    EditorToolSurface: typeof import('./src/components/EditorToolSurface.vue')['default']
     ElAlert: typeof import('element-plus/es')['ElAlert']
     ElAvatar: typeof import('element-plus/es')['ElAvatar']
     ElButton: typeof import('element-plus/es')['ElButton']
