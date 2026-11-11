@@ -344,3 +344,9 @@ onBeforeUnmount(() => { alive = false; disposeMenu?.(); gesture.cancel(); associ
   .inspiration-card :deep(.thumbnail-frame) { border-radius: 14px; }
 }
 </style>
+
+<style scoped>
+/* 手机双列；桌面按可用区域自动增加列数，保持卡片至少约 210px 宽。 */
+@media (min-width: 769px) { .inspiration-grid { grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 16px; } }
+@media (min-width: 1600px) { .gallery-main { max-width: none; } }
+</style>

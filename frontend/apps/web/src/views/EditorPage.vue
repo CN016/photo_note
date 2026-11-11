@@ -5,7 +5,7 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref, shallowRef } from 
 import { useI18n } from 'vue-i18n'
 import { onBeforeRouteLeave, useRoute, useRouter } from 'vue-router'
 import { ElMessageBox, type UploadFile } from 'element-plus'
-import { ArrowLeft, ArrowRight, Check, Close, Crop, FullScreen, Lock, Plus, Picture, RefreshLeft, RefreshRight, UploadFilled } from '@element-plus/icons-vue'
+import { ArrowLeft, ArrowRight, Check, Close, Crop, FullScreen, Plus, RefreshLeft, RefreshRight, UploadFilled, MoreFilled, Edit, PriceTag, Aim, Operation } from '@element-plus/icons-vue'
 import { api as baseApi } from '../api/client'
 import { ApiError, type InspirationImageMetadata, type InspirationRecord } from '../api/types'
 import { useAnchorDisplayStore } from '../stores/anchorDisplay'
@@ -42,6 +42,12 @@ const api = {
 }
 const isExisting = computed(() => itemId.value.length > 0)
 const isEditing = ref(false)
+// 属性和工具按需打开，不把拍摄参数、标签与编辑控件堆在图片下方。
+const toolPanel = ref<'properties' | 'tags' | 'anchors' | 'adjust' | null>(null)
+const toolTitle = computed(() => t(toolPanel.value === 'properties' ? 'editor.metadataPanelTitle' : toolPanel.value === 'tags' ? 'editor.tags' : toolPanel.value === 'anchors' ? 'editor.anchors' : 'editor.adjust'))
+/** 锚点添加需要回到画布接收点击，先关闭工具浮窗，保留当前编辑状态。 */
+function toggleAnchorTool() { anchorMode.value = !anchorMode.value; toolPanel.value = null }
+
 const editSnapshot = ref('')
 const documentData = ref<EditorDocument>(createEditorDocument())
 const sourceCanvas = shallowRef<HTMLCanvasElement | null>(null)
@@ -586,6 +592,7 @@ function addAnchorAtCenter(): void {
 
 /** 把已保存锚点载入备注对话框，供用户修改或删除。 */
 function editAnchor(anchor: ImageAnchor): void {
+  toolPanel.value = null
   anchorDraft.value = { ...anchor }
   anchorDialog.value = true
 }
@@ -709,6 +716,8 @@ function makeAnchorId(): string {
 
 /** 有锚点时先显示三选一确认；没有锚点则直接开始操作。 */
 function prepareTransform(action: TransformAction): void {
+  // 旋转和裁切回到画布执行，不能让工具浮窗遮住正在操作的预览。
+  toolPanel.value = null
   if (documentData.value.anchors.length) transformDialog.value = action
   else performTransform(action, false)
 }
@@ -815,7 +824,9 @@ onMounted(() => {
 /** 通过页内返回或浏览器导航离开时，同样确认是否丢弃已有灵感图的未保存调整。 */
 onBeforeRouteLeave(async to => {
   // 多步上传和图片保存尚未完成时不能卸载旧空间；切换协调器会保留旧组织供重试。
-  if (saving.value || loading.value) return false
+  // 读取预览不是写入事务，允许用户在打开动画/解码期间返回；卸载代次会丢弃迟到结果。
+  // 保存与空间切换仍等待原范围任务，避免将旧空间写入带到新空间。
+  if (saving.value || (loading.value && to.path === '/spaces')) return false
   if (tagWritePromise) await tagWritePromise
   if (colorWritePromise) await colorWritePromise
   if (to.path === '/spaces') {
@@ -848,19 +859,13 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div class="workspace-page editor-page">
+  <div class="workspace-page editor-page" :class="{ 'is-editing': isEditing }">
     <ContentZoom><main id="main-content" class="editor-main" :style="anchorDisplayStyle">
-      <div class="editor-heading-row">
-        <div class="editor-title-group">
-          <RouterLink class="back-link" to="/inspirations"><el-icon aria-hidden="true"><ArrowLeft /></el-icon>{{ t('common.back') }}</RouterLink>
-          <div><p class="eyebrow">{{ t('common.product') }}</p><h1>{{ isExisting ? (isEditing ? t('editor.editTitle') : t('editor.detailTitle')) : t('editor.newTitle') }}</h1></div>
-        </div>
-        <div class="editor-heading-actions">
-          <p class="editor-subtitle">{{ t('editor.subtitle') }}</p>
-          <el-button v-if="isExisting && !isEditing" class="primary-button detail-edit-button" type="primary" :disabled="loading || !imageReady" @click="beginEditing">{{ t('editor.edit') }}</el-button>
-          <el-button v-else-if="isExisting && isEditing" class="cancel-edit-button heading-cancel-button" @click="cancelEditing">{{ t('editor.cancelEdit') }}</el-button>
-        </div>
-      </div>
+      <header class="image-detail-header">
+        <RouterLink class="detail-back" to="/inspirations" :aria-label="t('common.back')" :title="t('common.back')"><el-icon aria-hidden="true"><ArrowLeft /></el-icon></RouterLink>
+        <h1 class="sr-only">{{ isEditing ? t('editor.editTitle') : t('editor.detailTitle') }}</h1>
+        <el-button class="detail-more" circle :aria-label="t('editor.metadataPanelTitle')" :title="t('editor.metadataPanelTitle')" :aria-expanded="toolPanel === 'properties'" @click="toolPanel = 'properties'"><el-icon aria-hidden="true"><MoreFilled /></el-icon></el-button>
+      </header>
 
       <section v-if="!isExisting && !imageReady" class="upload-welcome">
         <el-upload class="upload-dropzone" action="#" :auto-upload="false" :show-file-list="false" accept="image/*,.heic,.heif" :aria-label="t('editor.fileLabel')" :on-change="selectUploadedFile">
@@ -871,13 +876,6 @@ onBeforeUnmount(() => {
 
       <div v-else-if="imageReady" class="editor-workspace">
         <section class="editor-canvas-column" :aria-label="t('editor.previewLabel')">
-          <div class="canvas-toolbar">
-            <span class="filename-chip"><el-icon aria-hidden="true"><Picture /></el-icon>{{ filename }}</span>
-            <div v-if="isEditing" class="history-actions">
-              <el-button class="icon-button" :disabled="!canUndo" :aria-label="t('editor.undo')" :title="t('editor.undo')" @click="undo"><el-icon aria-hidden="true"><RefreshLeft /></el-icon></el-button>
-              <el-button class="icon-button" :disabled="!canRedo" :aria-label="t('editor.redo')" :title="t('editor.redo')" @click="redo"><el-icon aria-hidden="true"><RefreshRight /></el-icon></el-button>
-            </div>
-          </div>
           <div ref="stageBox" class="canvas-stage" :data-content-zoom-ignore="cropMode || anchorMode ? 'true' : undefined" :class="{ 'anchor-active': anchorMode, 'crop-active': cropMode }" @click="onStageClick">
             <div v-if="imageReady" class="editor-canvas-wrap" :style="{ width: `${displayDimensions.width}px`, height: `${displayDimensions.height}px` }">
               <canvas ref="previewCanvas" class="editor-canvas" role="img" :tabindex="isEditing ? 0 : -1" :aria-label="anchorMode ? t('editor.anchorModeOn') : t('editor.previewLabel')" @keydown.enter.prevent="addAnchorAtCenter" @keydown.space.prevent="addAnchorAtCenter" @pointerdown="beginCropSelection" @pointermove="moveCropSelection" @pointerup="endCropSelection" @pointercancel="endCropSelection"></canvas>
@@ -915,8 +913,34 @@ onBeforeUnmount(() => {
           <p v-if="downsampled" class="stage-note">{{ t('editor.largeImage') }}</p>
         </section>
 
-        <aside class="editor-controls" :class="{ 'detail-panel': !isEditing }" :aria-label="isEditing ? t('editor.editTitle') : t('editor.detailTitle')">
-          <section class="control-section color-profile-section" :aria-label="t('editor.colorProfile')">
+
+      </div>
+
+      <div v-if="error && !imageReady" class="editor-load-error" role="alert"><p>{{ error }}</p><RouterLink class="secondary-button" to="/inspirations">{{ t('common.back') }}</RouterLink></div>
+    </main></ContentZoom>
+    <div v-if="imageReady" class="image-edit-dock" :class="{ 'is-editing': isEditing }" role="region" :aria-label="t('editor.tools')">
+      <div class="image-dock-tools" role="toolbar" :aria-label="t('editor.tools')">
+        <button type="button" :class="{ active: isEditing }" :disabled="loading || saving" @click="isEditing ? cancelEditing() : beginEditing()"><el-icon aria-hidden="true"><Edit /></el-icon><span>{{ isEditing ? t('editor.cancelEdit') : t('editor.edit') }}</span></button>
+        <button v-if="isExisting" type="button" :class="{ active: toolPanel === 'tags' }" @click="toolPanel = 'tags'"><el-icon aria-hidden="true"><PriceTag /></el-icon><span>{{ t('editor.tags') }}</span></button>
+        <button type="button" :class="{ active: anchorMode || toolPanel === 'anchors' }" @click="toolPanel = 'anchors'"><el-icon aria-hidden="true"><Aim /></el-icon><span>{{ t('editor.toolbarAnchors') }}</span></button>
+        <button type="button" :disabled="!isEditing" :class="{ active: toolPanel === 'adjust' }" @click="toolPanel = 'adjust'"><el-icon aria-hidden="true"><Operation /></el-icon><span>{{ t('editor.adjust') }}</span></button>
+      </div>
+      <div v-if="isEditing" class="image-dock-save">
+        <el-button circle :disabled="!canUndo || saving" :aria-label="t('editor.undo')" :title="t('editor.undo')" @click="undo"><el-icon aria-hidden="true"><RefreshLeft /></el-icon></el-button>
+        <el-button circle :disabled="!canRedo || saving" :aria-label="t('editor.redo')" :title="t('editor.redo')" @click="redo"><el-icon aria-hidden="true"><RefreshRight /></el-icon></el-button>
+        <el-button type="primary" :disabled="saving || loading || cropMode || anchorDialog || !!transformDialog" :loading="saving" @click="save"><el-icon aria-hidden="true"><Check /></el-icon>{{ isExisting ? t('editor.saveEdit') : t('editor.saveNew') }}</el-button>
+      </div>
+      <p v-if="error" class="image-dock-status form-error" role="alert">{{ error }}</p>
+      <p v-else-if="busyPhase" class="image-dock-status" role="status">{{ busyPhase }}</p>
+      <p v-else-if="status" class="image-dock-status success-message" role="status">{{ status }}</p>
+    </div>
+    <el-dialog :model-value="toolPanel !== null" :title="toolTitle" width="min(560px, calc(100vw - 32px))" class="image-tools-dialog" append-to-body @close="toolPanel = null">
+        <div class="image-tool-panel">
+          <dl v-if="toolPanel === 'properties' && sourceCanvas" class="image-metadata-list basic-image-properties">
+            <div><dt>{{ t('editor.metadataWidth') }}</dt><dd>{{ new Intl.NumberFormat(locale).format(sourceCanvas.width) }}</dd></div>
+            <div><dt>{{ t('editor.metadataHeight') }}</dt><dd>{{ new Intl.NumberFormat(locale).format(sourceCanvas.height) }}</dd></div>
+          </dl>
+          <section v-if="toolPanel === 'properties'" class="control-section color-profile-section" :aria-label="t('editor.colorProfile')">
             <div class="section-title-row"><h2>{{ t('editor.colorProfile') }}</h2><span v-if="colorAnalysisSaving" class="profile-saving" role="status">{{ t('editor.colorAnalysisSaving') }}</span></div>
             <template v-if="colorAnalysis">
               <div class="palette-bar" role="img" :aria-label="t('editor.paletteSummary')">
@@ -940,13 +964,14 @@ onBeforeUnmount(() => {
             </div>
           </section>
 
-          <section v-if="isExisting" class="control-section inspiration-tags-section" :aria-label="t('editor.tags')">
+          <section v-if="isExisting && toolPanel === 'tags'" class="control-section inspiration-tags-section" :aria-label="t('editor.tags')">
             <div class="section-title-row">
               <h2>{{ t('editor.tags') }}</h2>
               <span v-if="tagSaving" class="profile-saving" role="status">{{ t('editor.tagSaving') }}</span>
             </div>
             <el-select
               v-model="tagNames"
+              :aria-label="t('editor.tags')"
               class="inspiration-tag-select"
               multiple
               filterable
@@ -957,6 +982,7 @@ onBeforeUnmount(() => {
               collapse-tags
               collapse-tags-tooltip
               :max-collapse-tags="2"
+              append-to=".image-tools-dialog"
               :remote-method="searchTagOptions"
               :loading="tagOptionsLoading"
               :disabled="tagSaving || loading"
@@ -970,7 +996,7 @@ onBeforeUnmount(() => {
             <p v-else-if="tagSaveStatus" class="tag-save-status" role="status">{{ tagSaveStatus }}</p>
           </section>
 
-          <section v-if="!isEditing && hasImageMetadata" class="control-section image-metadata-section" :aria-label="t('editor.metadataPanelTitle')">
+          <section v-if="toolPanel === 'properties' && hasImageMetadata" class="control-section image-metadata-section" :aria-label="t('editor.metadataPanelTitle')">
             <div class="section-title-row"><h2>{{ t('editor.metadataPanelTitle') }}</h2></div>
             <div class="metadata-scroll" tabindex="0" :aria-label="t('editor.metadataPanelTitle')">
             <div v-for="group in imageMetadataSections" :key="group.title" class="metadata-group">
@@ -989,15 +1015,16 @@ onBeforeUnmount(() => {
             </div>
           </section>
 
-          <section class="control-section anchor-size-section">
+          <p v-if="toolPanel === 'anchors' && !isEditing && !documentData.anchors.length" class="notes-empty">{{ t('editor.anchorEmpty') }}</p>
+          <section v-if="toolPanel === 'anchors'" class="control-section anchor-size-section">
             <div class="section-title-row"><h2>{{ t('editor.anchorDisplaySize') }}</h2><output class="anchor-size-value">{{ anchorDisplayStore.size }}%</output></div>
             <el-slider :model-value="anchorDisplayStore.size" :min="70" :max="150" :step="5" :aria-label="t('editor.anchorDisplaySize')" @input="anchorDisplayStore.setSize(Number($event))" />
             <p class="anchor-size-help">{{ t('editor.anchorDisplaySizeHelp') }}</p>
           </section>
 
-          <template v-if="isEditing">
-            <section class="control-section transform-section">
-              <div class="section-title-row"><h2>{{ t('editor.editTitle') }}</h2><span class="section-step">01</span></div>
+          <template v-if="isEditing && (toolPanel === 'adjust' || toolPanel === 'anchors')">
+            <section v-if="toolPanel === 'adjust'" class="control-section transform-section">
+              <div class="section-title-row"><h2>{{ t('editor.editTitle') }}</h2></div>
               <div class="transform-buttons">
                 <el-button class="tool-button" :disabled="cropMode" @click="prepareTransform('rotate')"><el-icon aria-hidden="true"><RefreshRight /></el-icon>{{ t('editor.rotate') }}</el-button>
                 <el-button class="tool-button" :disabled="cropMode" @click="prepareTransform('crop')"><el-icon aria-hidden="true"><Crop /></el-icon>{{ t('editor.crop') }}</el-button>
@@ -1005,16 +1032,16 @@ onBeforeUnmount(() => {
               </div>
             </section>
 
-            <section class="control-section color-section">
-              <div class="section-title-row"><h2>{{ t('editor.rgb') }}</h2><span class="section-step">02</span></div>
+            <section v-if="toolPanel === 'adjust'" class="control-section color-section">
+              <div class="section-title-row"><h2>{{ t('editor.rgb') }}</h2></div>
               <label class="color-slider red-slider"><span>{{ t('editor.red') }}</span><el-slider :model-value="documentData.rgb.red" :min="-100" :max="100" :aria-label="t('editor.red')" @input="updateRgb('red', String($event))" @change="finishRgbChange" /><output>{{ documentData.rgb.red }}</output></label>
               <label class="color-slider green-slider"><span>{{ t('editor.green') }}</span><el-slider :model-value="documentData.rgb.green" :min="-100" :max="100" :aria-label="t('editor.green')" @input="updateRgb('green', String($event))" @change="finishRgbChange" /><output>{{ documentData.rgb.green }}</output></label>
               <label class="color-slider blue-slider"><span>{{ t('editor.blue') }}</span><el-slider :model-value="documentData.rgb.blue" :min="-100" :max="100" :aria-label="t('editor.blue')" @input="updateRgb('blue', String($event))" @change="finishRgbChange" /><output>{{ documentData.rgb.blue }}</output></label>
             </section>
 
-            <section class="control-section notes-section">
-              <div class="section-title-row"><div><h2>{{ t('editor.anchors') }}</h2><span class="notes-count">{{ documentData.anchors.length }}</span></div><span class="section-step">03</span></div>
-              <el-button class="note-mode-button" :class="{ active: anchorMode }" :disabled="cropMode" @click="anchorMode = !anchorMode"><el-icon aria-hidden="true"><Plus /></el-icon>{{ anchorMode ? t('editor.anchorModeOn') : t('editor.anchorMode') }}</el-button>
+            <section v-if="toolPanel === 'anchors'" class="control-section notes-section">
+              <div class="section-title-row"><div><h2>{{ t('editor.anchors') }}</h2><span class="notes-count">{{ documentData.anchors.length }}</span></div></div>
+              <el-button class="note-mode-button" :class="{ active: anchorMode }" :disabled="cropMode" @click="toggleAnchorTool"><el-icon aria-hidden="true"><Plus /></el-icon>{{ anchorMode ? t('editor.anchorModeOn') : t('editor.anchorMode') }}</el-button>
               <p v-if="!documentData.anchors.length" class="notes-empty">{{ t('editor.anchorEmpty') }}</p>
               <div v-else class="note-list">
                 <div v-for="(anchor, index) in documentData.anchors" :key="anchor.id" class="note-list-item-row">
@@ -1023,24 +1050,15 @@ onBeforeUnmount(() => {
                 </div>
               </div>
             </section>
-            <p class="source-preserved"><el-icon aria-hidden="true"><Lock /></el-icon>{{ t('editor.sourcePreserved') }}</p>
-            <p v-if="error" class="form-error editor-error" role="alert">{{ error }}</p>
-            <p v-if="status" class="success-message" role="status">{{ status }}</p>
-            <el-button class="primary-button save-button desktop-save" type="primary" :disabled="saving || loading || cropMode || anchorDialog || !!transformDialog" :loading="saving" @click="save">{{ saving ? t('editor.saving') : !isExisting && uploadSourceKey ? t('editor.retry') : t('editor.saveEdit') }}<el-icon aria-hidden="true"><Check /></el-icon></el-button>
-            <p v-if="busyPhase" class="save-progress" role="status"><span class="loading-dot"></span>{{ busyPhase }}</p>
           </template>
 
-          <section v-else-if="documentData.anchors.length" class="control-section detail-notes-section">
+          <section v-else-if="toolPanel === 'anchors' && documentData.anchors.length" class="control-section detail-notes-section">
             <div class="section-title-row"><div><h2>{{ t('editor.anchors') }}</h2><span class="notes-count">{{ documentData.anchors.length }}</span></div></div>
             <ul class="detail-note-list"><li v-for="(anchor, index) in documentData.anchors" :key="anchor.id"><span class="note-index">{{ index + 1 }}</span><span>{{ anchor.note }}</span></li></ul>
           </section>
           <p v-if="status && !isEditing" class="success-message" role="status">{{ status }}</p>
-        </aside>
-      </div>
-
-      <div v-if="error && !imageReady" class="editor-load-error" role="alert"><p>{{ error }}</p><RouterLink class="secondary-button" to="/inspirations">{{ t('common.back') }}</RouterLink></div>
-    </main></ContentZoom>
-      <div v-if="imageReady && isEditing" class="mobile-save-bar"><span v-if="error" class="mobile-save-error" role="alert">{{ error }}</span><span v-else-if="busyPhase" class="mobile-save-progress" role="status">{{ busyPhase }}</span><el-button v-if="isExisting" class="cancel-edit-button mobile-cancel-button" :disabled="saving" @click="cancelEditing">{{ t('editor.cancelEdit') }}</el-button><el-button class="primary-button save-button" type="primary" :disabled="saving || loading || cropMode || anchorDialog || !!transformDialog" :loading="saving" @click="save">{{ saving ? t('editor.saving') : !isExisting && uploadSourceKey ? t('editor.retry') : isExisting ? t('editor.saveEdit') : t('editor.saveNew') }}<el-icon aria-hidden="true"><Check /></el-icon></el-button></div>
+        </div>
+    </el-dialog>
 
     <el-dialog :model-value="!!transformDialog" :title="t('editor.transformTitle')" width="min(500px, calc(100vw - 32px))" @close="transformDialog = null">
       <p>{{ t('editor.transformText') }}</p>
@@ -1067,3 +1085,45 @@ onBeforeUnmount(() => {
     </el-dialog>
   </div>
 </template>
+
+<style scoped>
+/* 图片占据主要工作区；桌面使用悬浮工具 Dock，手机沿底部安全区铺满。 */
+.editor-main { padding-top: 12px; padding-bottom: 156px; }
+.image-detail-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+.detail-back { display: grid; place-items: center; width: 44px; height: 44px; border: 1px solid var(--line); border-radius: 50%; color: var(--ink); background: var(--surface); }
+.detail-back:hover { background: var(--accent-soft); color: var(--accent); }
+.detail-back:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+.detail-more { width: 44px; height: 44px; font-size: 22px; }
+.editor-workspace { display: block; }
+.canvas-stage { height: calc(100dvh - 228px); min-height: 280px; max-height: none; background-image: none; border: 0; background-color: var(--surface-soft); }
+.image-edit-dock { position: fixed; z-index: 45; bottom: 20px; left: calc(50% + 112px); transform: translateX(-50%); display: flex; flex-wrap: wrap; align-items: center; gap: 12px; max-width: calc(100% - 290px); padding: 8px; border: 1px solid var(--line); border-radius: 24px; background: color-mix(in srgb, var(--surface) 94%, transparent); box-shadow: 0 8px 32px rgb(0 0 0 / 12%); backdrop-filter: blur(20px); }
+.image-dock-tools { display: flex; gap: 4px; flex: 1; }
+.image-dock-tools button { display: flex; flex: 1; min-width: 70px; min-height: 56px; flex-direction: column; justify-content: center; align-items: center; gap: 5px; padding: 6px 12px; border: 0; border-radius: 16px; background: transparent; color: var(--ink-soft); cursor: pointer; white-space: nowrap; font: inherit; font-size: 12px; }
+.image-dock-tools button .el-icon { font-size: 22px; }
+.image-dock-tools button:hover:not(:disabled), .image-dock-tools button.active { background: var(--accent-soft); color: var(--accent); }
+.image-dock-tools button:disabled { opacity: .4; cursor: default; }
+.image-dock-tools button:focus-visible { outline: 2px solid var(--accent); }
+.image-dock-save { display: flex; align-items: center; justify-content: flex-end; gap: 8px; padding: 4px 8px; }
+.image-dock-save .el-button { margin: 0; min-height: 40px; }
+.image-dock-status { flex-basis: 100%; margin: 0; padding: 0 12px 6px; font-size: 12px; }
+.image-tool-panel .control-section { padding: 16px 0; }
+.image-tool-panel .control-section:first-child { padding-top: 0; }
+.image-tool-panel :deep(.el-select__tags-text) { color: var(--ink); }
+.basic-image-properties { margin: 0; padding-bottom: 16px; }
+.image-tool-panel .metadata-scroll { height: auto; max-height: 45dvh; }
+@media (max-width: 1023px) {
+  .image-edit-dock { left: 50%; max-width: calc(100% - 32px); }
+}
+@media (max-width: 768px) {
+  .editor-page { padding-bottom: 0 !important; }
+  .editor-main { width: 100%; margin: 0; padding: 8px 10px 150px; }
+  .image-detail-header { margin-bottom: 8px; }
+  .canvas-stage { height: calc(100dvh - 210px); min-height: 220px; border-radius: 16px; }
+  .editor-page.is-editing .canvas-stage { height: calc(100dvh - 280px); }
+  .image-edit-dock { right: 0; bottom: 0; left: 0; transform: none; max-width: none; padding: 8px 10px calc(8px + env(safe-area-inset-bottom)); gap: 4px; border-radius: 22px 22px 0 0; }
+  .image-dock-tools { flex-basis: 100%; }
+  .image-dock-tools button { min-width: 0; padding-inline: 6px; }
+  .image-dock-save { width: 100%; padding-top: 6px; border-top: 1px solid var(--line); }
+  .image-dock-save .el-button:last-child { margin-left: auto; }
+}
+</style>

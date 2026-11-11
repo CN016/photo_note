@@ -128,7 +128,7 @@ function ariaMobileCurrent(path: string): 'page' | 'location' | undefined {
       <div class="navigation-preferences"><ThemeSwitcher /><LanguageSwitcher /></div>
       <el-button class="sign-out" text @click="signOut">{{ t('common.logout') }}</el-button>
     </div>
-    <nav class="mobile-nav" :aria-label="t('common.mobileNavigation')">
+    <nav v-if="!['edit-inspiration', 'organization-edit-inspiration', 'platform-edit-inspiration'].includes(String(route.name))" class="mobile-nav" :aria-label="t('common.mobileNavigation')">
       <RouterLink class="mobile-nav-item" :class="{ active: mobileActive('/workbench') }" :aria-current="ariaMobileCurrent('/workbench')" to="/workbench" :aria-label="t('common.workbench')"><el-icon aria-hidden="true"><House /></el-icon><small>{{ t('common.mobileWorkbench') }}</small></RouterLink>
       <RouterLink class="mobile-nav-item" :class="{ active: mobileActive('/inspirations') }" :aria-current="ariaMobileCurrent('/inspirations')" to="/inspirations"><el-icon aria-hidden="true"><Picture /></el-icon><small>{{ t('common.inspirations') }}</small></RouterLink>
       <RouterLink class="mobile-nav-item" :class="{ active: mobileActive('/portfolios') }" :aria-current="ariaMobileCurrent('/portfolios')" to="/portfolios"><el-icon aria-hidden="true"><PictureFilled /></el-icon><small>{{ t('common.portfolios') }}</small></RouterLink>

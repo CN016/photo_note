@@ -1,4 +1,8 @@
 {
+  "toolbarAnchors": "Anchors",
+  "tools": "Image editing tools",
+  "adjust": "Adjust",
+
   "newTitle": "Add image to inspiration library",
   "detailTitle": "Inspiration library image details",
   "editTitle": "Edit an image in your inspiration library",

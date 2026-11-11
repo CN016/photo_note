@@ -13,7 +13,7 @@ import AppHeader from './components/AppHeader.vue'
 import { useAuthStore } from './stores/auth'
 import { configureSpaceCoordination, preparingSpaceSwitch } from './spaces/coordination'
 import { router, defaultAuthenticatedRoute } from './router'
-import { beforeRouteEnter, enterRoute, leaveRoute, resetNavigationMotion } from './motion/navigationMotion'
+import { beforeRouteEnter, enterRoute, leaveRoute, cancelRouteEnter, cancelRouteLeave, resetNavigationMotion } from './motion/navigationMotion'
 
 import { isAndroid } from '../../../packages/platform-adapters'
 
@@ -67,6 +67,8 @@ configureSpaceCoordination({
   loggedOut: async () => { auth.user = null; await router.replace('/login') },
 })
 const elementLocale = computed(() => locale.value === 'en-US' ? en : zhCn)
+// 图片详情使用自己的属性入口，避免全局右上角消息按钮覆盖三个点。
+const imageDetailRoute = computed(() => ['edit-inspiration', 'organization-edit-inspiration', 'platform-edit-inspiration'].includes(String(route.name)))
 const projectEditorRoute = computed(() => route.name === 'project-editor')
 watch(projectEditorRoute, active => document.body.classList.toggle('project-editor-route', active), { immediate: true })
 
@@ -85,7 +87,7 @@ watch(() => route.fullPath, async () => {
     <a class="skip-link" href="#main-content">{{ t('common.skipToContent') }}</a>
     <p class="sr-only route-announcer" role="status" aria-live="polite" aria-atomic="true">{{ pageAnnouncement }}</p>
     <StartupRecovery />
-    <GlobalMessageButton v-if="!route.meta.standalone" />
+    <GlobalMessageButton v-if="!route.meta.standalone && !imageDetailRoute" />
     <AppHeader v-if="auth.user && !route.meta.public && !route.meta.standalone" />
     <GlobalContextMenu v-if="!route.meta.standalone" />
     <RouterView v-slot="{ Component, route: pageRoute }">
@@ -94,6 +96,8 @@ watch(() => route.fullPath, async () => {
         @before-enter="beforeRouteEnter"
         @enter="enterRoute"
         @leave="leaveRoute"
+        @enter-cancelled="cancelRouteEnter"
+        @leave-cancelled="cancelRouteLeave"
       >
         <KeepAlive :key="galleryScope" :include="cachedGallery" :max="1">
           <component
