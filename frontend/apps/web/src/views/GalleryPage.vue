@@ -158,9 +158,6 @@ async function openDetail(event: MouseEvent, item: InspirationRecord) {
     if (version === openVersion) openingID.value = ''
   }
 }
-/** 列表按文档顺序显示锚点备注，兼容缺失或损坏的旧数据。 */
-function anchorNotes(item: InspirationRecord) { return parseEditorDocument(item.data).anchors }
-
 const items = ref<InspirationRecord[]>([])
 const tags = ref<TagRecord[]>([])
 const searchQuery = ref('')
@@ -315,10 +312,9 @@ onBeforeUnmount(() => { alive = false; openVersion += 1; disposeMenu?.(); gestur
 
       <section v-if="items.length" class="inspiration-grid" :aria-label="t('gallery.title')">
         <article v-for="(item, index) in items" :key="item.business_id" class="inspiration-card" tabindex="0" :data-inspiration-card="item.business_id" :style="{ '--card-index': index % 8 }">
-          <RouterLink class="inspiration-link" @click="openDetail($event, item)" :aria-busy="openingID === item.business_id" :data-shared-transition="item.business_id" :to="`/inspirations/${item.business_id}`" :aria-label="t('gallery.openImage', { name: item.file_name || t('gallery.untitled') })">
-            <div class="gallery-image-frame"><InspirationThumbnail :record="item" /><span v-if="openingID === item.business_id" class="gallery-opening" role="status"><el-icon class="is-loading"><Loading /></el-icon>{{ t('gallery.loadingImage') }}</span></div>
+          <RouterLink class="inspiration-link" @click.capture="openDetail($event, item)" :aria-busy="openingID === item.business_id" :data-shared-transition="item.business_id" :to="`/inspirations/${item.business_id}`" :aria-label="t('gallery.openImage', { name: item.file_name || t('gallery.untitled') })">
+            <div class="gallery-image-frame"><InspirationThumbnail :record="item" show-anchors /><span v-if="openingID === item.business_id" class="gallery-opening" role="status"><el-icon class="is-loading"><Loading /></el-icon>{{ t('gallery.loadingImage') }}</span></div>
             <p v-if="imageNote(item.data)" class="gallery-image-note" :title="imageNote(item.data)">{{ imageNote(item.data) }}</p>
-            <p v-for="(anchor, number) in anchorNotes(item)" :key="anchor.id" class="gallery-anchor-note" :title="anchor.note">{{ number + 1 }}. {{ anchor.note }}</p>
           </RouterLink>
           <div v-if="showPeople && item.analysis_status" class="gallery-analysis">
             <span v-if="item.analysis_status === 'succeeded'">{{ item.people_count === 0 ? t('gallery.library.emptyOnly') : t('gallery.library.personCount', { count: item.people_count }) }}<i v-if="item.dominant_color" :style="{ background: item.dominant_color }" :title="item.color_bucket ? t(`gallery.library.colorNames.${item.color_bucket}`) : ''" /></span>
@@ -396,5 +392,5 @@ onBeforeUnmount(() => { alive = false; openVersion += 1; disposeMenu?.(); gestur
 <style scoped>
 .gallery-image-frame { position: relative; }
 .gallery-opening { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; gap: 8px; background: rgb(0 0 0 / 40%); color: white; }
-.gallery-anchor-note { margin: 0; padding: 4px 2px; white-space: pre-wrap; overflow-wrap: anywhere; font-size: 13px; color: var(--ink); }
+
 </style>
