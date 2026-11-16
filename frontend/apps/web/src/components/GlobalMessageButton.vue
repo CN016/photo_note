@@ -1,24 +1,23 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute } from 'vue-router'
-import { ChatDotRound, MoreFilled } from '@element-plus/icons-vue'
+import { ChatDotRound, Menu } from '@element-plus/icons-vue'
 import { useAuthStore } from '../stores/auth'
 import { useAppShellStore } from '../stores/appShell'
 import BrandMark from './BrandMark.vue'
-import ThemeSwitcher from './ThemeSwitcher.vue'
-import LanguageSwitcher from './LanguageSwitcher.vue'
+import { navigationDrawer, setNavigationDrawer } from '../navigationDrawer'
+
 
 const { t } = useI18n()
 const route = useRoute()
 const auth = useAuthStore()
 const appShell = useAppShellStore()
 const unreadCount = computed(() => appShell.unreadCount)
-const mobileMenuOpen = ref(false)
 </script>
 
 <template>
-  <header v-if="auth.user && !route.meta.public && route.name !== 'project-editor'" class="global-message-bar">
+  <header v-if="auth.user && !route.meta.public && route.name !== 'project-editor'" class="global-message-bar" :inert="navigationDrawer.progress > 0">
     <RouterLink class="global-message-brand" to="/workbench" :aria-label="t('common.workbench')">
       <BrandMark size="small" /><strong>{{ t('common.brand') }}</strong>
     </RouterLink>
@@ -29,20 +28,7 @@ const mobileMenuOpen = ref(false)
           <span v-if="unreadCount" class="global-message-count">{{ unreadCount > 99 ? '99+' : unreadCount }}</span>
         </RouterLink>
       </div>
-      <el-popover v-model:visible="mobileMenuOpen" placement="bottom-end" :width="252" trigger="click">
-        <template #reference>
-          <button type="button" class="global-mobile-menu-trigger" :aria-label="t('common.accountUtilities')" :title="t('common.accountUtilities')">
-            <el-icon aria-hidden="true"><MoreFilled /></el-icon>
-            <span v-if="unreadCount" class="global-mobile-unread-dot" aria-hidden="true" />
-          </button>
-        </template>
-        <nav class="global-mobile-menu" :aria-label="t('common.accountUtilities')">
-          <RouterLink to="/messages" class="global-mobile-menu-item" @click="mobileMenuOpen = false">
-            <el-icon aria-hidden="true"><ChatDotRound /></el-icon><span>{{ t('common.messages') }}</span><b v-if="unreadCount">{{ unreadCount > 99 ? '99+' : unreadCount }}</b>
-          </RouterLink>
-          <div class="global-mobile-preferences"><ThemeSwitcher /><LanguageSwitcher /></div>
-        </nav>
-      </el-popover>
+      <button type="button" class="global-mobile-menu-trigger" :aria-label="t('common.openNavigation')" :aria-expanded="navigationDrawer.progress > 0" @click="setNavigationDrawer(true)"><el-icon aria-hidden="true"><Menu /></el-icon><span v-if="unreadCount" class="global-mobile-unread-dot" aria-hidden="true" /></button>
     </div>
   </header>
 </template>
@@ -69,7 +55,7 @@ const mobileMenuOpen = ref(false)
   .global-message-link { width: 36px; height: 36px; pointer-events: auto; }
 }
 @media (max-width: 768px) {
-  /* 侧栏偏好在手机上隐藏，顶栏提供可发现的主题、语言与消息入口，并保留返回工作台的品牌链接。 */
+  /* 顶栏只保留工作台品牌链接和抽屉入口，语言与主题统一放在菜单固定底部。 */
   .global-message-bar { position: sticky; z-index: 40; top: 0; display: flex; min-height: 60px; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 12px; border-bottom: 1px solid var(--line); background: var(--surface); }
   .global-message-brand { display: flex; min-width: 0; flex: 1 1 auto; align-items: center; gap: 8px; color: var(--ink); text-decoration: none; }
   .global-message-brand strong { overflow: hidden; font-size: 13px; text-overflow: ellipsis; white-space: nowrap; }

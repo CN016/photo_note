@@ -1185,9 +1185,8 @@ html.native-content-zoom { touch-action: pan-x pan-y; }
 .card-size { font-family: ui-monospace, SFMono-Regular, Consolas, monospace; }
 .statistics-summary-card strong, .color-metrics dd { font-variant-numeric: tabular-nums; }
 
-/* 移动端以内容为首屏：移除常驻品牌栏与页面标题区，底部导航独立于路由动画保持稳定。 */
+/* 移动端保留紧凑菜单顶栏，页面重复标题继续隐藏；菜单统一由抽屉承载。 */
 @media (max-width: 768px) {
-  .global-message-bar,
   .gallery-intro,
   .projects-heading,
   .messages-heading,

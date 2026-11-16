@@ -82,5 +82,7 @@
     "later": "Later"
   },
   "portfolios": "Portfolios",
-  "delivery": "Delivery"
+  "delivery": "Delivery",
+  "openNavigation": "Open navigation",
+  "closeNavigation": "Close navigation"
 }

@@ -4,6 +4,7 @@ import { useI18n } from 'vue-i18n'
 import { useRoute } from 'vue-router'
 import zhCn from 'element-plus/es/locale/lang/zh-cn'
 import en from 'element-plus/es/locale/lang/en'
+import { navigationDrawer } from './navigationDrawer'
 import { clearGallerySnapshot } from './context-menu/galleryNavigation'
 import GlobalContextMenu from './components/GlobalContextMenu.vue'
 import FeedbackWidget from './components/FeedbackWidget.vue'
@@ -88,7 +89,7 @@ watch(() => route.fullPath, async () => {
     <p class="sr-only route-announcer" role="status" aria-live="polite" aria-atomic="true">{{ pageAnnouncement }}</p>
     <StartupRecovery />
     <GlobalMessageButton v-if="!route.meta.standalone && !imageDetailRoute" />
-    <AppHeader v-if="auth.user && !route.meta.public && !route.meta.standalone" />
+    <AppHeader v-if="auth.user && !route.meta.public && (!route.meta.standalone || route.name === 'delivery')" />
     <GlobalContextMenu v-if="!route.meta.standalone" />
     <RouterView v-slot="{ Component, route: pageRoute }">
       <Transition
@@ -102,6 +103,7 @@ watch(() => route.fullPath, async () => {
         <KeepAlive :key="galleryScope" :include="cachedGallery" :max="1">
           <component
             :is="pageRoute.name === 'gallery' ? GalleryRouteFrame : RoutePageFrame"
+            :inert="navigationDrawer.progress > 0"
             v-if="pageRoute.meta.public || auth.user"
             :key="`${galleryScope}:${pageRoute.path}`"
           >

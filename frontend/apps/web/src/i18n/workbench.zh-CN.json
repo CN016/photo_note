@@ -13,5 +13,26 @@
     "profile": "管理个人资料与通知渠道",
     "console": "管理用户、配置和反馈",
     "delivery": "底片筛选、客户选片与精修交付"
+  },
+  "statistics": "模块统计",
+  "views": "查看方式",
+  "cards": "卡片",
+  "table": "表格",
+  "bars": "条形图",
+  "month": "统计月份",
+  "refresh": "刷新统计",
+  "module": "模块",
+  "scope": "统计范围",
+  "count": "数量",
+  "unavailable": "暂不可用",
+  "finance": "当月收支",
+  "income": "当月收入",
+  "expense": "当月支出",
+  "balance": "当月结余",
+  "periods": {
+    "all": "全部记录",
+    "month": "所选月份",
+    "active": "进行中",
+    "unread": "未读消息"
   }
 }
