@@ -1,4 +1,5 @@
 import { gsap } from 'gsap'
+import { IMAGE_EXPAND_EASE, IMAGE_EXPAND_SECONDS, IMAGE_HANDOFF_SECONDS } from './motionTiming'
 
 /** 只保留本次导航所需的可见像素，不导出数据URL、不持久化私有图片；长边限制1600像素。 */
 export function copyVisibleImage(source: HTMLCanvasElement | HTMLImageElement): HTMLCanvasElement | null {
@@ -23,10 +24,14 @@ const preparedImages = new WeakMap<HTMLElement, HTMLCanvasElement | HTMLImageEle
 export function prepareListImage(marker: HTMLElement, canvas: HTMLCanvasElement | HTMLImageElement): void { preparedImages.set(marker, canvas) }
 
 let pendingPreview: HTMLCanvasElement | null = null
+let pendingFrame: { width: number; height: number } | null = null
 
 /** 点击列表时同步复制已经解码的缩略图，首帧不等待详情网络或再次解码。 */
 export function captureListImage(marker: HTMLElement): boolean {
   discardPendingImage()
+  const thumbnail = marker.querySelector<HTMLElement>('.thumbnail-frame')
+  const frame = thumbnail?.getBoundingClientRect?.()
+  if (frame?.width && frame.height) pendingFrame = { width: frame.width, height: frame.height }
   const prepared = preparedImages.get(marker)
   if (prepared) { pendingPreview = copyVisibleImage(prepared); preparedImages.delete(marker); return pendingPreview !== null }
   const image = marker.querySelector<HTMLImageElement>('.thumbnail-frame img')
@@ -35,6 +40,20 @@ export function captureListImage(marker: HTMLElement): boolean {
 }
 export function discardPendingImage(): void {
   if (pendingPreview) { pendingPreview.width = 0; pendingPreview.height = 0; pendingPreview = null }
+  pendingFrame = null
+}
+
+interface PixelRect { x: number; y: number; width: number; height: number }
+/** 复现列表居中cover的完整图边界，并反算根节点非等比缩放，首帧保持列表裁切和像素比例。 */
+export function sourceImageRect(width: number, height: number, frameWidth: number, frameHeight: number, rootWidth: number, rootHeight: number): PixelRect {
+  const cover = Math.max(frameWidth / width, frameHeight / height)
+  const w = width * cover, h = height * cover
+  return { x: (frameWidth - w) / 2 * rootWidth / frameWidth, y: (frameHeight - h) / 2 * rootHeight / frameHeight,
+    width: w * rootWidth / frameWidth, height: h * rootHeight / frameHeight }
+}
+/** 快照CSS尺寸固定，仅用合成层变换移动缩放，避免每帧修改width/height触发布局。 */
+function transformRect(pixels: HTMLCanvasElement, rect: PixelRect) {
+  return { x: rect.x, y: rect.y, scaleX: rect.width / pixels.width, scaleY: rect.height / pixels.height }
 }
 
 /** 将快照放入同一GSAP缩放根节点，图片会随窗口一起展开和倒放。 */
@@ -43,7 +62,8 @@ function attach(root: HTMLElement, pixels: HTMLCanvasElement, kind: string): Ima
   const layer = document.createElement('div')
   layer.dataset.motionImage = kind; layer.setAttribute('aria-hidden', 'true')
   Object.assign(layer.style, { position: 'absolute', inset: '0', zIndex: '1', pointerEvents: 'none', overflow: 'hidden', background: 'var(--surface)' })
-  Object.assign(pixels.style, { position: 'absolute', left: '0', top: '0', width: '100%', height: '100%', objectFit: 'contain' })
+  Object.assign(pixels.style, { position: 'absolute', left: '0', top: '0', width: `${pixels.width}px`, height: `${pixels.height}px`, transformOrigin: '0 0', willChange: 'transform', objectFit: 'contain' })
+  gsap.set(pixels, { ...transformRect(pixels, { x: 0, y: 0, width: root.offsetWidth, height: root.offsetHeight }), force3D: true })
   layer.appendChild(pixels); root.appendChild(layer)
   const state = { layer, pixels, ready: null, opened: false, closing: false, started: performance.now() }
   layers.set(root, state)
@@ -52,7 +72,9 @@ function attach(root: HTMLElement, pixels: HTMLCanvasElement, kind: string): Ima
 export function attachListImage(root: HTMLElement): void {
   if (!pendingPreview) return
   const image = pendingPreview; pendingPreview = null
+  const frame = pendingFrame; pendingFrame = null
   attach(root, image, 'preview')
+  if (frame) gsap.set(image, transformRect(image, sourceImageRect(image.width, image.height, frame.width, frame.height, root.offsetWidth, root.offsetHeight)))
 }
 
 /** 详情真正渲染出像素后再交接，慢网时继续显示列表预览，不在动画结束时切成空白。 */
@@ -65,12 +87,11 @@ export function detailImageReady(canvas: HTMLCanvasElement): void {
   const target = canvas.getBoundingClientRect(), frame = root.getBoundingClientRect()
   const sx = frame.width / Math.max(1, root.offsetWidth), sy = frame.height / Math.max(1, root.offsetHeight)
   // 解码和布局可能在缩放途中完成，禁止瞬间改写图片框。边界过渡与剩余开合时间对齐；
-  // 迟到的详情先用40ms对齐，再交接像素，避免同一帧既改屏占比又移除快照。
+  // 迟到的详情先对齐再交接像素，避免同一帧既改屏占比又移除快照。
   gsap.to(state.pixels, {
-    left: (target.left - frame.left) / sx, top: (target.top - frame.top) / sy,
-    width: target.width / sx, height: target.height / sy,
-    duration: Math.max(0.04, (240 - (performance.now() - state.started)) / 1000),
-    ease: 'power2.inOut', overwrite: true,
+    ...transformRect(state.pixels, { x: (target.left - frame.left) / sx, y: (target.top - frame.top) / sy, width: target.width / sx, height: target.height / sy }),
+    duration: Math.max(IMAGE_HANDOFF_SECONDS, IMAGE_EXPAND_SECONDS - (performance.now() - state.started) / 1000),
+    ease: IMAGE_EXPAND_EASE, overwrite: true,
     onComplete: () => { if (state.opened && !state.closing) reveal(root, state) },
   })
 }
@@ -78,7 +99,7 @@ function reveal(root: HTMLElement, state: ImageLayer): void {
   if (!state.ready || state.closing || !state.ready.isConnected) return
   gsap.killTweensOf([state.layer, state.pixels])
   // 像素层已经与真实画布对齐，只淡出交接，避免动画完成后再次改变图片屏占比。
-  gsap.to(state.layer, { opacity: 0, duration: 0.04, delay: 0, onComplete: () => { if (layers.get(root) === state && !state.closing) removeMotionImage(root) } })
+  gsap.to(state.layer, { opacity: 0, duration: IMAGE_HANDOFF_SECONDS, ease: IMAGE_EXPAND_EASE, delay: 0, onComplete: () => { if (layers.get(root) === state && !state.closing) removeMotionImage(root) } })
 }
 export function completeImageOpen(root: HTMLElement): void {
   const state = layers.get(root)
@@ -100,7 +121,7 @@ export function captureDetailImage(canvas: HTMLCanvasElement | null): void {
   const sx = frame.width / Math.max(1, root.offsetWidth), sy = frame.height / Math.max(1, root.offsetHeight)
   const state = attach(root, pixels, 'detail')
   // 中途返回仍保持当前根节点缩放，快照使用根节点局部坐标，避免出现完整窗口的跳变。
-  Object.assign(pixels.style, { left: `${(bounds.left - frame.left) / sx}px`, top: `${(bounds.top - frame.top) / sy}px`, width: `${bounds.width / sx}px`, height: `${bounds.height / sy}px`, objectFit: 'contain' })
+  gsap.set(pixels, transformRect(pixels, { x: (bounds.left - frame.left) / sx, y: (bounds.top - frame.top) / sy, width: bounds.width / sx, height: bounds.height / sy }))
   state.closing = true
 }
 export function removeMotionImage(root: HTMLElement): void {

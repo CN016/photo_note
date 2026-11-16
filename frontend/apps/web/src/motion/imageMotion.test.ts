@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-vi.mock('gsap', () => ({ gsap: { to: vi.fn(), killTweensOf: vi.fn(), isTweening: vi.fn(() => false) } }))
+vi.mock('gsap', () => ({ gsap: { to: vi.fn(), set: vi.fn(), killTweensOf: vi.fn(), isTweening: vi.fn(() => false) } }))
 
 /** 模拟独立像素副本，验证源画布卸载后仍可播放；真实像素另外由浏览器读取核对。 */
 class TestImage { naturalWidth = 4000; naturalHeight = 2000; complete = true; pixel = 37 }
@@ -58,26 +58,35 @@ describe('导航真实图片交接', () => {
     expect(page.children[0]).toBe(original)
     expect(page.children[0]!.children[0]!.pixel).toBe(37)
   })
-  it('详情就绪时连续插值完整图片边界，不瞬间改写屏占比', async () => {
+  it('首帧补偿根节点非等比缩放，复现横图和竖图的列表cover裁切', () => {
+    for (const [w, h] of [[1600, 800], [800, 1600], [1000, 1000]]) {
+      const rect = images.sourceImageRect(w!, h!, 160, 190, 390, 844)
+      const screenWidth = rect.width * 160 / 390, screenHeight = rect.height * 190 / 844
+      expect(screenWidth / screenHeight).toBeCloseTo(w! / h!)
+      expect(screenWidth).toBeGreaterThanOrEqual(160)
+      expect(screenHeight).toBeGreaterThanOrEqual(190)
+      expect(rect.x * 160 / 390).toBeCloseTo((160 - screenWidth) / 2)
+      expect(rect.y * 190 / 844).toBeCloseTo((190 - screenHeight) / 2)
+    }
+  })
+  it('详情就绪仅插值合成层变换，不逐帧改变布局尺寸', async () => {
     const { gsap } = await import('gsap')
     const page = root()
     images.captureListImage({ querySelector: () => new TestImage() } as any)
     images.attachListImage(page as any)
-    expect((page.children[0]!.children[0]!.style as any).objectFit).toBe('contain')
     const source = new TestCanvas(); source.width = 1200; source.height = 800; source.root = page
     images.detailImageReady(source as any)
-    expect(page.children[0]!.children[0]!.style).toMatchObject({ width: '100%', height: '100%' })
+    const pixels = page.children[0]!.children[0]!
     const geometry = vi.mocked(gsap.to).mock.calls.at(-1)![1] as any
-    expect(geometry).toMatchObject({ left: 24, top: 100, width: 300, height: 375, overwrite: true })
-    expect(geometry.duration).toBeGreaterThanOrEqual(0.04)
-    expect(geometry.duration).toBeLessThanOrEqual(0.24)
-    Object.assign(page.children[0]!.children[0]!.style, { left: '24px', top: '100px', width: '300px', height: '375px' })
-    const opening = { ...page.children[0]!.children[0]!.style }
+    expect(geometry).toMatchObject({ x: 24, y: 100, scaleX: 300 / pixels.width, scaleY: 375 / pixels.height, overwrite: true })
+    expect(geometry).not.toHaveProperty('width')
+    expect(geometry).not.toHaveProperty('height')
+    expect(geometry.duration).toBeGreaterThanOrEqual(0.02)
+    expect(geometry.duration).toBeLessThanOrEqual(0.16)
     images.completeImageOpen(page as any)
     images.captureDetailImage(source as any)
-    const closing = page.children[0]!.children[0]!.style
-    expect(closing).toEqual(opening)
-    expect(closing).toMatchObject({ left: '24px', top: '100px', width: '300px', height: '375px', objectFit: 'contain' })
+    const snapshot = page.children[0]!.children[0]!
+    expect(vi.mocked(gsap.set).mock.calls.at(-1)![1]).toMatchObject({ x: 24, y: 100, scaleX: 300 / snapshot.width, scaleY: 375 / snapshot.height })
   })
   it('完整详情返回先复制真实像素，释放源和结束动画均不泄漏资源', () => {
     const page = root()

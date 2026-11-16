@@ -49,7 +49,7 @@ describe('可中断窗口动画', () => {
   it('短动画均匀分配位移且不逐帧重绘大面积阴影', () => {
     open(detail())
     const target = fixture.timelines[0].to.mock.calls[0][1]
-    expect(target).toMatchObject({ duration: 0.24, ease: 'power2.inOut', scaleX: 1, scaleY: 1 })
+    expect(target).toMatchObject({ duration: 0.16, ease: 'none', scaleX: 1, scaleY: 1 })
     expect(target).not.toHaveProperty('boxShadow')
     expect(target).not.toHaveProperty('borderRadius')
   })
@@ -61,7 +61,7 @@ describe('可中断窗口动画', () => {
     plan('shared-back'); motion.leaveRoute(node, done)
     expect(fixture.timelines).toHaveLength(1)
     expect(fixture.timelines[0].reverse).toHaveBeenCalledOnce()
-    expect(fixture.timelines[0].timeScale).toHaveBeenLastCalledWith(0.18 / 0.24)
+    expect(fixture.timelines[0].timeScale).toHaveBeenLastCalledWith(0.18 / 0.16)
     expect(done).not.toHaveBeenCalled()
     expect(document.body.style.minHeight).toBe('4200px')
     fixture.timelines[0].callbacks.onReverseComplete()
@@ -79,7 +79,7 @@ describe('可中断窗口动画', () => {
     expect(gsap.killTweensOf).toHaveBeenCalledTimes(kills)
     expect(fixture.timelines).toHaveLength(1)
     expect(fixture.timelines[0].reverse).toHaveBeenCalledOnce()
-    expect(fixture.timelines[0].timeScale).toHaveBeenLastCalledWith(0.18 / 0.24)
+    expect(fixture.timelines[0].timeScale).toHaveBeenLastCalledWith(0.18 / 0.16)
     expect(document.body.style.minHeight).toBe('4200px')
   })
   it('列表激活取消旧离场 Tween，避免迟到回调隐藏列表', async () => {

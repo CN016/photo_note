@@ -1,13 +1,14 @@
 import { attachListImage, captureListImage, completeImageOpen, discardPendingImage, removeMotionImage, resetMotionImages } from './imageMotion'
 import { gsap } from 'gsap'
+import { IMAGE_EXPAND_EASE, IMAGE_EXPAND_SECONDS } from './motionTiming'
 import { Flip } from 'gsap/Flip'
 import type { Router } from 'vue-router'
 import { planRouteMotion, type MotionRoute, type RouteMotion, type SharedOrigin } from './routeMotion'
 
 gsap.registerPlugin(Flip)
 
-// 位置开合240ms，加上40ms像素交接，总动效控制在300ms内；中途返回沿当前轨迹倒放。
-const WINDOW_MOTION_DURATION = 0.24
+// 位置开合160ms，加上20ms像素交接，总动效约180ms；中途返回沿当前轨迹倒放。
+const WINDOW_MOTION_DURATION = IMAGE_EXPAND_SECONDS
 type CapturedOrigin = SharedOrigin
 
 let installed = false
@@ -151,7 +152,7 @@ function freeScrollExtent(element: HTMLElement): void {
   document.body.classList.remove('route-motion-active')
 }
 
-/** 对称缓入缓出将位移分布到整个短动画，避免回弹曲线在前几帧冲完；返回复用同一时间线。 */
+/** 窗口按线性曲线匀速展开；返回复用同一条时间线，避免切换缓动或回弹。 */
 function runSharedForward(element: HTMLElement, origin: SharedOrigin, done: () => void): void {
   const existing = windowMotions.get(element)
   if (existing) {
@@ -177,7 +178,7 @@ function runSharedForward(element: HTMLElement, origin: SharedOrigin, done: () =
   windowMotions.set(element, state)
   timeline.to(element, {
     x: 0, y: 0, scaleX: 1, scaleY: 1,
-    duration: WINDOW_MOTION_DURATION, ease: 'power2.inOut',
+    duration: WINDOW_MOTION_DURATION, ease: IMAGE_EXPAND_EASE,
   })
   timeline.eventCallback('onComplete', () => {
     if (state.reversing) return
