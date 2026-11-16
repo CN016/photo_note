@@ -44,6 +44,13 @@ function captureSharedOrigin(event: Event): void {
   capturedOrigin = thumbnail && !hasPreview ? null : readOrigin(thumbnail ?? marker)
 }
 
+/** 详情图预加载完成后重新读取卡片位置，滚动期间不沿用点击时的旧坐标。 */
+export function capturePreparedOrigin(marker: HTMLElement): void {
+  const thumbnail = marker.querySelector<HTMLElement>('.thumbnail-frame')
+  const ready = captureListImage(marker)
+  capturedOrigin = ready && !reducedMotion ? readOrigin(thumbnail ?? marker) : null
+}
+
 /** 检查系统减弱动态效果设置；开启时保留即时页面切换，不执行缩放与位移动画。 */
 function updateReducedMotion(): void {
   reducedMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false

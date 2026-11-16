@@ -1,5 +1,9 @@
 <script setup lang="ts">
 import { useGallerySectionSwipe } from '../useGallerySectionSwipe'
+import { capturePreparedOrigin } from '../motion/navigationMotion'
+import { prepareListImage } from '../motion/imageMotion'
+import { parseEditorDocument } from '../../../../packages/editor-core/src'
+import { decodeImagePreview, releaseCanvas, renderDocumentPreview } from '../../../../packages/image-processing/src'
 import { imageNote } from '../images/imageNote'
 import ContentZoom from '../components/ContentZoom.vue'
 import { computed, nextTick, onActivated, onDeactivated, onBeforeUnmount, onMounted, ref, watch } from 'vue'
@@ -11,7 +15,7 @@ import { createLongPress } from '../context-menu/longPress'
 import { gallerySnapshot, saveGallerySnapshot, clearGallerySnapshot } from '../context-menu/galleryNavigation'
 import type { InspirationProjectSummary } from '../api/types'
 import { useI18n } from 'vue-i18n'
-import { ArrowDown, Filter, PictureFilled, Search, User } from '@element-plus/icons-vue'
+import { ArrowDown, Filter, PictureFilled, Search, User, Loading } from '@element-plus/icons-vue'
 import CreateFab from '../components/CreateFab.vue'
 import InspirationThumbnail from '../components/InspirationThumbnail.vue'
 import InspirationLibraryTools from '../components/InspirationLibraryTools.vue'
@@ -30,7 +34,7 @@ let savedScroll = 0
 let openedImageID = ''
 // 离开前记录真实位置；激活发生在浏览器绘制之前，缩略图和筛选均沿用原实例。
 onBeforeRouteLeave(to => { savedScroll = window.scrollY; openedImageID = to.name === 'edit-inspiration' ? String(to.params.id) : '' })
-onDeactivated(() => { active.value = false; gesture.cancel(); associationVersion += 1 })
+onDeactivated(() => { active.value = false; openVersion += 1; openingID.value = ''; gesture.cancel(); associationVersion += 1 })
 onActivated(() => {
   active.value = true
   window.scrollTo({ top: savedScroll, behavior: 'instant' as ScrollBehavior })
@@ -126,6 +130,37 @@ function touchMove(event: TouchEvent) {
 }
 function interceptClick(event: MouseEvent) { if (gesture.consumeClick()) { event.preventDefault(); event.stopPropagation() } }
 
+const openingID = ref('')
+let openVersion = 0
+/** 保留原生新标签页操作；普通点击等待详情像素，代次与会话检查阻止迟到导航。 */
+async function openDetail(event: MouseEvent, item: InspirationRecord) {
+  if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return
+  event.preventDefault()
+  if (openingID.value === item.business_id) return
+  const marker = event.currentTarget as HTMLElement
+  const version = ++openVersion, scope = scopeKey()
+  openingID.value = item.business_id
+  let source: HTMLCanvasElement | null = null, output: HTMLCanvasElement | null = null
+  try {
+    const record = await api.inspiration(item.business_id)
+    const blob = await api.download(record.image_key)
+    if (version !== openVersion || !active.value || !alive || scope !== scopeKey()) return
+    source = (await decodeImagePreview(blob)).canvas
+    if (version !== openVersion || !active.value || !alive || scope !== scopeKey() || !marker.isConnected) return
+    output = renderDocumentPreview(source, parseEditorDocument(record.data))
+    prepareListImage(marker, output)
+    capturePreparedOrigin(marker)
+    await router.push(`/inspirations/${item.business_id}`)
+  } catch (cause) {
+    if (version === openVersion && active.value && scope === scopeKey()) error.value = errorText(cause)
+  } finally {
+    releaseCanvas(source); releaseCanvas(output)
+    if (version === openVersion) openingID.value = ''
+  }
+}
+/** 列表按文档顺序显示锚点备注，兼容缺失或损坏的旧数据。 */
+function anchorNotes(item: InspirationRecord) { return parseEditorDocument(item.data).anchors }
+
 const items = ref<InspirationRecord[]>([])
 const tags = ref<TagRecord[]>([])
 const searchQuery = ref('')
@@ -200,7 +235,7 @@ function resetFilters() {
 /** 重试只提交当前图片任务，等待后端确认后刷新列表，防止重复点击。 */
 
 watch(() => [auth.orgid, auth.user?.business_id, auth.sessionVersion], () => {
-  clearGallerySnapshot(); associationVersion += 1; requestVersion += 1; items.value = []; total.value = 0; libraryFilters.value = {}; selectedTagIDs.value = []; tags.value = []
+  openVersion += 1; openingID.value = ''; clearGallerySnapshot(); associationVersion += 1; requestVersion += 1; items.value = []; total.value = 0; libraryFilters.value = {}; selectedTagIDs.value = []; tags.value = []
   if (active.value && route.name === 'gallery') { void loadPage(); void loadTags() }
 })
 
@@ -233,7 +268,7 @@ onMounted(async () => {
   const item = items.value.find(item => item.business_id === saved.imageID)
   if (item && card) showProjects(item, card, saved.x, saved.y, saved.menuPage, saved.menuScroll)
 })
-onBeforeUnmount(() => { alive = false; disposeMenu?.(); gesture.cancel(); associationVersion += 1; window.removeEventListener('scroll', gesture.cancel, true); tagsVersion += 1; window.clearInterval(processingTimer); if (searchTimer !== undefined) window.clearTimeout(searchTimer); requestVersion += 1 })
+onBeforeUnmount(() => { alive = false; openVersion += 1; disposeMenu?.(); gesture.cancel(); associationVersion += 1; window.removeEventListener('scroll', gesture.cancel, true); tagsVersion += 1; window.clearInterval(processingTimer); if (searchTimer !== undefined) window.clearTimeout(searchTimer); requestVersion += 1 })
 </script>
 
 <template>
@@ -280,10 +315,10 @@ onBeforeUnmount(() => { alive = false; disposeMenu?.(); gesture.cancel(); associ
 
       <section v-if="items.length" class="inspiration-grid" :aria-label="t('gallery.title')">
         <article v-for="(item, index) in items" :key="item.business_id" class="inspiration-card" tabindex="0" :data-inspiration-card="item.business_id" :style="{ '--card-index': index % 8 }">
-          <RouterLink class="inspiration-link" :data-shared-transition="item.business_id" :to="`/inspirations/${item.business_id}`" :aria-label="t('gallery.openImage', { name: item.file_name || t('gallery.untitled') })">
-            <InspirationThumbnail :record="item" />
+          <RouterLink class="inspiration-link" @click="openDetail($event, item)" :aria-busy="openingID === item.business_id" :data-shared-transition="item.business_id" :to="`/inspirations/${item.business_id}`" :aria-label="t('gallery.openImage', { name: item.file_name || t('gallery.untitled') })">
+            <div class="gallery-image-frame"><InspirationThumbnail :record="item" /><span v-if="openingID === item.business_id" class="gallery-opening" role="status"><el-icon class="is-loading"><Loading /></el-icon>{{ t('gallery.loadingImage') }}</span></div>
             <p v-if="imageNote(item.data)" class="gallery-image-note" :title="imageNote(item.data)">{{ imageNote(item.data) }}</p>
-
+            <p v-for="(anchor, number) in anchorNotes(item)" :key="anchor.id" class="gallery-anchor-note" :title="anchor.note">{{ number + 1 }}. {{ anchor.note }}</p>
           </RouterLink>
           <div v-if="showPeople && item.analysis_status" class="gallery-analysis">
             <span v-if="item.analysis_status === 'succeeded'">{{ item.people_count === 0 ? t('gallery.library.emptyOnly') : t('gallery.library.personCount', { count: item.people_count }) }}<i v-if="item.dominant_color" :style="{ background: item.dominant_color }" :title="item.color_bucket ? t(`gallery.library.colorNames.${item.color_bucket}`) : ''" /></span>
@@ -356,4 +391,10 @@ onBeforeUnmount(() => { alive = false; disposeMenu?.(); gesture.cancel(); associ
 <style scoped>
 .gallery-image-note { overflow: hidden; margin: 0; padding: 7px 2px 2px; color: var(--ink); font-size: 13px; line-height: 1.5; white-space: nowrap; text-overflow: ellipsis; }
 .gallery-analysis { top: 8px; bottom: auto; }
+</style>
+
+<style scoped>
+.gallery-image-frame { position: relative; }
+.gallery-opening { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; gap: 8px; background: rgb(0 0 0 / 40%); color: white; }
+.gallery-anchor-note { margin: 0; padding: 4px 2px; white-space: pre-wrap; overflow-wrap: anywhere; font-size: 13px; color: var(--ink); }
 </style>

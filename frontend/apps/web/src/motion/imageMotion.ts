@@ -17,11 +17,18 @@ export function copyVisibleImage(source: HTMLCanvasElement | HTMLImageElement): 
 }
 interface ImageLayer { layer: HTMLDivElement; pixels: HTMLCanvasElement; ready: HTMLCanvasElement | null; opened: boolean; closing: boolean }
 const layers = new Map<HTMLElement, ImageLayer>()
+const preparedImages = new WeakMap<HTMLElement, HTMLCanvasElement>()
+
+/** 仅为下一次点击保留已渲染的详情像素，由列表负责取消和释放。 */
+export function prepareListImage(marker: HTMLElement, canvas: HTMLCanvasElement): void { preparedImages.set(marker, canvas) }
+
 let pendingPreview: HTMLCanvasElement | null = null
 
 /** 点击列表时同步复制已经解码的缩略图，首帧不等待详情网络或再次解码。 */
 export function captureListImage(marker: HTMLElement): boolean {
   discardPendingImage()
+  const prepared = preparedImages.get(marker)
+  if (prepared) { pendingPreview = copyVisibleImage(prepared); preparedImages.delete(marker); return pendingPreview !== null }
   const image = marker.querySelector<HTMLImageElement>('.thumbnail-frame img')
   if (image?.complete && image.naturalWidth) pendingPreview = copyVisibleImage(image)
   return pendingPreview !== null

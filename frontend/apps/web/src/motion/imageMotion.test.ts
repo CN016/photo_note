@@ -37,6 +37,17 @@ describe('导航真实图片交接', () => {
     expect(images.captureListImage({ querySelector: () => image } as any)).toBe(false)
     expect(images.copyVisibleImage(new TestCanvas() as any)).toBeNull()
   })
+  it('展开优先使用已准备的详情像素，释放原画布后仍保留清晰快照', () => {
+    const marker = { querySelector: () => new TestImage() }
+    const detail = new TestCanvas(); detail.width = 1200; detail.height = 800; detail.pixel = 91
+    images.prepareListImage(marker as any, detail as any)
+    expect(images.captureListImage(marker as any)).toBe(true)
+    detail.width = 0; detail.pixel = 0
+    const page = root(); images.attachListImage(page as any)
+    expect(page.children[0]!.children[0]!.pixel).toBe(91)
+    images.resetMotionImages()
+    expect(page.children).toHaveLength(0)
+  })
   it('中途返回保留正在展开的预览，不跳成另一个完整图片框', () => {
     const page = root()
     images.captureListImage({ querySelector: () => new TestImage() } as any)
