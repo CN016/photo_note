@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { RouteMotion } from './routeMotion'
 
 const fixture = vi.hoisted(() => ({ planned: { kind: 'page' } as RouteMotion, timelines: [] as any[] }))
-vi.mock('./imageMotion', () => ({ attachListImage: vi.fn(), captureListImage: vi.fn(), completeImageOpen: vi.fn(), discardPendingImage: vi.fn(), removeMotionImage: vi.fn(), resetMotionImages: vi.fn() }))
+vi.mock('./imageMotion', () => ({ startImageGenie: vi.fn(), updateImageGenie: vi.fn(), stopImageGenie: vi.fn(), attachListImage: vi.fn(), captureListImage: vi.fn(), completeImageOpen: vi.fn(), discardPendingImage: vi.fn(), removeMotionImage: vi.fn(), resetMotionImages: vi.fn() }))
 vi.mock('./routeMotion', () => ({ planRouteMotion: () => fixture.planned }))
 vi.mock('gsap/Flip', () => ({ Flip: { fit: vi.fn(), killFlipsOf: vi.fn() } }))
 vi.mock('gsap', () => ({ gsap: {
@@ -95,5 +95,15 @@ describe('可中断窗口动画', () => {
     open(detail()); motion.resetNavigationMotion()
     expect(fixture.timelines[0].kill).toHaveBeenCalledOnce()
     expect(document.body.style.minHeight).toBe('')
+  })
+  it('展开途中转到其他页面立即释放网格，避免独立像素层挡住新页面', async () => {
+    const images = await import('./imageMotion')
+    const node = detail()
+    open(node)
+    fixture.planned = { kind: 'page' }
+    guard({ path: '/profile' }, { path: '/inspirations/a' })
+    motion.leaveRoute(node, vi.fn())
+    expect(images.stopImageGenie).toHaveBeenCalledWith(node)
+    expect(fixture.timelines[0].kill).toHaveBeenCalledOnce()
   })
 })

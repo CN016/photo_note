@@ -44,3 +44,7 @@ served by Apple App Store product pages. It is bundled locally for provider iden
   https://apps.apple.com/cn/app/飞书-字节跳动旗下-ai-工作平台/id1401729613
 All brand names and artwork remain the property of their respective owners; this project
 uses the artwork only to identify each webhook destination and does not imply endorsement.
+
+
+Genie 漏斗动画几何参考 BCGenieEffect（MIT），Copyright (c) 2012 Bartosz Ciechanowski。
+来源：https://github.com/Ciechan/BCGenieEffect 。WebGL 网格渲染及重叠目标适配为本项目实现；许可副本：public/licenses/BCGenieEffect-LICENSE.txt。
