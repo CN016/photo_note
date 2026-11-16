@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-vi.mock('gsap', () => ({ gsap: { to: vi.fn(), killTweensOf: vi.fn() } }))
+vi.mock('gsap', () => ({ gsap: { to: vi.fn(), killTweensOf: vi.fn(), isTweening: vi.fn(() => false) } }))
 
 /** 模拟独立像素副本，验证源画布卸载后仍可播放；真实像素另外由浏览器读取核对。 */
 class TestImage { naturalWidth = 4000; naturalHeight = 2000; complete = true; pixel = 37 }
@@ -58,13 +58,20 @@ describe('导航真实图片交接', () => {
     expect(page.children[0]).toBe(original)
     expect(page.children[0]!.children[0]!.pixel).toBe(37)
   })
-  it('进入与返回使用相同的完整图片边界，不用cover铺满窗口', () => {
+  it('详情就绪时连续插值完整图片边界，不瞬间改写屏占比', async () => {
+    const { gsap } = await import('gsap')
     const page = root()
     images.captureListImage({ querySelector: () => new TestImage() } as any)
     images.attachListImage(page as any)
     expect((page.children[0]!.children[0]!.style as any).objectFit).toBe('contain')
     const source = new TestCanvas(); source.width = 1200; source.height = 800; source.root = page
     images.detailImageReady(source as any)
+    expect(page.children[0]!.children[0]!.style).toMatchObject({ width: '100%', height: '100%' })
+    const geometry = vi.mocked(gsap.to).mock.calls.at(-1)![1] as any
+    expect(geometry).toMatchObject({ left: 24, top: 100, width: 300, height: 375, overwrite: true })
+    expect(geometry.duration).toBeGreaterThanOrEqual(0.04)
+    expect(geometry.duration).toBeLessThanOrEqual(0.24)
+    Object.assign(page.children[0]!.children[0]!.style, { left: '24px', top: '100px', width: '300px', height: '375px' })
     const opening = { ...page.children[0]!.children[0]!.style }
     images.completeImageOpen(page as any)
     images.captureDetailImage(source as any)

@@ -46,6 +46,13 @@ function open(node: HTMLElement) {
 }
 
 describe('可中断窗口动画', () => {
+  it('短动画均匀分配位移且不逐帧重绘大面积阴影', () => {
+    open(detail())
+    const target = fixture.timelines[0].to.mock.calls[0][1]
+    expect(target).toMatchObject({ duration: 0.24, ease: 'power2.inOut', scaleX: 1, scaleY: 1 })
+    expect(target).not.toHaveProperty('boxShadow')
+    expect(target).not.toHaveProperty('borderRadius')
+  })
   it('中途返回倒放同一时间线且保留页面高度直至详情移除', () => {
     const node = detail(), done = vi.fn()
     open(node)

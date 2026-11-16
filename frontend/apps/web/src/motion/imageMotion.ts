@@ -15,7 +15,7 @@ export function copyVisibleImage(source: HTMLCanvasElement | HTMLImageElement): 
     return canvas
   } catch { canvas.width = 0; canvas.height = 0; return null }
 }
-interface ImageLayer { layer: HTMLDivElement; pixels: HTMLCanvasElement; ready: HTMLCanvasElement | null; opened: boolean; closing: boolean }
+interface ImageLayer { layer: HTMLDivElement; pixels: HTMLCanvasElement; ready: HTMLCanvasElement | null; opened: boolean; closing: boolean; started: number }
 const layers = new Map<HTMLElement, ImageLayer>()
 const preparedImages = new WeakMap<HTMLElement, HTMLCanvasElement | HTMLImageElement>()
 
@@ -45,7 +45,7 @@ function attach(root: HTMLElement, pixels: HTMLCanvasElement, kind: string): Ima
   Object.assign(layer.style, { position: 'absolute', inset: '0', zIndex: '1', pointerEvents: 'none', overflow: 'hidden', background: 'var(--surface)' })
   Object.assign(pixels.style, { position: 'absolute', left: '0', top: '0', width: '100%', height: '100%', objectFit: 'contain' })
   layer.appendChild(pixels); root.appendChild(layer)
-  const state = { layer, pixels, ready: null, opened: false, closing: false }
+  const state = { layer, pixels, ready: null, opened: false, closing: false, started: performance.now() }
   layers.set(root, state)
   return state
 }
@@ -64,8 +64,15 @@ export function detailImageReady(canvas: HTMLCanvasElement): void {
   // 进入与返回使用同一个真实画布边界；根节点正在缩放时须换算回局部坐标，禁止铺满窗口裁图。
   const target = canvas.getBoundingClientRect(), frame = root.getBoundingClientRect()
   const sx = frame.width / Math.max(1, root.offsetWidth), sy = frame.height / Math.max(1, root.offsetHeight)
-  Object.assign(state.pixels.style, { left: `${(target.left - frame.left) / sx}px`, top: `${(target.top - frame.top) / sy}px`, width: `${target.width / sx}px`, height: `${target.height / sy}px`, objectFit: 'contain' })
-  if (state.opened) reveal(root, state)
+  // 解码和布局可能在缩放途中完成，禁止瞬间改写图片框。边界过渡与剩余开合时间对齐；
+  // 迟到的详情先用40ms对齐，再交接像素，避免同一帧既改屏占比又移除快照。
+  gsap.to(state.pixels, {
+    left: (target.left - frame.left) / sx, top: (target.top - frame.top) / sy,
+    width: target.width / sx, height: target.height / sy,
+    duration: Math.max(0.04, (240 - (performance.now() - state.started)) / 1000),
+    ease: 'power2.inOut', overwrite: true,
+    onComplete: () => { if (state.opened && !state.closing) reveal(root, state) },
+  })
 }
 function reveal(root: HTMLElement, state: ImageLayer): void {
   if (!state.ready || state.closing || !state.ready.isConnected) return
@@ -77,7 +84,8 @@ export function completeImageOpen(root: HTMLElement): void {
   const state = layers.get(root)
   if (!state) return
   state.opened = true
-  if (state.ready) reveal(root, state)
+  // 几何插值尚未结束时由其完成回调交接，不提前终止图片框运动。
+  if (state.ready && !gsap.isTweening(state.pixels)) reveal(root, state)
 }
 
 /** Vue卸载会清空原canvas，必须先同步复制当前真实详情图（包括旋转、裁切和颜色）。 */

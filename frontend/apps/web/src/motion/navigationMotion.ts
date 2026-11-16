@@ -90,6 +90,7 @@ function pinRouteRoot(element: HTMLElement, preserveTimeline = false): void {
     overflow: 'hidden',
     transformOrigin: '0 0',
     willChange: 'transform, opacity',
+    force3D: true,
   })
 }
 
@@ -150,7 +151,7 @@ function freeScrollExtent(element: HTMLElement): void {
   document.body.classList.remove('route-motion-active')
 }
 
-/** 使用 GSAP 的 back 弹性曲线，从实际点击框蹦出展开；同一时间线支持原进度倒放。 */
+/** 对称缓入缓出将位移分布到整个短动画，避免回弹曲线在前几帧冲完；返回复用同一时间线。 */
 function runSharedForward(element: HTMLElement, origin: SharedOrigin, done: () => void): void {
   const existing = windowMotions.get(element)
   if (existing) {
@@ -169,14 +170,14 @@ function runSharedForward(element: HTMLElement, origin: SharedOrigin, done: () =
   const target = createBoundsTarget(origin)
   Flip.fit(element, target, { duration: 0, scale: true, absolute: false })
   target.remove()
-  gsap.set(element, { borderRadius: Math.max(origin.radius, 18), boxShadow: '0 24px 90px rgb(0 0 0 / 24%)' })
+  // 大面积模糊阴影逐帧变化会触发重绘；过渡只保留静态圆角，缩放交给合成层。
+  gsap.set(element, { borderRadius: origin.radius, boxShadow: 'none' })
   const timeline = gsap.timeline({ paused: true })
   const state: WindowMotion = { timeline, origin, pinned: true, reversing: false }
   windowMotions.set(element, state)
   timeline.to(element, {
-    x: 0, y: 0, scaleX: 1, scaleY: 1, borderRadius: 0,
-    boxShadow: '0 0 0 rgb(0 0 0 / 0%)',
-    duration: WINDOW_MOTION_DURATION, ease: 'back.out(1.35)',
+    x: 0, y: 0, scaleX: 1, scaleY: 1,
+    duration: WINDOW_MOTION_DURATION, ease: 'power2.inOut',
   })
   timeline.eventCallback('onComplete', () => {
     if (state.reversing) return
