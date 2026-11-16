@@ -58,6 +58,20 @@ describe('导航真实图片交接', () => {
     expect(page.children[0]).toBe(original)
     expect(page.children[0]!.children[0]!.pixel).toBe(37)
   })
+  it('进入与返回使用相同的完整图片边界，不用cover铺满窗口', () => {
+    const page = root()
+    images.captureListImage({ querySelector: () => new TestImage() } as any)
+    images.attachListImage(page as any)
+    expect((page.children[0]!.children[0]!.style as any).objectFit).toBe('contain')
+    const source = new TestCanvas(); source.width = 1200; source.height = 800; source.root = page
+    images.detailImageReady(source as any)
+    const opening = { ...page.children[0]!.children[0]!.style }
+    images.completeImageOpen(page as any)
+    images.captureDetailImage(source as any)
+    const closing = page.children[0]!.children[0]!.style
+    expect(closing).toEqual(opening)
+    expect(closing).toMatchObject({ left: '24px', top: '100px', width: '300px', height: '375px', objectFit: 'contain' })
+  })
   it('完整详情返回先复制真实像素，释放源和结束动画均不泄漏资源', () => {
     const page = root()
     images.captureListImage({ querySelector: () => new TestImage() } as any)

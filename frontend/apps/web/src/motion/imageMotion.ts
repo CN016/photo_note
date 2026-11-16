@@ -43,7 +43,7 @@ function attach(root: HTMLElement, pixels: HTMLCanvasElement, kind: string): Ima
   const layer = document.createElement('div')
   layer.dataset.motionImage = kind; layer.setAttribute('aria-hidden', 'true')
   Object.assign(layer.style, { position: 'absolute', inset: '0', zIndex: '1', pointerEvents: 'none', overflow: 'hidden', background: 'var(--surface)' })
-  Object.assign(pixels.style, { position: 'absolute', left: '0', top: '0', width: '100%', height: '100%', objectFit: 'cover' })
+  Object.assign(pixels.style, { position: 'absolute', left: '0', top: '0', width: '100%', height: '100%', objectFit: 'contain' })
   layer.appendChild(pixels); root.appendChild(layer)
   const state = { layer, pixels, ready: null, opened: false, closing: false }
   layers.set(root, state)
@@ -61,15 +61,17 @@ export function detailImageReady(canvas: HTMLCanvasElement): void {
   const state = root && layers.get(root)
   if (!root || !state || state.closing) return
   state.ready = canvas
+  // 进入与返回使用同一个真实画布边界；根节点正在缩放时须换算回局部坐标，禁止铺满窗口裁图。
+  const target = canvas.getBoundingClientRect(), frame = root.getBoundingClientRect()
+  const sx = frame.width / Math.max(1, root.offsetWidth), sy = frame.height / Math.max(1, root.offsetHeight)
+  Object.assign(state.pixels.style, { left: `${(target.left - frame.left) / sx}px`, top: `${(target.top - frame.top) / sy}px`, width: `${target.width / sx}px`, height: `${target.height / sy}px`, objectFit: 'contain' })
   if (state.opened) reveal(root, state)
 }
 function reveal(root: HTMLElement, state: ImageLayer): void {
   if (!state.ready || state.closing || !state.ready.isConnected) return
   gsap.killTweensOf([state.layer, state.pixels])
-  const target = state.ready.getBoundingClientRect(), frame = root.getBoundingClientRect()
-  // 从展开预览平滑对齐到真实画布，再交接显示；不导出或重新请求图片。
-  gsap.to(state.pixels, { left: target.left - frame.left, top: target.top - frame.top, width: target.width, height: target.height, objectFit: 'contain', duration: 0.18, ease: 'power2.out' })
-  gsap.to(state.layer, { opacity: 0, duration: 0.12, delay: 0.16, onComplete: () => { if (layers.get(root) === state && !state.closing) removeMotionImage(root) } })
+  // 像素层已经与真实画布对齐，只淡出交接，避免动画完成后再次改变图片屏占比。
+  gsap.to(state.layer, { opacity: 0, duration: 0.12, delay: 0, onComplete: () => { if (layers.get(root) === state && !state.closing) removeMotionImage(root) } })
 }
 export function completeImageOpen(root: HTMLElement): void {
   const state = layers.get(root)
