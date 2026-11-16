@@ -166,6 +166,17 @@ function ariaCurrent(path: string): 'page' | 'location' | undefined {
   return 'page'
 }
 
+/** 底栏工作台入口承接计划、消息等次级模块，抽屉仍分别标记其独立入口。 */
+function mobileActive(path: string): boolean {
+  if (path === '/workbench') return ['/workbench', '/ledger', '/schedule', '/plans', '/messages', '/spaces'].includes(route.path)
+  return active(path)
+}
+
+/** 次级页面使用栏目级无障碍状态，避免误报为底栏入口页面本身。 */
+function ariaMobileCurrent(path: string): 'page' | 'location' | undefined {
+  if (!mobileActive(path)) return undefined
+  return route.path === path ? 'page' : 'location'
+}
 </script>
 
 <template>
@@ -205,9 +216,20 @@ function ariaCurrent(path: string): 'page' | 'location' | undefined {
 
     <footer class="drawer-preferences"><LanguageSwitcher :teleported="false" /><ThemeSwitcher /></footer>
   </aside>
+  <!-- 底栏独立于抽屉，避免继承抽屉的隐藏、位移和滚动状态。 -->
+  <div v-if="!route.meta.standalone && !['edit-inspiration', 'organization-edit-inspiration', 'platform-edit-inspiration'].includes(String(route.name))" class="mobile-navigation-bar">
+    <nav class="mobile-nav" :inert="isDrawer" :aria-label="t('common.mobileNavigation')">
+      <RouterLink class="mobile-nav-item" :class="{ active: mobileActive('/workbench') }" :aria-current="ariaMobileCurrent('/workbench')" to="/workbench" :aria-label="t('common.workbench')"><el-icon aria-hidden="true"><House /></el-icon><small>{{ t('common.mobileWorkbench') }}</small></RouterLink>
+      <RouterLink class="mobile-nav-item" :class="{ active: mobileActive('/inspirations') }" :aria-current="ariaMobileCurrent('/inspirations')" to="/inspirations"><el-icon aria-hidden="true"><Picture /></el-icon><small>{{ t('common.inspirations') }}</small></RouterLink>
+      <RouterLink class="mobile-nav-item" :class="{ active: mobileActive('/portfolios') }" :aria-current="ariaMobileCurrent('/portfolios')" to="/portfolios"><el-icon aria-hidden="true"><PictureFilled /></el-icon><small>{{ t('common.portfolios') }}</small></RouterLink>
+      <RouterLink class="mobile-nav-item" :class="{ active: mobileActive('/projects') }" :aria-current="ariaMobileCurrent('/projects')" to="/projects"><el-icon aria-hidden="true"><Files /></el-icon><small>{{ t('common.mobileProjects') }}</small></RouterLink>
+      <RouterLink class="mobile-nav-item" :class="{ active: mobileActive('/profile') }" :aria-current="ariaMobileCurrent('/profile')" to="/profile"><el-icon aria-hidden="true"><User /></el-icon><small>{{ t('common.mobileProfile') }}</small></RouterLink>
+    </nav>
+  </div>
 </template>
 
 <style scoped>
+.mobile-navigation-bar { display: none; }
 .navigation-backdrop { position: fixed; inset: 0; z-index: 2000; background: rgb(0 0 0 / 35%); }
 .app-navigation { padding: 18px 12px max(12px, env(safe-area-inset-bottom)); }
 .drawer-account-heading { display: flex; flex: 0 0 auto; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 4px 18px; }
@@ -227,6 +249,8 @@ function ariaCurrent(path: string): 'page' | 'location' | undefined {
 .standalone-navigation.drawer-visible { visibility: visible; }
 .standalone-menu-trigger { position: fixed; z-index: 41; top: 14px; left: 12px; width: 44px; height: 44px; display: grid; place-items: center; background: var(--surface); color: var(--ink); border: 1px solid var(--line); border-radius: 12px; font-size: 22px; }
 @media (max-width: 768px) {
+  .mobile-navigation-bar { display: block; position: fixed; z-index: 40; inset: auto 0 0; padding: 0 8px env(safe-area-inset-bottom); border-top: 1px solid var(--line); background: var(--surface); }
+  :global(.project-editor-route) .mobile-navigation-bar { display: none; }
   .app-navigation { inset: 0 auto 0 0; width: min(320px, 86vw); height: 100dvh; border-top: 0; border-right: 1px solid var(--line); background: var(--surface); transform: translateX(-100%); visibility: hidden; }
   .app-navigation.drawer-visible { visibility: visible; }
   .app-navigation .desktop-nav { display: grid; }
