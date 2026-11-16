@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { loadDetailImage } from '../../images/detailImages'
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import type { Editor } from '@tiptap/core'
 import { ArrowLeft, ArrowRight, Close } from '@element-plus/icons-vue'
@@ -32,7 +33,7 @@ async function loadImage() {
   try {
     let blob: Blob; let name = entry.name
     if (entry.type === 'inspiration') {
-      const record = await api.inspiration(entry.key); blob = await api.download(record.image_key)
+      const record = await api.inspiration(entry.key); blob = await loadDetailImage(record.image_key, record.file_hash || '')
       const doc = parseEditorDocument(record.data); source = (await decodeImagePreview(blob)).canvas
       output = renderDocumentPreview(source, doc)
       blob = await new Promise<Blob>((resolve, reject) => output!.toBlob(value => value ? resolve(value) : reject(new Error('encode_failed')), 'image/png'))

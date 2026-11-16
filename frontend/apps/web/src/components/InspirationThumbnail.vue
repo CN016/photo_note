@@ -5,6 +5,7 @@ import type { InspirationRecord } from '../api/types'
 import { anchorToView, parseEditorDocument } from '../../../../packages/editor-core/src'
 import { decodeImagePreview, releaseCanvas, renderDocumentPreview } from '../../../../packages/image-processing/src'
 import { loadThumbnail } from '../images/thumbnails'
+import { loadDetailImage } from '../images/detailImages'
 
 
 type ThumbnailRecord = Pick<InspirationRecord, 'file_name' | 'image_key'> & { data?: Record<string, unknown>; file_hash?: string | null }
@@ -37,19 +38,19 @@ function imageLoaded(event: Event) {
   const image = event.target as HTMLImageElement
   imageSize.value = { width: image.naturalWidth, height: image.naturalHeight }
 }
-let observer: IntersectionObserver | null = null
 let requestVersion = 0
 
 const imageName = computed(() => props.record.file_name || t('gallery.untitled'))
 const imageLabel = computed(() => t('gallery.openImage', { name: imageName.value }))
 const imageKey = computed(() => props.record.image_key)
 
-/** 懒加载触发后共享读取已授权缩略图，直接生成对象地址，过期请求会立即释放地址。 */
+/** 列表条目创建即加载缩略图并预取详情工作图，后台错误不显示额外 loading。 */
 async function loadPreview() {
   const version = ++requestVersion
   loading.value = true
   failed.value = false
   try {
+    if (!props.loadImage) void loadDetailImage(imageKey.value, props.record.file_hash || '').catch(() => {})
     let blob = await (props.loadImage ? props.loadImage(imageKey.value) : loadThumbnail(imageKey.value, props.record.file_hash || ''))
     // 只在图库启用：对小尺寸缩略图应用与详情一致的编辑变换，避免锚点落在未编辑的图上。
     if (props.showAnchors) {
@@ -71,7 +72,7 @@ async function loadPreview() {
 watch(() => `${imageKey.value}:${props.record.file_hash || ''}:${props.showAnchors ? JSON.stringify(documentData.value) : ''}`, () => {
   if (imageUrl.value) URL.revokeObjectURL(imageUrl.value)
   imageUrl.value = null
-  if (element.value && observer === null) void loadPreview()
+  if (element.value) void loadPreview()
 })
 
 onMounted(() => {
@@ -80,17 +81,11 @@ onMounted(() => {
     measure()
     resizeObserver = new ResizeObserver(measure); resizeObserver.observe(element.value)
   }
-  if ('IntersectionObserver' in window) {
-    observer = new IntersectionObserver(entries => {
-      if (entries.some(entry => entry.isIntersecting)) { observer?.disconnect(); observer = null; void loadPreview() }
-    }, { rootMargin: '240px' })
-    if (element.value) observer.observe(element.value)
-  } else void loadPreview()
+  void loadPreview()
 })
 
 onBeforeUnmount(() => {
   requestVersion += 1
-  observer?.disconnect()
   resizeObserver?.disconnect()
   if (imageUrl.value) URL.revokeObjectURL(imageUrl.value)
 })
@@ -98,9 +93,9 @@ onBeforeUnmount(() => {
 
 <template>
   <div ref="element" class="thumbnail-frame" :aria-label="imageLabel">
-    <img v-if="imageUrl" :src="imageUrl" :alt="imageName" loading="lazy" @load="imageLoaded" />
+    <img v-if="imageUrl" :src="imageUrl" :alt="imageName" loading="eager" @load="imageLoaded" />
     <span v-else-if="failed" class="thumbnail-state">{{ t('gallery.imageUnavailable') }}</span>
-    <span v-else class="thumbnail-state"><i class="loading-dot"></i>{{ t('gallery.loadingImage') }}</span>
+    <span v-else class="thumbnail-state" aria-hidden="true"></span>
     <span v-for="anchor in anchors" :key="anchor.id" class="thumbnail-anchor" :class="{ right: anchor.right }" :style="{ left: `${anchor.x}px`, top: `${anchor.y}px`, '--note-width': `${anchor.maxWidth}px` }" :title="anchor.note"><span class="thumbnail-anchor-point" aria-hidden="true"></span><span class="thumbnail-anchor-note">{{ anchor.note }}</span></span>
   </div>
 </template>

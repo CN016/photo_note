@@ -1,21 +1,21 @@
 <script setup lang="ts">
 import { onBeforeUnmount, onMounted, ref } from 'vue'
-import { api } from '../../api/client'
+import { loadDetailImage } from '../../images/detailImages'
 
 const props = defineProps<{ storekey: string; label: string }>()
 const url = ref('')
 let requestVersion = 0
 
-/** 灵感图库选择器只下载视口附近的缩略来源图片，卸载时释放 object URL。 */
+/** 灵感图库选择器挂载即预取完整工作图，卸载时释放 object URL。 */
 onMounted(async () => {
   const version = ++requestVersion
-  try { const blob = await api.download(props.storekey); if (version === requestVersion) url.value = URL.createObjectURL(blob) }
+  try { const blob = await loadDetailImage(props.storekey); if (version === requestVersion) url.value = URL.createObjectURL(blob) }
   catch { /* 列表仍显示无图占位，不影响选择其它灵感图。 */ }
 })
 onBeforeUnmount(() => { requestVersion += 1; if (url.value) URL.revokeObjectURL(url.value) })
 </script>
 
-<template><span class="picker-image"><img v-if="url" :src="url" :alt="label" loading="lazy" /><span v-else>{{ label.slice(0, 1) }}</span></span></template>
+<template><span class="picker-image"><img v-if="url" :src="url" :alt="label" loading="eager" /><span v-else>{{ label.slice(0, 1) }}</span></span></template>
 
 <style scoped>
 /* 界面表面与控件使用全局主题令牌；图片、文档和用户自选封面颜色保持原数据。 */

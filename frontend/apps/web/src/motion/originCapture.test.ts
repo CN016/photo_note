@@ -3,7 +3,6 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 const fixture = vi.hoisted(() => ({ ready: true, planned: vi.fn() }))
 vi.mock('./imageMotion', () => ({
   captureListImage: () => fixture.ready, discardPendingImage: vi.fn(), resetMotionImages: vi.fn(),
-  startImageGenie: vi.fn(), updateImageGenie: vi.fn(), stopImageGenie: vi.fn(),
   attachListImage: vi.fn(), completeImageOpen: vi.fn(), removeMotionImage: vi.fn(),
 }))
 vi.mock('gsap', () => ({ gsap: { registerPlugin: vi.fn() } }))
@@ -17,7 +16,7 @@ beforeEach(() => {
   vi.stubGlobal('getComputedStyle', () => ({ borderRadius: '14px', boxShadow: 'none' }))
 })
 
-describe('Genie 绑定真实点击卡片', () => {
+describe('开合动画绑定真实点击卡片', () => {
   it('不同卡片的起点不同，并使用加载完成时的实时位置而非固定屏幕位置', async () => {
     const motion = await import('./navigationMotion')
     let guard: any
@@ -32,7 +31,7 @@ describe('Genie 绑定真实点击卡片', () => {
       expect(fixture.planned.mock.calls.at(-1)?.[2]).toMatchObject({ ...bounds, scrollY: 1200 })
     }
   })
-  it('详情像素准备失败时不从占位框制造漏斗起点', async () => {
+  it('详情像素准备失败时不从占位框制造动画起点', async () => {
     const motion = await import('./navigationMotion')
     let guard: any
     motion.installNavigationMotion({ beforeEach: (fn: any) => { guard = fn } } as any)

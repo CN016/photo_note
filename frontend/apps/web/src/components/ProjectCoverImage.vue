@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { Files } from '@element-plus/icons-vue'
-import { api } from '../api/client'
+import { loadDetailImage } from '../images/detailImages'
 
 const props = defineProps<{ storekey: string; emoji: string; label: string }>()
 const url = ref('')
@@ -14,7 +14,7 @@ async function load() {
   const current = ++version
   failed.value = false
   try {
-    const blob = await api.download(props.storekey)
+    const blob = await loadDetailImage(props.storekey)
     if (current === version) url.value = URL.createObjectURL(blob)
   } catch { if (current === version) failed.value = true }
 }

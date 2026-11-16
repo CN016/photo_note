@@ -1,4 +1,4 @@
-import { startImageGenie, updateImageGenie, stopImageGenie, attachListImage, captureListImage, completeImageOpen, discardPendingImage, removeMotionImage, resetMotionImages } from './imageMotion'
+import { attachListImage, captureListImage, completeImageOpen, discardPendingImage, removeMotionImage, resetMotionImages } from './imageMotion'
 import { gsap } from 'gsap'
 import { Flip } from 'gsap/Flip'
 import type { Router } from 'vue-router'
@@ -6,8 +6,8 @@ import { planRouteMotion, type MotionRoute, type RouteMotion, type SharedOrigin 
 
 gsap.registerPlugin(Flip)
 
-// 开合统一700ms，中途返回按剩余轨迹调整timeScale，不再突然快速收回。
-const WINDOW_MOTION_DURATION = 0.7
+// 位置开合240ms，加上40ms像素交接，总动效控制在300ms内；中途返回沿当前轨迹倒放。
+const WINDOW_MOTION_DURATION = 0.24
 type CapturedOrigin = SharedOrigin
 
 let installed = false
@@ -124,7 +124,6 @@ interface WindowMotion {
   origin: SharedOrigin
   pinned: boolean
   reversing: boolean
-  phase: { progress: number }
 }
 const windowMotions = new Map<HTMLElement, WindowMotion>()
 const scrollLocks = new Set<HTMLElement>()
@@ -151,7 +150,7 @@ function freeScrollExtent(element: HTMLElement): void {
   document.body.classList.remove('route-motion-active')
 }
 
-/** 图片用贝塞尔漏斗网格开合，普通详情仍保留 Flip；共用一条可中断时间线。 */
+/** 使用 GSAP 的 back 弹性曲线，从实际点击框蹦出展开；同一时间线支持原进度倒放。 */
 function runSharedForward(element: HTMLElement, origin: SharedOrigin, done: () => void): void {
   const existing = windowMotions.get(element)
   if (existing) {
@@ -172,14 +171,13 @@ function runSharedForward(element: HTMLElement, origin: SharedOrigin, done: () =
   target.remove()
   gsap.set(element, { borderRadius: Math.max(origin.radius, 18), boxShadow: '0 24px 90px rgb(0 0 0 / 24%)' })
   const timeline = gsap.timeline({ paused: true })
-  const state: WindowMotion = { timeline, origin, pinned: true, reversing: false, phase: { progress: 0 } }
+  const state: WindowMotion = { timeline, origin, pinned: true, reversing: false }
   windowMotions.set(element, state)
-  timeline.to(state.phase, { progress: 1, duration: WINDOW_MOTION_DURATION, ease: 'none', onUpdate: () => updateImageGenie(element, state.phase.progress) }, 0)
   timeline.to(element, {
     x: 0, y: 0, scaleX: 1, scaleY: 1, borderRadius: 0,
     boxShadow: '0 0 0 rgb(0 0 0 / 0%)',
-    duration: WINDOW_MOTION_DURATION, ease: 'power2.inOut',
-  }, 0)
+    duration: WINDOW_MOTION_DURATION, ease: 'back.out(1.35)',
+  })
   timeline.eventCallback('onComplete', () => {
     if (state.reversing) return
     releaseRouteRoot(element)
@@ -190,7 +188,6 @@ function runSharedForward(element: HTMLElement, origin: SharedOrigin, done: () =
     done()
   })
   attachListImage(element)
-  startImageGenie(element, origin, 0)
   timeline.play(0)
 }
 
@@ -211,7 +208,6 @@ function runSharedBack(element: HTMLElement, origin: SharedOrigin, done: () => v
     gsap.set(element, { x: 0, y: 0, scaleX: 1, scaleY: 1 })
     state.pinned = true
   }
-  startImageGenie(element, origin, state.phase.progress)
   const finish = () => {
     state!.timeline.kill()
     windowMotions.delete(element)
@@ -285,16 +281,11 @@ export function leaveRoute(element: Element, done: () => void): void {
     return
   }
   const previous = windowMotions.get(node)
-  if (previous) { previous.timeline.kill(); stopImageGenie(node); windowMotions.delete(node); freeScrollExtent(node) }
+  if (previous) { previous.timeline.kill(); windowMotions.delete(node); freeScrollExtent(node) }
   if (reducedMotion) {
     removeMotionImage(node)
     releaseRouteRoot(node)
     done()
-    return
-  }
-  if (pendingMotion.kind === 'shared-forward') {
-    // 漏斗尚未铺满屏幕时保留真实来源卡片，不能先把列表淡出为一块空背景。
-    gsap.to(node, { duration: WINDOW_MOTION_DURATION, onComplete: () => { releaseRouteRoot(node); done() } })
     return
   }
   gsap.to(node, {
@@ -312,7 +303,7 @@ export function leaveRoute(element: Element, done: () => void): void {
 
 /** 账号、组织或会话代次变化时清空页面动画历史，避免把上一空间的返回位置带入新空间。 */
 export function resetNavigationMotion(): void {
-  for (const [node, state] of windowMotions) { state.timeline.kill(); stopImageGenie(node); releaseRouteRoot(node); freeScrollExtent(node) }
+  for (const [node, state] of windowMotions) { state.timeline.kill(); releaseRouteRoot(node); freeScrollExtent(node) }
   windowMotions.clear()
   resetMotionImages()
   capturedOrigin = null

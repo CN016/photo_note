@@ -425,7 +425,7 @@ onBeforeUnmount(() => {
             <p v-if="feedbackReporterText(item)" class="notification-reporter">{{ feedbackReporterText(item) }}</p>
             <p class="notification-body" :class="{ 'feedback-message': item.event_type === 'feedback.submitted' || item.event_type === 'feedback.replied' }">{{ messageBody(item) }}</p>
             <div v-if="feedbackImages(item).length" class="feedback-image-list">
-              <img v-for="(imageURL, index) in feedbackImages(item)" :key="imageURL" :src="imageURL" :alt="t('feedbackImage', { index: index + 1 })" loading="lazy" referrerpolicy="no-referrer" />
+              <img v-for="(imageURL, index) in feedbackImages(item)" :key="imageURL" :src="imageURL" :alt="t('feedbackImage', { index: index + 1 })" loading="eager" referrerpolicy="no-referrer" />
             </div>
             <div class="notification-meta"><span>{{ t('createdAt') }} · {{ formatDate(item.created_at) }}</span></div>
 

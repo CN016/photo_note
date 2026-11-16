@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { loadManagedDetailImage, loadDetailImage } from '../images/detailImages'
 import ContentZoom from '../components/ContentZoom.vue'
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
@@ -23,7 +24,7 @@ async function searchOrganizations(query = '') { if (platform.value) organizatio
 /** 缩略图固定本次选中的组织，避免平台范围变化后继续使用新范围读取旧列表。 */
 function managedLoader(item: ConsoleInspirationRecord) {
   const orgid = platform.value ? selectedOrg.value : undefined
-  return (key: string) => api.managementImage(item.business_id, key, orgid)
+  return (key: string) => loadManagedDetailImage(item.business_id, key, orgid)
 }
 const loading = ref(false)
 const saving = ref(false)
@@ -302,7 +303,7 @@ async function openPreview(storekey: string, label: string, inspirationID?: stri
   previewLoading.value = true
   previewDialog.value = true
   try {
-    const blob = inspirationID ? await api.managementImage(inspirationID, storekey, platform.value ? selectedOrg.value : undefined) : await api.download(storekey)
+    const blob = inspirationID ? await loadManagedDetailImage(inspirationID, storekey, platform.value ? selectedOrg.value : undefined) : await loadDetailImage(storekey)
     if (version !== previewRequest) return
     previewURL.value = URL.createObjectURL(blob)
   } catch { error.value = t('console.loadError') }

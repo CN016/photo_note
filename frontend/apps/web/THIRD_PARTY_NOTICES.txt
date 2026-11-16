@@ -17,7 +17,3 @@ License）：https://gsap.com/standard-license 。
 - tiptap-vue-pro-element-plus 0.2.6、tiptap-vue-pro-core 0.2.6：MIT。来源：https://github.com/twoer/tiptap-vue-pro 。保留上游组件的工具栏与基础排版，业务资源通过自有适配层接入；许可副本位于 public/licenses/tiptap-vue-pro-LICENSE.txt。
 - @tiptap/extension-drag-handle-vue-3 3.32.0 及其 Tiptap 拖动依赖：MIT。来源：https://github.com/ueberdosis/tiptap 。
 - 上游编辑器组件使用 lucide-vue-next 图标，来源：https://lucide.dev/license （ISC）；本项目自行添加的操作图标继续使用 @element-plus/icons-vue。
-
-
-Genie 漏斗动画几何参考 BCGenieEffect（MIT），Copyright (c) 2012 Bartosz Ciechanowski。
-来源：https://github.com/Ciechan/BCGenieEffect 。WebGL 网格渲染及重叠目标适配为本项目实现；许可副本：public/licenses/BCGenieEffect-LICENSE.txt。

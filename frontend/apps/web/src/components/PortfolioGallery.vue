@@ -42,7 +42,7 @@ function submit() { if (draft.value) emit('save', draft.value, () => { selected.
   </div>
   <p v-if="!filtered.length">{{ photos.length ? tr('noResults') : tr('noPhotos') }}</p>
   <div v-else :class="['portfolio-photo-grid', { 'portfolio-masonry': layout === 'masonry' }]">
-    <button v-for="photo in filtered" :key="photo.business_id" class="portfolio-photo" type="button" @click="open(photo)"><img :src="api.portfolioPhotoURL(photo.image_key)" :alt="photo.title" loading="lazy" /><span>{{ photo.title || tr('preview') }}</span></button>
+    <button v-for="photo in filtered" :key="photo.business_id" class="portfolio-photo" type="button" @click="open(photo)"><img :src="api.portfolioPhotoURL(photo.image_key)" :alt="photo.title" loading="eager" /><span>{{ photo.title || tr('preview') }}</span></button>
   </div>
   <details class="portfolio-analysis" :aria-label="tr('statistics')">
     <summary>{{ tr('statistics') }}</summary>

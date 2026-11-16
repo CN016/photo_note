@@ -2,8 +2,7 @@
 import { useGallerySectionSwipe } from '../useGallerySectionSwipe'
 import { capturePreparedOrigin } from '../motion/navigationMotion'
 import { prepareListImage } from '../motion/imageMotion'
-import { parseEditorDocument } from '../../../../packages/editor-core/src'
-import { decodeImagePreview, releaseCanvas, renderDocumentPreview } from '../../../../packages/image-processing/src'
+import { inspirationDetails, inspirationDetailKey, preloadInspirationDetail, prepareDetailRecord } from '../images/detailImages'
 import { imageNote } from '../images/imageNote'
 import ContentZoom from '../components/ContentZoom.vue'
 import { computed, nextTick, onActivated, onDeactivated, onBeforeUnmount, onMounted, ref, watch } from 'vue'
@@ -15,7 +14,7 @@ import { createLongPress } from '../context-menu/longPress'
 import { gallerySnapshot, saveGallerySnapshot, clearGallerySnapshot } from '../context-menu/galleryNavigation'
 import type { InspirationProjectSummary } from '../api/types'
 import { useI18n } from 'vue-i18n'
-import { ArrowDown, Filter, PictureFilled, Search, User, Loading } from '@element-plus/icons-vue'
+import { ArrowDown, Filter, PictureFilled, Search, User } from '@element-plus/icons-vue'
 import CreateFab from '../components/CreateFab.vue'
 import InspirationThumbnail from '../components/InspirationThumbnail.vue'
 import InspirationLibraryTools from '../components/InspirationLibraryTools.vue'
@@ -132,7 +131,7 @@ function interceptClick(event: MouseEvent) { if (gesture.consumeClick()) { event
 
 const openingID = ref('')
 let openVersion = 0
-/** 保留原生新标签页操作；普通点击等待详情像素，代次与会话检查阻止迟到导航。 */
+/** 点击只复用列表已发起的后台任务，不创建详情接口、下载或解码任务；未完成时等待同一 promise。 */
 async function openDetail(event: MouseEvent, item: InspirationRecord) {
   if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return
   event.preventDefault()
@@ -140,21 +139,18 @@ async function openDetail(event: MouseEvent, item: InspirationRecord) {
   const marker = event.currentTarget as HTMLElement
   const version = ++openVersion, scope = scopeKey()
   openingID.value = item.business_id
-  let source: HTMLCanvasElement | null = null, output: HTMLCanvasElement | null = null
   try {
-    const record = await api.inspiration(item.business_id)
-    const blob = await api.download(record.image_key)
-    if (version !== openVersion || !active.value || !alive || scope !== scopeKey()) return
-    source = (await decodeImagePreview(blob)).canvas
+    const pending = inspirationDetails.peek(inspirationDetailKey(item))
+    if (!pending) throw new Error('detail_preload_failed')
+    const prepared = await pending
     if (version !== openVersion || !active.value || !alive || scope !== scopeKey() || !marker.isConnected) return
-    output = renderDocumentPreview(source, parseEditorDocument(record.data))
-    prepareListImage(marker, output)
+    prepareListImage(marker, prepared.image)
     capturePreparedOrigin(marker)
+    prepareDetailRecord(prepared.record)
     await router.push(`/inspirations/${item.business_id}`)
   } catch (cause) {
     if (version === openVersion && active.value && scope === scopeKey()) error.value = errorText(cause)
   } finally {
-    releaseCanvas(source); releaseCanvas(output)
     if (version === openVersion) openingID.value = ''
   }
 }
@@ -178,6 +174,12 @@ const advancedFilterCount = computed(() => selectedTagIDs.value.length + Object.
 let requestVersion = 0
 let searchTimer: number | undefined
 let tagsVersion = 0
+
+/** 当前已加载的全部分页条目立即预取；筛选移除的条目释放对象地址，缓存列表返回时继续复用。 */
+watch(items, records => {
+  inspirationDetails.retain(new Set(records.map(inspirationDetailKey)))
+  for (const item of records) void preloadInspirationDetail(item).catch(() => { /* 后台失败不刷屏，点击或列表重试再展示已有错误反馈。 */ })
+}, { deep: true, immediate: true })
 
 /** 将网络错误与列表读取错误映射为当前语言的页面提示。 */
 function errorText(cause: unknown): string {
@@ -265,7 +267,7 @@ onMounted(async () => {
   const item = items.value.find(item => item.business_id === saved.imageID)
   if (item && card) showProjects(item, card, saved.x, saved.y, saved.menuPage, saved.menuScroll)
 })
-onBeforeUnmount(() => { alive = false; openVersion += 1; disposeMenu?.(); gesture.cancel(); associationVersion += 1; window.removeEventListener('scroll', gesture.cancel, true); tagsVersion += 1; window.clearInterval(processingTimer); if (searchTimer !== undefined) window.clearTimeout(searchTimer); requestVersion += 1 })
+onBeforeUnmount(() => { alive = false; inspirationDetails.clear(); openVersion += 1; disposeMenu?.(); gesture.cancel(); associationVersion += 1; window.removeEventListener('scroll', gesture.cancel, true); tagsVersion += 1; window.clearInterval(processingTimer); if (searchTimer !== undefined) window.clearTimeout(searchTimer); requestVersion += 1 })
 </script>
 
 <template>
@@ -312,8 +314,8 @@ onBeforeUnmount(() => { alive = false; openVersion += 1; disposeMenu?.(); gestur
 
       <section v-if="items.length" class="inspiration-grid" :aria-label="t('gallery.title')">
         <article v-for="(item, index) in items" :key="item.business_id" class="inspiration-card" tabindex="0" :data-inspiration-card="item.business_id" :style="{ '--card-index': index % 8 }">
-          <RouterLink class="inspiration-link" @click.capture="openDetail($event, item)" :aria-busy="openingID === item.business_id" :data-shared-transition="item.business_id" :to="`/inspirations/${item.business_id}`" :aria-label="t('gallery.openImage', { name: item.file_name || t('gallery.untitled') })">
-            <div class="gallery-image-frame"><InspirationThumbnail :record="item" show-anchors /><span v-if="openingID === item.business_id" class="gallery-opening" role="status"><el-icon class="is-loading"><Loading /></el-icon>{{ t('gallery.loadingImage') }}</span></div>
+          <RouterLink class="inspiration-link" @click.capture="openDetail($event, item)" :data-shared-transition="item.business_id" :to="`/inspirations/${item.business_id}`" :aria-label="t('gallery.openImage', { name: item.file_name || t('gallery.untitled') })">
+            <div class="gallery-image-frame"><InspirationThumbnail :record="item" show-anchors /></div>
             <p v-if="imageNote(item.data)" class="gallery-image-note" :title="imageNote(item.data)">{{ imageNote(item.data) }}</p>
           </RouterLink>
           <div v-if="showPeople && item.analysis_status" class="gallery-analysis">
@@ -391,6 +393,5 @@ onBeforeUnmount(() => { alive = false; openVersion += 1; disposeMenu?.(); gestur
 
 <style scoped>
 .gallery-image-frame { position: relative; }
-.gallery-opening { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; gap: 8px; background: rgb(0 0 0 / 40%); color: white; }
 
 </style>

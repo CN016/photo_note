@@ -1,6 +1,4 @@
 import { gsap } from 'gsap'
-import { createGenieRenderer, type GenieRenderer } from './genieRenderer'
-import type { SharedOrigin } from './routeMotion'
 
 /** 只保留本次导航所需的可见像素，不导出数据URL、不持久化私有图片；长边限制1600像素。 */
 export function copyVisibleImage(source: HTMLCanvasElement | HTMLImageElement): HTMLCanvasElement | null {
@@ -19,69 +17,10 @@ export function copyVisibleImage(source: HTMLCanvasElement | HTMLImageElement): 
 }
 interface ImageLayer { layer: HTMLDivElement; pixels: HTMLCanvasElement; ready: HTMLCanvasElement | null; opened: boolean; closing: boolean }
 const layers = new Map<HTMLElement, ImageLayer>()
-/** 网格层放在 body 下，不能继承旧 Flip 根节点变换；DOM 与像素只在动画期间交接。 */
-const genies = new Map<HTMLElement, { renderer: GenieRenderer; opacity: string; progress: number }>()
-
-/** 将详情图按最终画布位置绘入视口纹理；保持 contain 比例，不读取或缓存用户页面文字。 */
-function genieTexture(state: ImageLayer): HTMLCanvasElement | null {
-  const width = window.innerWidth, height = window.innerHeight
-  const scale = Math.min(1.5, 1600 / Math.max(width, height))
-  const texture = document.createElement('canvas')
-  texture.width = Math.max(1, Math.round(width * scale)); texture.height = Math.max(1, Math.round(height * scale))
-  const context = texture.getContext('2d')
-  if (!context) return null
-  context.scale(texture.width / width, texture.height / height)
-  context.fillStyle = getComputedStyle(state.layer).backgroundColor
-  context.fillRect(0, 0, width, height)
-  const dimension = (value: string, full: number) => value.endsWith('%') ? parseFloat(value) * full / 100 : parseFloat(value) || 0
-  const x = dimension(state.pixels.style.left, width), y = dimension(state.pixels.style.top, height)
-  const w = dimension(state.pixels.style.width, width), h = dimension(state.pixels.style.height, height)
-  const fit = Math.min(w / state.pixels.width, h / state.pixels.height)
-  const imageWidth = state.pixels.width * fit, imageHeight = state.pixels.height * fit
-  context.drawImage(state.pixels, x + (w - imageWidth) / 2, y + (h - imageHeight) / 2, imageWidth, imageHeight)
-  return texture
-}
-
-/** GPU 不可用时保留既有可逆 Flip；禁止因特效失败阻断导航。 */
-export function startImageGenie(root: HTMLElement, origin: SharedOrigin, progress: number): boolean {
-  if (genies.has(root)) return true
-  const state = layers.get(root)
-  if (!state) return false
-  let texture: HTMLCanvasElement | null = null
-  try {
-    texture = genieTexture(state)
-    if (!texture) return false
-    const renderer = createGenieRenderer(texture, origin, () => stopImageGenie(root))
-    if (!renderer) return false
-    genies.set(root, { renderer, opacity: root.style.opacity, progress })
-    root.style.opacity = '0'
-    renderer.draw(progress)
-    return true
-  } catch { stopImageGenie(root); return false }
-  finally { if (texture) { texture.width = 0; texture.height = 0 } }
-}
-
-/** 与 GSAP 同一进度驱动，倒放、中断续播不另起计时器。 */
-export function updateImageGenie(root: HTMLElement, progress: number): void {
-  const state = genies.get(root)
-  if (!state) return
-  state.progress = progress
-  state.renderer.draw(progress)
-}
-
-/** 释放纹理、网格与上下文，并恢复真实页面；会话切换和取消也必须调用。 */
-export function stopImageGenie(root: HTMLElement): void {
-  const state = genies.get(root)
-  if (!state) return
-  genies.delete(root)
-  root.style.opacity = state.opacity
-  state.renderer.dispose()
-}
-
-const preparedImages = new WeakMap<HTMLElement, HTMLCanvasElement>()
+const preparedImages = new WeakMap<HTMLElement, HTMLCanvasElement | HTMLImageElement>()
 
 /** 仅为下一次点击保留已渲染的详情像素，由列表负责取消和释放。 */
-export function prepareListImage(marker: HTMLElement, canvas: HTMLCanvasElement): void { preparedImages.set(marker, canvas) }
+export function prepareListImage(marker: HTMLElement, canvas: HTMLCanvasElement | HTMLImageElement): void { preparedImages.set(marker, canvas) }
 
 let pendingPreview: HTMLCanvasElement | null = null
 
@@ -126,25 +65,15 @@ export function detailImageReady(canvas: HTMLCanvasElement): void {
   const target = canvas.getBoundingClientRect(), frame = root.getBoundingClientRect()
   const sx = frame.width / Math.max(1, root.offsetWidth), sy = frame.height / Math.max(1, root.offsetHeight)
   Object.assign(state.pixels.style, { left: `${(target.left - frame.left) / sx}px`, top: `${(target.top - frame.top) / sy}px`, width: `${target.width / sx}px`, height: `${target.height / sy}px`, objectFit: 'contain' })
-  const genie = genies.get(root)
-  if (genie) {
-    const texture = genieTexture(state)
-    if (texture) {
-      try { genie.renderer.update(texture); genie.renderer.draw(genie.progress) }
-      catch { stopImageGenie(root) }
-      finally { texture.width = 0; texture.height = 0 }
-    }
-  }
   if (state.opened) reveal(root, state)
 }
 function reveal(root: HTMLElement, state: ImageLayer): void {
   if (!state.ready || state.closing || !state.ready.isConnected) return
   gsap.killTweensOf([state.layer, state.pixels])
   // 像素层已经与真实画布对齐，只淡出交接，避免动画完成后再次改变图片屏占比。
-  gsap.to(state.layer, { opacity: 0, duration: 0.12, delay: 0, onComplete: () => { if (layers.get(root) === state && !state.closing) removeMotionImage(root) } })
+  gsap.to(state.layer, { opacity: 0, duration: 0.04, delay: 0, onComplete: () => { if (layers.get(root) === state && !state.closing) removeMotionImage(root) } })
 }
 export function completeImageOpen(root: HTMLElement): void {
-  stopImageGenie(root)
   const state = layers.get(root)
   if (!state) return
   state.opened = true
@@ -167,7 +96,6 @@ export function captureDetailImage(canvas: HTMLCanvasElement | null): void {
   state.closing = true
 }
 export function removeMotionImage(root: HTMLElement): void {
-  stopImageGenie(root)
   const state = layers.get(root)
   if (!state) return
   gsap.killTweensOf([state.layer, state.pixels]); state.layer.remove()

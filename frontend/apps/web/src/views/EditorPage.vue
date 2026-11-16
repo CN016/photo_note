@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { loadDetailImage, loadManagedDetailImage, takeDetailRecord } from '../images/detailImages'
 import EditorToolSurface from '../components/EditorToolSurface.vue'
 import { captureDetailImage, detailImageReady } from '../motion/imageMotion'
 import ContentZoom from '../components/ContentZoom.vue'
@@ -36,7 +37,7 @@ const managementOrgID = computed(() => route.name === 'platform-edit-inspiration
 const api = {
   ...baseApi,
   inspiration: (id: string) => managementMode.value ? baseApi.managementInspiration(id, managementOrgID.value) : baseApi.inspiration(id),
-  download: (key: string) => managementMode.value ? baseApi.managementImage(itemId.value, key, managementOrgID.value) : baseApi.download(key),
+  download: (key: string) => managementMode.value ? loadManagedDetailImage(itemId.value, key, managementOrgID.value) : loadDetailImage(key, record.value?.file_hash || ''),
   updateInspiration: (id: string, data: Record<string, unknown>, imageMetadata?: import('../api/types').InspirationImageMetadata) => managementMode.value
     ? baseApi.managementSaveInspiration(id, { data, ...(imageMetadata ? { image_metadata: imageMetadata } : {}) }, managementOrgID.value)
     : baseApi.updateInspiration(id, data, imageMetadata),
@@ -441,7 +442,7 @@ async function loadExisting(): Promise<void> {
   colorAnalysis.value = null
   colorAnalysisError.value = ''
   try {
-    const loaded = await api.inspiration(itemId.value)
+    const loaded = (!managementMode.value && takeDetailRecord(itemId.value)) || await api.inspiration(itemId.value)
     if (version !== decodeVersion) return
     record.value = loaded
     tagNames.value = [...(loaded.tag_names ?? [])]
