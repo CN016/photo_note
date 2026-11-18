@@ -3,7 +3,7 @@ import { computed, nextTick, onMounted, onBeforeUnmount, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { ElNotification } from 'element-plus'
-import { Calendar, ChatDotRound, Clock, Files, House, List, Picture, PictureFilled, Setting, User, Menu, Close } from '@element-plus/icons-vue'
+import { Calendar, ChatDotRound, Clock, Files, House, List, Picture, PictureFilled, Setting, User, Menu, Close, Grid } from '@element-plus/icons-vue'
 import { useAuthStore } from '../stores/auth'
 import { useAppShellStore } from '../stores/appShell'
 import LanguageSwitcher from './LanguageSwitcher.vue'
@@ -190,6 +190,7 @@ function ariaMobileCurrent(path: string): 'page' | 'location' | undefined {
       <p class="nav-group-title">{{ t('common.navigationGroups.create') }}</p>
       <RouterLink class="nav-item" :class="{ active: active('/workbench') }" :aria-current="ariaCurrent('/workbench')" to="/workbench"><el-icon aria-hidden="true"><House /></el-icon>{{ t('common.workbench') }}</RouterLink>
       <RouterLink class="nav-item" :class="{ active: active('/delivery') }" :aria-current="ariaCurrent('/delivery')" to="/delivery"><el-icon aria-hidden="true"><Files /></el-icon>{{ t('common.delivery') }}</RouterLink>
+      <RouterLink class="nav-item" :class="{ active: active('/collage') }" :aria-current="ariaCurrent('/collage')" to="/collage"><el-icon aria-hidden="true"><Grid /></el-icon>{{ t('common.collage') }}</RouterLink>
       <RouterLink class="nav-item" :class="{ active: active('/inspirations') }" :aria-current="ariaCurrent('/inspirations')" to="/inspirations"><el-icon aria-hidden="true"><Picture /></el-icon>{{ t('common.inspirations') }}</RouterLink>
       <RouterLink class="nav-item" :class="{ active: active('/portfolios') }" :aria-current="ariaCurrent('/portfolios')" to="/portfolios"><el-icon aria-hidden="true"><PictureFilled /></el-icon>{{ t('common.portfolios') }}</RouterLink>
       <RouterLink class="nav-item" :class="{ active: active('/projects') }" :aria-current="ariaCurrent('/projects')" to="/projects"><el-icon aria-hidden="true"><Files /></el-icon>{{ t('common.projects') }}</RouterLink>

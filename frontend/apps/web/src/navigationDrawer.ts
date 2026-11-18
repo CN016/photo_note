@@ -8,4 +8,4 @@ export function setNavigationDrawer(open: boolean): void { navigationDrawer.drag
 export function drawerRelease(progress: number, opening: boolean): boolean { return opening ? progress >= 0.3 : progress >= 0.7 }
 
 /** 仅列表与概览接管右划；详情、编辑和公开分享保留自己的交互。 */
-export const drawerListRoutes = new Set(['workbench', 'gallery', 'inspiration-statistics', 'portfolios', 'projects', 'project-reviews', 'ledger', 'schedule', 'plans', 'messages', 'spaces', 'organizations', 'organization-console', 'atelier-console', 'delivery'])
+export const drawerListRoutes = new Set(['workbench', 'collage', 'gallery', 'inspiration-statistics', 'portfolios', 'projects', 'project-reviews', 'ledger', 'schedule', 'plans', 'messages', 'spaces', 'organizations', 'organization-console', 'atelier-console', 'delivery'])

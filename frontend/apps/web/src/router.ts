@@ -25,6 +25,7 @@ export const router = createRouter({
     { path: '/portfolios', name: 'portfolios', component: () => import('./views/PortfolioPage.vue') },
     { path: '/portfolios/:id', name: 'portfolio-detail', component: () => import('./views/PortfolioPage.vue') },
     { path: '/workbench', name: 'workbench', component: () => import('./views/WorkbenchPage.vue') },
+    { path: '/collage', name: 'collage', component: () => import('./views/CollagePage.vue') },
     { path: '/inspirations', name: 'gallery', component: () => import('./views/GalleryPage.vue') },
     { path: '/inspirations/statistics', name: 'inspiration-statistics', component: () => import('./views/InspirationStatisticsPage.vue') },
     { path: '/inspirations/new', name: 'new-inspiration', component: () => import('./views/InspirationUploadPage.vue') },
