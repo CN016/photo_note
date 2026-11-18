@@ -8,7 +8,8 @@ import { exportFile, FileExportError } from '../platform'
 
 type Layout = 'square' | 'portrait' | 'landscape' | 'focus'
 type Ratio = 'square' | 'portrait' | 'landscape'
-type SavedPhoto = { id: string; name: string; blob: Blob }
+type FitMode = 'cover' | 'contain'
+type SavedPhoto = { id: string; name: string; blob: Blob; fit: FitMode }
 const { t } = useI18n()
 const photos = ref<SavedPhoto[]>([])
 const layout = ref<Layout>('square')
@@ -16,9 +17,11 @@ const ratio = ref<Ratio>('square')
 const gap = ref(16)
 const background = ref('#f4f1ed')
 const format = ref<'png' | 'jpeg'>('jpeg')
+const selectedPhoto = ref<string | null>(null)
 const exporting = ref(false)
 const fileInput = ref<HTMLInputElement>()
 const stageHost = ref<HTMLDivElement>()
+const canvasHost = ref<HTMLDivElement>()
 const layouts: Array<{ key: Layout; count: number }> = [{ key: 'square', count: 2 }, { key: 'portrait', count: 2 }, { key: 'landscape', count: 2 }, { key: 'focus', count: 3 }]
 const ratioNames: Ratio[] = ['square', 'portrait', 'landscape']
 const ratioValue = computed(() => ratio.value === 'portrait' ? 0.76 : ratio.value === 'landscape' ? 1.42 : 1)
@@ -64,13 +67,27 @@ async function addFiles(files: FileList | File[]) {
   const selected = [...files].filter(file => /^image\/(png|jpeg|webp)$/i.test(file.type)).slice(0, remaining)
   if (selected.length !== Math.min([...files].filter(file => /^image\/(png|jpeg|webp)$/i.test(file.type)).length, remaining)) ElMessage.info(t('collage.limit'))
   const results = await Promise.allSettled(selected.map(async file => { const blob = file.slice(0, file.size, file.type); await loadImage(blob); return { id: crypto.randomUUID(), name: file.name, blob } }))
-  photos.value.push(...results.flatMap(result => result.status === 'fulfilled' ? [result.value] : []))
+  photos.value = [...photos.value, ...results.flatMap(result => result.status === 'fulfilled' ? [{ ...result.value, fit: 'cover' as const }] : [])]
   if (results.some(result => result.status === 'rejected') || selected.length !== [...files].length) ElMessage.warning(t('collage.unsupported'))
 }
 function move(index: number, offset: number) {
   const next = index + offset
   if (next < 0 || next >= photos.value.length) return
   const copy = [...photos.value]; [copy[index], copy[next]] = [copy[next]!, copy[index]!]; photos.value = copy
+}
+/** 点选两张照片即可交换，避免拖拽跨格命中依赖不稳定的触屏拖放状态。 */
+function selectPhoto(id: string) {
+  if (selectedPhoto.value && selectedPhoto.value !== id) {
+    const from = photos.value.findIndex(photo => photo.id === selectedPhoto.value)
+    const to = photos.value.findIndex(photo => photo.id === id)
+    if (from >= 0 && to >= 0) move(from, to - from)
+    selectedPhoto.value = null
+    return
+  }
+  selectedPhoto.value = id
+}
+function setFit(mode: FitMode) {
+  photos.value = photos.value.map(photo => photo.id === selectedPhoto.value ? { ...photo, fit: mode } : photo)
 }
 function removePhoto(id: string) { photos.value = photos.value.filter(photo => photo.id !== id) }
 function cropFor(image: HTMLImageElement, width: number, height: number) {
@@ -89,14 +106,14 @@ function cellBounds(index: number, count: number, width: number, height: number)
   return { x: (index % cols) * width / cols + spacing / 2, y: Math.floor(index / cols) * height / rows + spacing / 2, width: width / cols - spacing, height: height / rows - spacing }
 }
 function viewportSize() {
-  const bounds = stageHost.value?.getBoundingClientRect()
+  const bounds = canvasHost.value?.getBoundingClientRect()
   const ratioNow = ratioValue.value
-  const maxWidth = Math.max(240, Math.min((bounds?.width ?? 720) - 36, 900))
-  const maxHeight = Math.max(220, Math.min((bounds?.height ?? 640) - 36, 660))
-  const width = Math.min(maxWidth, maxHeight * ratioNow), height = width / ratioNow
+  // 用舞台实际内容宽度计算，不读取高度；避免高DPI或桌面纵向空间把交互画布扩展进右侧工具栏。
+  const maxWidth = Math.max(220, Math.min((bounds?.width ?? 720) - 56, 760))
+  const width = Math.min(maxWidth, 760 * Math.min(1, ratioNow)), height = width / ratioNow
   return { width: Math.round(width), height: Math.round(height) }
 }
-/** Konva 场景负责圆角裁切、选中照片拖移及双指缩放；尺寸与布局计算保持单一来源。 */
+/** Konva 场景负责圆角裁切和鼠标/触控命中；照片次序与裁切模式由Vue状态保存。 */
 async function renderScene() {
   if (!stage || !layer) return
   const generation = ++renderGeneration, size = viewportSize()
@@ -104,24 +121,31 @@ async function renderScene() {
   layer.add(new Konva.Rect({ x: 0, y: 0, ...size, fill: background.value, listening: false }))
   const current = [...photos.value]
   const loaded = await Promise.all(current.map(async (photo, index) => {
-    try { return { index, image: await loadImage(photo.blob) } } catch { return null }
+    try { return { index, image: await loadImage(photo.blob), fit: photo.fit } } catch { return null }
   }))
   if (generation !== renderGeneration || !stage || !layer) return
   const targetLayer = layer
   loaded.forEach(item => {
     if (!item) return
     const slot = cellBounds(item.index, current.length, size.width, size.height)
+    const imageBounds = item.fit === 'contain'
+      ? (() => {
+          const scale = Math.min(slot.width / item.image.width, slot.height / item.image.height)
+          const width = item.image.width * scale, height = item.image.height * scale
+          return { x: slot.x + (slot.width - width) / 2, y: slot.y + (slot.height - height) / 2, width, height }
+        })()
+      : slot
+    if (item.fit === 'contain') targetLayer.add(new Konva.Rect({ ...slot, fill: background.value, cornerRadius: 8, listening: false }))
     const image = new Konva.Image({
-      ...slot,
+      ...imageBounds,
       image: item.image,
-      crop: cropFor(item.image, slot.width, slot.height),
+      crop: item.fit === 'contain' ? { x: 0, y: 0, width: item.image.width, height: item.image.height } : cropFor(item.image, slot.width, slot.height),
+      imageSmoothingEnabled: true,
       cornerRadius: 8,
-      draggable: true,
-      dragBoundFunc: position => ({ x: Math.max(slot.x - slot.width * 0.45, Math.min(slot.x + slot.width * 0.45, position.x)), y: Math.max(slot.y - slot.height * 0.45, Math.min(slot.y + slot.height * 0.45, position.y)) }),
-      name: `photo-${item.index}`,
+      listening: true,
+      name: `photo-${current[item.index]!.id}`,
     })
-    image.on('click tap', () => { targetLayer.find('.selected-outline').forEach(node => node.destroy()); targetLayer.add(new Konva.Rect({ x: slot.x, y: slot.y, width: slot.width, height: slot.height, stroke: '#3378d4', strokeWidth: 3, listening: false, name: 'selected-outline' })); targetLayer.batchDraw() })
-    image.on('dragmove', () => targetLayer.batchDraw())
+    image.on('click tap', () => { selectPhoto(current[item.index]!.id); targetLayer.find('.selected-outline').forEach(node => node.destroy()); if (selectedPhoto.value) targetLayer.add(new Konva.Rect({ x: slot.x, y: slot.y, width: slot.width, height: slot.height, stroke: '#3378d4', strokeWidth: 3, listening: false, name: 'selected-outline' })); targetLayer.batchDraw() })
     targetLayer.add(image)
   })
   targetLayer.draw()
@@ -151,7 +175,7 @@ async function restore() {
     if (photos.value.length) ElMessage.info(t('collage.restore'))
   } catch { /* 浏览器本地空间不可用时仍允许当前会话临时编辑。 */ }
 }
-watch([photos, layout, ratio, gap, background], () => {
+watch([photos, layout, ratio, gap, background, selectedPhoto], () => {
   void renderScene()
   window.clearTimeout(saveTimer)
   saveTimer = window.setTimeout(() => { void databaseWrite({ photos: photos.value, layout: layout.value, ratio: ratio.value, gap: gap.value, background: background.value, format: format.value }).catch(() => { /* 持久空间不足时保留本页编辑，不伪称草稿已保存。 */ }) }, 350)
@@ -159,8 +183,8 @@ watch([photos, layout, ratio, gap, background], () => {
 watch(format, () => { window.clearTimeout(saveTimer); saveTimer = window.setTimeout(() => { void databaseWrite({ photos: photos.value, layout: layout.value, ratio: ratio.value, gap: gap.value, background: background.value, format: format.value }).catch(() => undefined) }, 350) })
 onMounted(async () => {
   await nextTick()
-  if (!stageHost.value) return
-  stage = new Konva.Stage({ container: stageHost.value, width: 1, height: 1, pixelRatio: 1 })
+  if (!canvasHost.value || !stageHost.value) return
+  stage = new Konva.Stage({ container: canvasHost.value, width: 1, height: 1, pixelRatio: 1 })
   layer = new Konva.Layer(); stage.add(layer)
   observer = new ResizeObserver(() => { void renderScene() }); observer.observe(stageHost.value)
   await restore(); await renderScene()
@@ -174,6 +198,7 @@ onBeforeUnmount(() => { renderGeneration++; observer?.disconnect(); window.clear
       <header class="collage-heading"><div><h1>{{ t('collage.title') }}</h1><p>{{ t('collage.subtitle') }}</p></div><span class="photo-count">{{ t('collage.photoCount', { count: photos.length }) }}</span></header>
       <div class="collage-workspace">
         <div ref="stageHost" class="collage-stage" :aria-label="t('collage.title')" @dragover.prevent @drop.prevent="event => { const files = (event as DragEvent).dataTransfer?.files; if (files) void addFiles(files) }">
+          <div ref="canvasHost" class="collage-canvas" aria-hidden="true"></div>
           <div v-if="!photos.length" class="collage-empty"><span class="empty-icon"><el-icon><Picture /></el-icon></span><h2>{{ t('collage.emptyTitle') }}</h2><p>{{ t('collage.emptyBody') }}</p><button class="primary-button" @click="fileInput?.click()"><el-icon><Plus /></el-icon>{{ t('collage.addPhotos') }}</button></div>
         </div>
         <aside class="collage-tools">
@@ -183,7 +208,7 @@ onBeforeUnmount(() => { renderGeneration++; observer?.disconnect(); window.clear
           <section class="tool-group"><h2>{{ t('collage.ratio') }}</h2><div class="segmented"><button v-for="item in ratioNames" :key="item" :aria-pressed="ratio === item" @click="ratio = item">{{ t(`collage.ratios.${item}`) }}</button></div></section>
           <section class="tool-group"><label class="range-label" for="collage-gap">{{ t('collage.spacing') }}<span>{{ gap }} px</span></label><input id="collage-gap" v-model.number="gap" type="range" min="0" max="40" /></section>
           <section class="tool-group color-group"><label for="collage-background">{{ t('collage.background') }}</label><input id="collage-background" v-model="background" type="color" /></section>
-          <section v-if="photos.length" class="tool-group"><div class="photo-list-heading"><h2>{{ t('collage.photoCount', { count: photos.length }) }}</h2><button type="button" class="quiet-button" :aria-label="t('collage.clear')" :title="t('collage.clear')" @click="photos = []"><el-icon><Delete /></el-icon></button></div><ul class="photo-list"><li v-for="(photo, index) in photos" :key="photo.id"><span class="photo-thumb"><el-icon><Picture /></el-icon></span><span :title="photo.name">{{ photo.name }}</span><button :disabled="index === 0" :aria-label="t('collage.moveLeft')" @click="move(index, -1)"><el-icon><ArrowUp /></el-icon></button><button :disabled="index === photos.length - 1" :aria-label="t('collage.moveRight')" @click="move(index, 1)"><el-icon><ArrowDown /></el-icon></button><button :aria-label="t('collage.remove')" @click="removePhoto(photo.id)"><el-icon><Delete /></el-icon></button></li></ul></section>
+          <section v-if="photos.length" class="tool-group"><div class="photo-list-heading"><h2>{{ t('collage.photoCount', { count: photos.length }) }}</h2><button type="button" class="quiet-button" :aria-label="t('collage.clear')" :title="t('collage.clear')" @click="photos = []; selectedPhoto = null"><el-icon><Delete /></el-icon></button></div><ul class="photo-list"><li v-for="(photo, index) in photos" :key="photo.id" :class="{ 'photo-selected': photo.id === selectedPhoto }" @click="selectPhoto(photo.id)"><span class="photo-thumb"><el-icon><Picture /></el-icon></span><span :title="photo.name">{{ photo.name }}</span><button :disabled="index === 0" :aria-label="t('collage.moveLeft')" @click.stop="move(index, -1)"><el-icon><ArrowUp /></el-icon></button><button :disabled="index === photos.length - 1" :aria-label="t('collage.moveRight')" @click.stop="move(index, 1)"><el-icon><ArrowDown /></el-icon></button><button :aria-label="t('collage.remove')" @click.stop="removePhoto(photo.id); if (selectedPhoto === photo.id) selectedPhoto = null"><el-icon><Delete /></el-icon></button></li></ul><div v-if="selectedPhoto" class="crop-tools"><span>{{ t('collage.cropSelected') }}</span><button type="button" :aria-pressed="photos.find(photo => photo.id === selectedPhoto)?.fit === 'cover'" @click="setFit('cover')">{{ t('collage.fill') }}</button><button type="button" :aria-pressed="photos.find(photo => photo.id === selectedPhoto)?.fit === 'contain'" @click="setFit('contain')">{{ t('collage.restoreCrop') }}</button></div></section>
           <section class="export-row"><label class="format-select" :aria-label="t('collage.format')"><select v-model="format"><option value="jpeg">{{ t('collage.jpeg') }}</option><option value="png">{{ t('collage.png') }}</option></select></label><button class="primary-button export-button" :disabled="!photos.length || exporting" @click="exportImage"><el-icon><Download /></el-icon>{{ t(exporting ? 'collage.exporting' : 'collage.export') }}</button></section>
         </aside>
       </div>
@@ -192,14 +217,15 @@ onBeforeUnmount(() => { renderGeneration++; observer?.disconnect(); window.clear
 </template>
 
 <style scoped>
-.collage-main { width: min(1500px, 100%); min-height: calc(100svh - 72px); padding: 34px clamp(18px,4vw,64px) 100px; margin: auto; color: var(--ink); }
+.collage-main { width: min(calc(100% - 310px), 1450px); min-height: calc(100svh - 72px); padding: 34px 24px 100px; margin: 0 auto 0 calc(226px + (100vw - 226px - min(100vw - 310px, 1450px)) / 2); color: var(--ink); }
 .collage-heading { display:flex; align-items:flex-end; justify-content:space-between; gap:16px; margin-bottom:24px; }
 .collage-heading h1 { margin:0; font-size:clamp(26px,3vw,36px); font-weight:500; letter-spacing:-.035em; }
 .collage-heading p { margin:8px 0 0; color:var(--muted); font-size:14px; }
 .photo-count { color:var(--muted); font-size:14px; white-space:nowrap; }
-.collage-workspace { display:grid; grid-template-columns:minmax(0,1fr) 310px; align-items:start; gap:24px; }
-.collage-stage { display:grid; min-height:min(72vh,760px); place-items:center; padding:clamp(20px,4vw,60px); border:1px solid var(--line); border-radius:24px; background:var(--surface-soft); overflow:hidden; }
-.collage-stage :deep(.konvajs-content) { max-width:100%; max-height:100%; touch-action:none; }
+.collage-workspace { display:grid; grid-template-columns:minmax(0,1fr) 310px; align-items:start; gap:20px; }
+.collage-stage { position:relative; display:flex; min-width:0; min-height:min(72vh,760px); align-items:center; justify-content:center; padding:24px; border:1px solid var(--line); border-radius:24px; background:var(--surface-soft); overflow:hidden; }
+.collage-canvas { position:absolute; inset:24px; display:grid; place-items:center; pointer-events:none; }
+.collage-canvas :deep(.konvajs-content) { position:relative !important; flex:0 1 auto; max-width:100%; max-height:100%; pointer-events:auto; touch-action:none; }
 .collage-empty { display:grid; justify-items:center; text-align:center; }
 .empty-icon { display:grid; width:60px; height:60px; place-items:center; border-radius:18px; background:var(--surface); color:var(--accent-hover); font-size:25px; }
 .collage-empty h2 { margin:20px 0 0; font-size:19px; font-weight:500; }
@@ -233,14 +259,20 @@ input[type="range"] { width:100%; accent-color:var(--accent); }
 .quiet-button,.photo-list li button { display:grid; width:34px; height:34px; place-items:center; border:0; border-radius:9px; background:var(--surface-soft); color:var(--muted); cursor:pointer; }
 .photo-list { display:grid; max-height:220px; gap:6px; overflow:auto; padding:0; margin:0; list-style:none; }
 .photo-list li { display:flex; min-width:0; align-items:center; gap:4px; }
+.photo-list li.photo-selected { border-radius:10px; outline:2px solid var(--accent); outline-offset:1px; }
 .photo-thumb { display:grid; width:34px; height:34px; flex:0 0 auto; place-items:center; border-radius:7px; background:var(--surface-soft); color:var(--muted); }
 .photo-list li span:nth-child(2) { min-width:0; flex:1; overflow:hidden; padding:0 5px; color:var(--muted); font-size:11px; text-overflow:ellipsis; white-space:nowrap; }
 .photo-list li button { width:30px; height:30px; flex:0 0 auto; }
 .photo-list li button:disabled { opacity:.35; cursor:default; }
+.crop-tools { display:flex; flex-wrap:wrap; align-items:center; gap:7px; padding-top:8px; border-top:1px solid var(--line); }
+.crop-tools > span { flex-basis:100%; color:var(--muted); font-size:12px; }
+.crop-tools button { min-height:38px; padding:0 10px; border:1px solid var(--line); border-radius:9px; background:var(--surface); color:var(--ink); font:inherit; font-size:12px; cursor:pointer; }
+.crop-tools button[aria-pressed="true"] { border-color:var(--accent); background:var(--accent-soft); }
 .export-row { display:grid; grid-template-columns:84px minmax(0,1fr); gap:8px; padding-top:4px; }
 .format-select select { width:100%; height:46px; border:1px solid var(--line); border-radius:11px; background:var(--surface); color:var(--ink); font:inherit; }
 .export-button { white-space:nowrap; }
 .sr-only { position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0,0,0,0); }
-@media(max-width:800px) { .collage-main { padding:24px 16px 108px; } .collage-workspace { grid-template-columns:1fr; gap:14px; } .collage-stage { min-height:38vh; padding:18px; border-radius:18px; } .collage-tools { position:static; grid-template-columns:1fr 1fr; align-items:start; padding:16px; gap:16px 14px; } .add-button,.photo-list,.export-row { grid-column:1/-1; } .tool-group h2,.photo-list-heading h2 { font-size:12px; } }
+@media(max-width:1000px) { .collage-main { width:calc(100% - 226px); margin-left:226px; padding:30px 18px 100px; } .collage-workspace { grid-template-columns:minmax(0,1fr) 280px; gap:14px; } .collage-tools { padding:16px; } }
+@media(max-width:768px) { .collage-main { width:100%; margin:0; padding:24px 16px 108px; } .collage-workspace { grid-template-columns:1fr; gap:14px; } .collage-stage { min-height:38vh; padding:18px; border-radius:18px; } .collage-tools { position:static; grid-template-columns:1fr 1fr; align-items:start; padding:16px; gap:16px 14px; } .add-button,.photo-list,.export-row { grid-column:1/-1; } .tool-group h2,.photo-list-heading h2 { font-size:12px; } }
 @media(max-width:430px) { .collage-tools { grid-template-columns:1fr; } .collage-tools > * { grid-column:1; } .collage-heading { align-items:center; } .collage-heading p { font-size:12px; } }
 </style>
