@@ -6,9 +6,19 @@
   "emptyTitle": "Start with a few photos",
   "emptyBody": "Photos are processed and saved on this device.",
   "layout": "Layout",
-  "layouts": { "square": "Grid", "portrait": "Portrait", "landscape": "Panorama", "focus": "Feature" },
+  "layouts": {
+    "square": "Grid",
+    "portrait": "Portrait",
+    "landscape": "Panorama",
+    "focus": "Feature",
+    "color-photo": "Photo + color"
+  },
   "ratio": "Canvas ratio",
-  "ratios": { "square": "Square", "portrait": "Portrait", "landscape": "Landscape" },
+  "ratios": {
+    "square": "Square",
+    "portrait": "Portrait",
+    "landscape": "Landscape"
+  },
   "spacing": "Photo spacing",
   "background": "Background color",
   "remove": "Remove photo",
@@ -29,5 +39,13 @@
   "unsupported": "Some photos could not be read. Choose PNG, JPEG, or WebP images.",
   "restore": "Your last edit was restored",
   "clear": "Remove all photos",
-  "layoutForCount": "Add at least {count} photos to use this layout"
+  "layoutForCount": "Add at least {count} photos to use this layout",
+  "themeColor": "Theme color",
+  "swapHalves": "Swap top and bottom",
+  "customColor": "Custom color",
+  "replaceColorPhoto": "Replace photo and analyze again",
+  "topFiveHint": "Top 5 colors detected from the photo",
+  "analyzing": "Analyzing photo colors…",
+  "colorAnalysisFailed": "Could not analyze this photo. Choose another image and try again.",
+  "useThemeColor": "Use theme color {color}"
 }
