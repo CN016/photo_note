@@ -315,6 +315,7 @@ func (service *InspirationService) Update(ctx context.Context, userID, inspirati
 		updates["analysis_status"] = "pending_compression"
 		updates["analysis_algorithm"] = ""
 		updates["analysis_version"] = 0
+		updates["auto_tags"] = nil
 		// 换图时重置旧图属性，再合入该次请求刚从原始文件读取的客户端属性。
 		metadata := model.InspirationImageMetadata{}
 		if imageMetadataSet {

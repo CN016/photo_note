@@ -16,6 +16,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+	"unicode/utf8"
 
 	"github.com/google/uuid"
 	"github.com/photo-nini/backend/internal/domain/fault"
@@ -26,21 +27,26 @@ import (
 
 // InspirationProcessingConfig 集中来自私有配置；进程路径为部署者控制，不接受 API 请求覆盖。
 type InspirationProcessingConfig struct {
-	Enabled                   bool   `json:"enabled"`
-	Algorithm                 string `json:"algorithm"`
-	ScanTime                  string `json:"scan_time"`
-	CompressionWorkers        int    `json:"compression_workers"`
-	AnalysisWorkers           int    `json:"analysis_workers"`
-	PollMS                    int    `json:"poll_ms"`
-	CompressionTimeoutSeconds int    `json:"compression_timeout_seconds"`
-	TimeoutSeconds            int    `json:"timeout_seconds"`
-	LeaseSeconds              int    `json:"lease_seconds"`
-	RetrySeconds              []int  `json:"retry_seconds"`
-	PythonPath                string `json:"python_path"`
-	ScriptPath                string `json:"script_path"`
-	ModelPath                 string `json:"model_path"`
-	SocketPath                string `json:"socket_path"`
-	MaxImagePixels            int    `json:"max_image_pixels"`
+	Enabled                   bool    `json:"enabled"`
+	Algorithm                 string  `json:"algorithm"`
+	ScanTime                  string  `json:"scan_time"`
+	CompressionWorkers        int     `json:"compression_workers"`
+	AnalysisWorkers           int     `json:"analysis_workers"`
+	PollMS                    int     `json:"poll_ms"`
+	CompressionTimeoutSeconds int     `json:"compression_timeout_seconds"`
+	TimeoutSeconds            int     `json:"timeout_seconds"`
+	LeaseSeconds              int     `json:"lease_seconds"`
+	RetrySeconds              []int   `json:"retry_seconds"`
+	PythonPath                string  `json:"python_path"`
+	ScriptPath                string  `json:"script_path"`
+	ModelPath                 string  `json:"model_path"`
+	TagModelPath              string  `json:"tag_model_path"`
+	TagEmbeddingsPath         string  `json:"tag_embeddings_path"`
+	TagWorkers                int     `json:"tag_workers"`
+	TagTopK                   int     `json:"tag_top_k"`
+	TagMinScore               float64 `json:"tag_min_score"`
+	SocketPath                string  `json:"socket_path"`
+	MaxImagePixels            int     `json:"max_image_pixels"`
 }
 
 var inspirationClock = regexp.MustCompile(`^([01][0-9]|2[0-3]):[0-5][0-9]$`)
@@ -56,7 +62,7 @@ func (s *RuntimeConfigService) InspirationProcessing(ctx context.Context) (Inspi
 	if err = json.Unmarshal([]byte(values["inspirations.processing"]), &c); err != nil {
 		return c, errors.New("灵感图处理配置格式无效")
 	}
-	if c.Algorithm == "" || !inspirationClock.MatchString(c.ScanTime) || c.CompressionWorkers < 1 || c.CompressionWorkers > 2 || c.AnalysisWorkers < 1 || c.AnalysisWorkers > 10 || c.PollMS < 20 || c.PollMS > 60000 || c.CompressionTimeoutSeconds < 1 || c.CompressionTimeoutSeconds > 300 || c.TimeoutSeconds < 1 || c.TimeoutSeconds > 300 || c.LeaseSeconds < c.TimeoutSeconds*2 || c.LeaseSeconds < 360 || len(c.RetrySeconds) == 0 || len(c.RetrySeconds) > 10 || c.MaxImagePixels < 1 {
+	if c.Algorithm == "" || !inspirationClock.MatchString(c.ScanTime) || c.CompressionWorkers < 1 || c.CompressionWorkers > 2 || c.AnalysisWorkers < 1 || c.AnalysisWorkers > 10 || c.PollMS < 20 || c.PollMS > 60000 || c.CompressionTimeoutSeconds < 1 || c.CompressionTimeoutSeconds > 300 || c.TimeoutSeconds < 1 || c.TimeoutSeconds > 300 || c.LeaseSeconds < c.TimeoutSeconds*2 || c.LeaseSeconds < 360 || len(c.RetrySeconds) == 0 || len(c.RetrySeconds) > 10 || c.TagWorkers < 1 || c.TagWorkers > 10 || c.TagTopK < 4 || c.TagTopK > 30 || c.TagMinScore < 0 || c.TagMinScore > 1 || c.MaxImagePixels < 1 {
 		return c, errors.New("灵感图处理配置的版本、并发、租约或时间无效")
 	}
 	for _, n := range c.RetrySeconds {
@@ -64,7 +70,7 @@ func (s *RuntimeConfigService) InspirationProcessing(ctx context.Context) (Inspi
 			return c, errors.New("灵感图重试间隔无效")
 		}
 	}
-	for _, p := range []string{c.PythonPath, c.ScriptPath, c.ModelPath, c.SocketPath} {
+	for _, p := range []string{c.PythonPath, c.ScriptPath, c.ModelPath, c.TagModelPath, c.TagEmbeddingsPath, c.SocketPath} {
 		if !filepath.IsAbs(p) {
 			return c, errors.New("灵感图处理路径必须是部署绝对路径")
 		}
@@ -263,7 +269,11 @@ func (s *InspirationLibraryService) supervise(ctx context.Context, c Inspiration
 			s.capture("inspiration_ai_start_failed", err)
 			return
 		}
-		cmd := exec.CommandContext(ctx, c.PythonPath, c.ScriptPath, "--socket", c.SocketPath, "--model", c.ModelPath, "--workers", "10", "--max-pixels", fmt.Sprint(c.MaxImagePixels), "--max-bytes", fmt.Sprint(s.inspirations.maxImageBytes))
+		cmd := exec.CommandContext(ctx, c.PythonPath, c.ScriptPath, "--socket", c.SocketPath, "--model", c.ModelPath,
+			"--tag-model", c.TagModelPath, "--tag-embeddings", c.TagEmbeddingsPath,
+			"--workers", "10", "--tag-workers", fmt.Sprint(c.TagWorkers), "--tag-top-k", fmt.Sprint(c.TagTopK),
+			"--tag-min-score", fmt.Sprint(c.TagMinScore), "--max-pixels", fmt.Sprint(c.MaxImagePixels),
+			"--max-bytes", fmt.Sprint(s.inspirations.maxImageBytes))
 		cmd.Env = []string{"PATH=/usr/local/bin:/usr/bin:/bin", "OMP_NUM_THREADS=1", "OPENBLAS_NUM_THREADS=1", "PYTHONUNBUFFERED=1"}
 		cmd.Stdout = io.Discard
 		cmd.Stderr = io.Discard
@@ -416,14 +426,41 @@ func (s *InspirationLibraryService) analyze(ctx context.Context, job model.Inspi
 	if response.StatusCode != http.StatusOK {
 		return nil, errors.New("ai_inference_unavailable")
 	}
-	var result model.InspirationAnalysis
-	if err := json.NewDecoder(io.LimitReader(response.Body, 32768)).Decode(&result); err != nil {
+	var payload struct {
+		model.InspirationAnalysis
+		AutoTags []model.InspirationAutoTag `json:"auto_tags"`
+	}
+	if err := json.NewDecoder(io.LimitReader(response.Body, 32768)).Decode(&payload); err != nil {
 		return nil, err
 	}
+	result := payload.InspirationAnalysis
+	result.AutoTags = payload.AutoTags
 	if result.PeopleCount == nil || *result.PeopleCount < 0 || result.IsEmptyShot == nil || *result.IsEmptyShot != (*result.PeopleCount == 0) || result.DominantColor == nil || !regexp.MustCompile(`^#[0-9a-f]{6}$`).MatchString(*result.DominantColor) || result.DominantHue == nil || *result.DominantHue < 0 || *result.DominantHue >= 360 || result.ColorBucket == nil || ValidateInspirationFilters(model.InspirationFilters{Color: *result.ColorBucket}) != nil || result.ColorPalette == nil || !json.Valid(*result.ColorPalette) {
 		return nil, errors.New("invalid_ai_result")
 	}
+	if !validAutoTags(result.AutoTags) {
+		return nil, errors.New("invalid_auto_tags")
+	}
 	return &result, nil
+}
+
+// validAutoTags 只允许去重后 1 至 30 个安全展示标签，不接受路径、控制字符或任意远端文本。
+func validAutoTags(tags []model.InspirationAutoTag) bool {
+	if len(tags) < 1 || len(tags) > 30 {
+		return false
+	}
+	seen := make(map[string]struct{}, len(tags))
+	for _, tag := range tags {
+		name := strings.TrimSpace(tag.Name)
+		if name == "" || utf8.RuneCountInString(name) > 64 || strings.ContainsAny(name, "\r\n\t") || tag.Score < 0 || tag.Score > 1 || (tag.Source != "model" && tag.Source != "metadata") {
+			return false
+		}
+		if _, exists := seen[name]; exists {
+			return false
+		}
+		seen[name] = struct{}{}
+	}
+	return true
 }
 
 // schedule 只在每日时刻到达时扫描未识别记录，启动和页面浏览均不触发补扫。

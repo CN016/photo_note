@@ -28,6 +28,25 @@ func TestLibraryFiltersValidation(t *testing.T) {
 	}
 }
 
+// TestAutoTagsValidation 只接受受控标签来源、去重名称和 0 至 1 的置信分数。
+func TestAutoTagsValidation(t *testing.T) {
+	valid := []model.InspirationAutoTag{{Name: "海边", Score: .42, Source: "model"}, {Name: "空镜", Score: 1, Source: "metadata"}}
+	if !validAutoTags(valid) {
+		t.Fatal("合法自动标签被拒绝")
+	}
+	for _, tags := range [][]model.InspirationAutoTag{
+		{},
+		{{Name: "海边", Score: 1.1, Source: "model"}},
+		{{Name: "海边", Score: .4, Source: "remote"}},
+		{{Name: "第一行\n第二行", Score: .4, Source: "model"}},
+		{{Name: "海边", Score: .4, Source: "model"}, {Name: "海边", Score: .3, Source: "model"}},
+	} {
+		if validAutoTags(tags) {
+			t.Fatalf("非法自动标签被接受: %+v", tags)
+		}
+	}
+}
+
 // TestDailyScanBoundary 覆盖启动、北京时间三点和次日边界。
 func TestDailyScanBoundary(t *testing.T) {
 	at := func(value string) time.Time {

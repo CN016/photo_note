@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/lib/pq"
 	"github.com/photo-nini/backend/internal/model"
 	"github.com/photo-nini/backend/internal/tenant"
 	"gorm.io/driver/postgres"
@@ -195,7 +196,23 @@ func TestInspirationLibraryPostgres(t *testing.T) {
 	hue := 0.0
 	bucket := "white"
 	palette := model.JSONB(`{"version":1,"palette":[{"hex":"#ffffff","percentage":100}],"other_percentage":0}`)
-	must(r.FinishInspirationProcessing(ctx, *recovered, "succeeded", "", time.Now(), &model.InspirationAnalysis{PeopleCount: &zero, IsEmptyShot: &empty, DominantColor: &color, DominantHue: &hue, ColorBucket: &bucket, ColorPalette: &palette}))
+	manualTag := model.Tag{BaseModel: model.BaseModel{BusinessID: uuid.New()}, UserID: uid, Content: "手工标签"}
+	must(db.WithContext(ctx).Create(&manualTag).Error)
+	must(db.WithContext(ctx).Model(&model.Inspiration{}).Where("user_id=? AND business_id=?", uid, item.BusinessID).Update("tag_ids", pq.StringArray{manualTag.BusinessID.String()}).Error)
+	must(r.FinishInspirationProcessing(ctx, *recovered, "succeeded", "", time.Now(), &model.InspirationAnalysis{
+		PeopleCount: &zero, IsEmptyShot: &empty, DominantColor: &color, DominantHue: &hue,
+		ColorBucket: &bucket, ColorPalette: &palette,
+		AutoTags: []model.InspirationAutoTag{
+			{Name: "空镜", Score: 1, Source: "metadata"},
+			{Name: "白色", Score: 1, Source: "metadata"},
+			{Name: "明亮", Score: 1, Source: "metadata"},
+		},
+	}))
+	analyzed, e := r.FindInspirationByBusinessID(ctx, uid, item.BusinessID)
+	must(e)
+	if analyzed.AutoTagging == nil || len(analyzed.TagIDs) != 4 {
+		t.Fatal("自动标签未写入画像或覆盖手工标签")
+	}
 	_, scanned, e := r.ScanInspirationProcessingPage(tenant.System(context.Background()), 0, "force-new-algorithm")
 	must(e)
 	if scanned != 0 {
@@ -303,6 +320,13 @@ func TestLibraryIncrementalMigration(t *testing.T) {
 	must(db.Raw(`SELECT col_description('inspiration_processing_jobs'::regclass,attnum) FROM pg_attribute WHERE attrelid='inspiration_processing_jobs'::regclass AND attname='analysis_ready'`).Scan(&comment).Error)
 	if comment == "" {
 		t.Fatal("缺少迁移字段说明")
+	}
+	autoTagsUpgrade, e := os.ReadFile(filepath.Join("..", "..", "migrations", "000030_inspiration_auto_tags.sql"))
+	must(e)
+	must(db.Exec(string(autoTagsUpgrade)).Error)
+	must(db.Raw(`SELECT col_description('inspirations'::regclass,attnum) FROM pg_attribute WHERE attrelid='inspirations'::regclass AND attname='auto_tags'`).Scan(&comment).Error)
+	if comment == "" {
+		t.Fatal("缺少自动标签字段说明")
 	}
 
 }

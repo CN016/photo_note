@@ -22,9 +22,12 @@ FROM ${AI_RUNTIME_BASE_IMAGE}
 USER root
 RUN apk add --no-cache py3-pillow
 COPY ai/server.py /opt/photo-nini-ai/server.py
+COPY ai/models/siglip2_vision_fp16.onnx /opt/photo-nini-ai/models/siglip2_vision_fp16.onnx
+COPY ai/models/siglip2_tag_embeddings.npz /opt/photo-nini-ai/models/siglip2_tag_embeddings.npz
 COPY ai/licenses/ /opt/photo-nini-ai/licenses/
 COPY ai/THIRD_PARTY_NOTICES.md /opt/photo-nini-ai/THIRD_PARTY_NOTICES.md
 COPY --from=build /out/photo-nini-api /usr/local/bin/photo-nini-api
+LABEL photo-nini.ai.tagger="siglip2-base-patch16-224-fp16" photo-nini.ai.tag-concurrency="10"
 USER 10001:10001
 EXPOSE 8080
 ENTRYPOINT ["/usr/local/bin/photo-nini-api"]

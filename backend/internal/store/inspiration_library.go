@@ -5,9 +5,11 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/lib/pq"
 	"github.com/photo-nini/backend/internal/domain/fault"
 	"github.com/photo-nini/backend/internal/model"
 	"github.com/photo-nini/backend/internal/tenant"
@@ -275,7 +277,7 @@ func (store *PostgresStore) ScanInspirationProcessingPage(ctx context.Context, a
 		return after, 0, fault.Unauthorized()
 	}
 	var rows []model.Inspiration
-	if err := store.db.WithContext(ctx).Where("id > ? AND analyzed_at IS NULL", after).Order("id").Limit(500).Find(&rows).Error; err != nil {
+	if err := store.db.WithContext(ctx).Where("id > ? AND (analysis_status <> 'succeeded' OR auto_tags IS NULL)", after).Order("id").Limit(500).Find(&rows).Error; err != nil {
 		return after, 0, persistenceError(err)
 	}
 	for _, item := range rows {
@@ -283,7 +285,7 @@ func (store *PostgresStore) ScanInspirationProcessingPage(ctx context.Context, a
 		scoped := scopedResourceContext(ctx, item.OrgID, item.UserID)
 		if err := store.db.WithContext(scoped).Transaction(func(tx *gorm.DB) error {
 			var current model.Inspiration
-			if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("user_id=? AND business_id=? AND analyzed_at IS NULL", item.UserID, item.BusinessID).First(&current).Error; err != nil {
+			if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("user_id=? AND business_id=? AND (analysis_status<>'succeeded' OR auto_tags IS NULL)", item.UserID, item.BusinessID).First(&current).Error; err != nil {
 				if errors.Is(err, gorm.ErrRecordNotFound) {
 					return nil
 				}
@@ -292,8 +294,12 @@ func (store *PostgresStore) ScanInspirationProcessingPage(ctx context.Context, a
 			if err := store.enqueueInspirationProcessing(tx, &current); err != nil {
 				return err
 			}
+			nextStage := "pending_compression"
+			if current.AnalysisStatus == "succeeded" {
+				nextStage = "pending_analysis"
+			}
 			q := tx.Model(&model.InspirationProcessingJob{}).Where("user_id=? AND inspiration_id=? AND async_version=? AND algorithm=?", current.UserID, current.BusinessID, current.AsyncVersion, store.inspirationAlgorithm)
-			if err := q.Where("stage IN ('failed','unsupported','canceled')").Updates(map[string]any{"stage": "pending_compression", "attempts": 0, "next_attempt_at": time.Now().UTC(), "error_code": ""}).Error; err != nil {
+			if err := q.Where("stage IN ('succeeded','failed','unsupported','canceled')").Updates(map[string]any{"stage": nextStage, "attempts": 0, "next_attempt_at": time.Now().UTC(), "error_code": ""}).Error; err != nil {
 				return err
 			}
 			return tx.Model(&model.InspirationProcessingJob{}).Where("user_id=? AND inspiration_id=? AND async_version=? AND algorithm=?", current.UserID, current.BusinessID, current.AsyncVersion, store.inspirationAlgorithm).Update("analysis_ready", true).Error
@@ -383,6 +389,10 @@ func (store *PostgresStore) FinishInspirationProcessing(ctx context.Context, job
 			return nil
 		}
 		updates := map[string]any{"analysis_status": stage, "updated_at": time.Now().UTC()}
+		// 已有成功画像只在后台补标签时，失败或等待重试不能把原有人物/颜色画像降级。
+		if analysis == nil && item.AnalysisStatus == "succeeded" {
+			updates["analysis_status"] = "succeeded"
+		}
 		if analysis != nil {
 			updates["people_count"] = analysis.PeopleCount
 			updates["is_empty_shot"] = analysis.IsEmptyShot
@@ -393,9 +403,79 @@ func (store *PostgresStore) FinishInspirationProcessing(ctx context.Context, job
 			updates["analysis_version"] = job.AsyncVersion
 			updates["analysis_algorithm"] = job.Algorithm
 			updates["analyzed_at"] = time.Now().UTC()
+			autoTags, tagIDs, encodeErr := store.persistAutoTags(tx, item, analysis.AutoTags, job.Algorithm)
+			if encodeErr != nil {
+				return encodeErr
+			}
+			updates["auto_tags"] = autoTags
+			updates["tag_ids"] = tagIDs
 		}
 		return tx.Model(&item).Updates(updates).Error
 	}))
+}
+
+// persistAutoTags 复用当前用户的同名标签，并与手工标签求并集；自动标签完成态单独保存在 auto_tags。
+func (store *PostgresStore) persistAutoTags(tx *gorm.DB, item model.Inspiration, tags []model.InspirationAutoTag, algorithm string) (model.JSONB, pq.StringArray, error) {
+	rows := make([]model.Tag, 0, len(tags))
+	for index, tag := range tags {
+		name := strings.TrimSpace(tag.Name)
+		rows = append(rows, model.Tag{
+			BaseModel: model.BaseModel{OrgID: item.OrgID, BusinessID: uuid.New(), CreatedAt: time.Now().UTC(), UpdatedAt: time.Now().UTC()},
+			UserID:    item.UserID,
+			Content:   name,
+		})
+		tags[index].Name = name
+	}
+	if len(rows) > 0 {
+		if err := tx.Clauses(clause.OnConflict{
+			Columns:   []clause.Column{{Name: "orgid"}, {Name: "user_id"}, {Name: "content"}},
+			DoNothing: true,
+		}).Create(&rows).Error; err != nil {
+			return nil, nil, persistenceError(err)
+		}
+	}
+	names := make([]string, 0, len(tags))
+	for _, tag := range tags {
+		names = append(names, tag.Name)
+	}
+	var stored []model.Tag
+	if err := tx.Where("user_id=? AND content IN ?", item.UserID, names).Find(&stored).Error; err != nil {
+		return nil, nil, persistenceError(err)
+	}
+	byName := make(map[string]uuid.UUID, len(stored))
+	for _, tag := range stored {
+		byName[tag.Content] = tag.BusinessID
+	}
+	seen := make(map[string]struct{}, len(item.TagIDs)+len(names))
+	merged := make(pq.StringArray, 0, len(item.TagIDs)+len(names))
+	for _, id := range item.TagIDs {
+		if _, exists := seen[id]; exists {
+			continue
+		}
+		seen[id] = struct{}{}
+		merged = append(merged, id)
+	}
+	for _, name := range names {
+		id, exists := byName[name]
+		if !exists {
+			return nil, nil, fault.Internal(errors.New("自动标签创建后未能按用户读取"))
+		}
+		key := id.String()
+		if _, exists := seen[key]; exists {
+			continue
+		}
+		seen[key] = struct{}{}
+		merged = append(merged, key)
+	}
+	payload, err := json.Marshal(map[string]any{
+		"version":   algorithm,
+		"items":     tags,
+		"tagged_at": time.Now().UTC().Format(time.RFC3339Nano),
+	})
+	if err != nil {
+		return nil, nil, persistenceError(err)
+	}
+	return model.JSONB(payload), merged, nil
 }
 
 // RetryInspirationProcessing 只恢复当前用户当前图片的终止失败任务，不更改每日次数或成功结果。

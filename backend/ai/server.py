@@ -79,17 +79,32 @@ def color_profile(rgb):
 
 class Analyzer:
     """共享一个只读 ONNX Session；每次调用使用独立像素和输出，不在请求之间复用可变数组。"""
-    def __init__(self, model, max_pixels):
+    def __init__(self, model, tag_model, tag_embeddings, max_pixels, tag_workers=2, tag_top_k=18, tag_min_score=.045):
         options = ort.SessionOptions()
         options.intra_op_num_threads = 1
         options.inter_op_num_threads = 1
         options.execution_mode = ort.ExecutionMode.ORT_SEQUENTIAL
         options.add_session_config_entry('session.intra_op.allow_spinning', '0')
         self.session = ort.InferenceSession(model, sess_options=options, providers=['CPUExecutionProvider'])
+        self.tag_session = ort.InferenceSession(tag_model, sess_options=options, providers=['CPUExecutionProvider'])
         self.size = int(self.session.get_inputs()[0].shape[2])
         self.input_name = self.session.get_inputs()[0].name
+        self.tag_input_name = self.tag_session.get_inputs()[0].name
         self.max_pixels = max_pixels
+        self.tag_top_k = tag_top_k
+        self.tag_min_score = tag_min_score
+        self.heavy_slots = threading.BoundedSemaphore(tag_workers)
         self.budget = PixelBudget()
+        # 十个请求同时推理时，限制进程内图片正文总量，避免大图上传把内存推到 2GB 上限。
+        self.body_budget = PixelBudget(capacity=256 * 1024 * 1024)
+        with np.load(tag_embeddings, allow_pickle=False) as data:
+            self.tag_names = data['names'].tolist()
+            self.tag_kinds = data['kinds'].tolist()
+            self.tag_embeddings = data['embeddings'].astype(np.float32)
+            self.tag_version = str(data['version'])
+        if self.tag_embeddings.ndim != 2 or len(self.tag_names) != len(self.tag_embeddings) or len(self.tag_names) != len(self.tag_kinds):
+            raise ValueError('tag_embeddings_shape')
+        self.tag_embeddings /= np.maximum(np.linalg.norm(self.tag_embeddings, axis=1, keepdims=True), 1e-12)
         grid, stride = [], []
         for step in (8, 16, 32):
             y, x = np.meshgrid(np.arange(self.size // step), np.arange(self.size // step), indexing='ij')
@@ -100,6 +115,11 @@ class Analyzer:
         self.stride = np.concatenate(stride)
 
     def analyze(self, content):
+        """十并发请求仍可等待，但只允许两个请求同时解码和跑两个模型，保护 2GB 内存与 CPU。"""
+        with self.heavy_slots:
+            return self._analyze(content)
+
+    def _analyze(self, content):
         """先验证文件及像素上限，再解码有界预览；不写图片或文件名到日志。"""
         with warnings.catch_warnings():
             warnings.simplefilter('error', Image.DecompressionBombWarning)
@@ -110,8 +130,8 @@ class Analyzer:
                 if image.format not in ('JPEG', 'PNG', 'WEBP', 'GIF', 'BMP', 'TIFF'):
                     raise ValueError('unsupported_image_format')
                 with self.budget.acquire(width * height * 8):
-                    image.draft('RGB', (1600, 1600))
-                    image.thumbnail((1600, 1600), Image.Resampling.LANCZOS)
+                    image.draft('RGB', (1280, 1280))
+                    image.thumbnail((1280, 1280), Image.Resampling.LANCZOS)
                     preview = ImageOps.exif_transpose(image)
                     if preview.mode in ('RGBA', 'LA') or 'transparency' in preview.info:
                         layer = preview.convert('RGBA')
@@ -138,10 +158,75 @@ class Analyzer:
         count = len(cv2.dnn.NMSBoxes(boxes.tolist(), scores.tolist(), .3, .45)) if len(boxes) else 0
         dominant, hue, bucket, palette = color_profile(rgb)
         return {'people_count': count, 'is_empty_shot': count == 0, 'dominant_color': dominant,
-                'dominant_hue': hue, 'color_bucket': bucket, 'color_palette': palette}
+                'dominant_hue': hue, 'color_bucket': bucket, 'color_palette': palette,
+                'auto_tags': self.tag_image(rgb, width, height, count, bucket, palette)}
+
+    def tag_image(self, rgb, width, height, people_count, color_bucket, palette):
+        """用 SigLIP 图像向量选取多类别高相关标签，再合并人数、方向和色彩等确定性标签。"""
+        sample = Image.fromarray(rgb).resize((224, 224), Image.Resampling.BILINEAR)
+        tensor = (np.asarray(sample, dtype=np.float32) / 127.5 - 1).transpose(2, 0, 1)[None]
+        vector = self.tag_session.run(None, {self.tag_input_name: tensor})[1][0]
+        vector /= max(float(np.linalg.norm(vector)), 1e-12)
+        scores = self.tag_embeddings @ vector.astype(np.float32)
+        ranked = np.argsort(-scores)
+        best = float(scores[ranked[0]])
+        floor = max(self.tag_min_score, best * .56)
+        limits = {'composition': 5, 'subject': 6, 'scene': 6, 'lighting': 3, 'color': 3, 'technique': 2, 'style': 2, 'mood': 2}
+        used = {key: 0 for key in limits}
+        selected = []
+        for index in ranked:
+            score = float(scores[index])
+            kind = self.tag_kinds[index]
+            if score < floor or used.get(kind, 0) >= limits.get(kind, 0):
+                continue
+            used[kind] += 1
+            selected.append({'name': self.tag_names[index], 'score': round(score, 4), 'source': 'model'})
+            if len(selected) >= self.tag_top_k:
+                break
+        deterministic = self.deterministic_tags(width, height, people_count, color_bucket, palette)
+        names = set()
+        result = []
+        for item in deterministic + selected:
+            if item['name'] in names:
+                continue
+            names.add(item['name'])
+            result.append(item)
+        return result
+
+    @staticmethod
+    def deterministic_tags(width, height, people_count, color_bucket, palette):
+        """不依赖概率阈值的基础标签，保证每张成功图片至少有可检索结果。"""
+        tags = []
+        if people_count == 0:
+            tags.extend(('空镜', '无人'))
+        elif people_count == 1:
+            tags.extend(('人像', '单人'))
+        elif people_count == 2:
+            tags.extend(('人像', '双人'))
+        else:
+            tags.extend(('人像', '多人'))
+        ratio = width / max(height, 1)
+        tags.append('横构图' if ratio >= 1.15 else '竖构图' if ratio <= .87 else '方形构图')
+        color_names = {
+            'black': '黑色', 'white': '白色', 'gray': '灰色', 'h00': '红色', 'h01': '橙红色', 'h02': '橙色',
+            'h03': '黄色', 'h04': '黄绿色', 'h05': '绿色', 'h06': '青绿色', 'h07': '青色', 'h08': '蓝色',
+            'h09': '蓝紫色', 'h10': '紫色', 'h11': '粉紫色',
+        }
+        if color_bucket in color_names:
+            tags.append(color_names[color_bucket])
+        brightness = palette.get('average_brightness')
+        if isinstance(brightness, (int, float)):
+            tags.append('暗调' if brightness < 30 else '明亮' if brightness > 70 else '中间调')
+        saturation = palette.get('average_saturation')
+        if isinstance(saturation, (int, float)):
+            tags.append('高饱和' if saturation > 55 else '低饱和' if saturation < 18 else '自然饱和')
+        return [{'name': name, 'score': 1.0, 'source': 'metadata'} for name in dict.fromkeys(tags)]
 
 
-class Server(socketserver.ThreadingMixIn, socketserver.UnixStreamServer):
+UnixStreamBase = getattr(socketserver, 'UnixStreamServer', socketserver.TCPServer)
+
+
+class Server(socketserver.ThreadingMixIn, UnixStreamBase):
     """仅同 UID 的 Go 进程能访问；有界执行器保证模型调用最多十个并发。"""
     daemon_threads = True
     # 容纳十个并发连接和健康探测，避免Unix Socket默认小backlog在突发时拒绝连接。
@@ -174,10 +259,11 @@ class Handler(BaseHTTPRequestHandler):
                 self.reply(400, {'error': 'invalid_image_request'})
                 return
             self.connection.settimeout(60)
-            content = self.rfile.read(length)
-            if len(content) != length:
-                raise ValueError('incomplete_image')
-            result = self.server.pool.submit(self.server.analyzer.analyze, content).result()
+            with self.server.analyzer.body_budget.acquire(length):
+                content = self.rfile.read(length)
+                if len(content) != length:
+                    raise ValueError('incomplete_image')
+                result = self.server.pool.submit(self.server.analyzer.analyze, content).result()
             self.reply(200, result)
         except (ValueError, OSError, Image.DecompressionBombError, Image.DecompressionBombWarning):
             self.close_connection = True
@@ -192,15 +278,21 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--socket', required=True)
     parser.add_argument('--model', required=True)
+    parser.add_argument('--tag-model', required=True)
+    parser.add_argument('--tag-embeddings', required=True)
     parser.add_argument('--workers', type=int, required=True)
+    parser.add_argument('--tag-workers', type=int, default=2)
+    parser.add_argument('--tag-top-k', type=int, default=18)
+    parser.add_argument('--tag-min-score', type=float, default=.045)
     parser.add_argument('--max-pixels', type=int, required=True)
     parser.add_argument('--max-bytes', type=int, required=True)
     args = parser.parse_args()
-    if not 1 <= args.workers <= 10:
-        parser.error('workers must be 1..10')
+    if not 1 <= args.workers <= 10 or not 1 <= args.tag_workers <= 10 or not 4 <= args.tag_top_k <= 30 or not 0 <= args.tag_min_score <= 1:
+        parser.error('workers must be 1..10, tag-workers 1..10, tag-top-k 4..30, tag-min-score 0..1')
     cv2.setNumThreads(1)
     Image.MAX_IMAGE_PIXELS = args.max_pixels
-    analyzer = Analyzer(args.model, args.max_pixels)
+    analyzer = Analyzer(args.model, args.tag_model, args.tag_embeddings, args.max_pixels,
+                        args.tag_workers, args.tag_top_k, args.tag_min_score)
     path = Path(args.socket)
     if path.exists():
         if not path.is_socket():

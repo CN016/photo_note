@@ -26,6 +26,10 @@ API 默认通过宿主机 `127.0.0.1:8089` 提供服务，监听地址、请求�
 
 灵感图标签可通过 `GET /api/v1/tags?q=关键词` 搜索；详情更新接口接受 `tag_names` 数组并整体替换标签，标签名称由服务端按当前用户解析或创建。现有数据库升级前应先备份，再执行 `backend/migrations/000017_dedupe_inspiration_tags.sql` 合并同名标签并创建唯一索引；服务不会自动执行迁移。
 
+`4.11.0` 起，灵感图上传成功后由现有持久化后台任务自动完成人物/颜色识别和图片标签。SigLIP 2 返回场景、物体、景别、构图、光线、色彩和风格等模型标签，服务端再按人数、空镜、横竖构图、主色、明暗和饱和度补充确定性标签；标签会复用或创建当前用户标签并合并到 `tag_ids`，手工标签不会被整体覆盖。新增 `inspirations.auto_tags` JSONB 保存模型版本、标签、来源、分数和完成时间，`NULL` 表示尚未自动打标。每晚 `03:00` 的既有定时任务会扫描尚未识别或 `auto_tags IS NULL` 的图片，按每页 500 张和内部 ID 游标补齐，不因打开页面触发全库扫描。
+
+自动标签模型使用 Apache-2.0 的 SigLIP 2 Base patch16-224。构建前在 `backend/ai` 运行 `python prepare_tag_embeddings.py`，脚本会校验固定摘要、生成 `backend/ai/models/siglip2_tag_embeddings.npz` 并准备 FP16 视觉模型；ONNX 文件不进入 Git，但最终 API 镜像必须包含模型、标签向量和许可文件。当前编译的 ONNX Runtime 不支持 INT8 `ConvInteger`，因此不能改用更小的 INT8 文件。正式镜像在 2GB/2CPU 隔离环境实测最大推理重叠数为 10，10 张图约 14.20 秒，Python 峰值 RSS 约 1.228GB；仍需为 Go API、PostgreSQL、Redis 和宿主系统预留内存。迁移为 `backend/migrations/000030_inspiration_auto_tags.sql`，已有数据库先持久备份再执行。
+
 账本使用 `ledger_records` 表逐笔保存已完成收支和可恢复草稿；金额在数据库中保存为整数分，API 使用两位小数的十进制字符串。所有 `/api/v1/ledger/*` 接口均需 Bearer Access Token，并从令牌读取用户业务 UUID 限定查询和写入。`GET /api/v1/ledger/records?from=YYYY-MM-DD&to=YYYY-MM-DD` 返回日期范围内的正式记录及当前用户的未完成草稿；`POST /api/v1/ledger/records` 创建草稿，`PATCH /api/v1/ledger/records/{business_id}/draft` 自动保存快照并校验草稿修订号，`POST /api/v1/ledger/records/{business_id}/complete` 完成草稿或应用编辑，`DELETE /api/v1/ledger/records/{business_id}` 删除记录，`POST /api/v1/ledger/import` 在单个事务中导入完整记录。正式分析不包含草稿；编辑已完成记录期间，统计仍按原正式字段计算。旧营收日历 JSON/CSV 导入时类型默认为收入。已有数据库升级前先备份 PostgreSQL，再确认并按顺序应用尚未执行的版本化迁移；账本表迁移为 `backend/migrations/000009_create_ledger_records.sql`，API 不会自动执行 SQL。
 
 ### 消息中心与 webhook 通知

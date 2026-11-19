@@ -1,4 +1,5 @@
 """验证颜色边界、占比及人物输出的真实模型输入；测试不需要数据库或网络。"""
+import os
 import unittest
 from io import BytesIO
 from pathlib import Path
@@ -16,11 +17,15 @@ class AnalysisTests(unittest.TestCase):
                 self.assertAlmostEqual(sum(p['percentage'] for p in palette['palette'])+palette['other_percentage'],100)
                 self.assertTrue(0<=hue<360)
     def test_real_model_and_invalid_input(self):
-        analyzer=Analyzer('/opt/photo-nini-ai/models/yolox_nano.onnx',50000000)
+        models=os.getenv('PHOTO_NINI_TEST_MODELS','/opt/photo-nini-ai/models')
+        analyzer=Analyzer(os.path.join(models,'yolox_nano.onnx'),os.path.join(models,'siglip2_vision_fp16.onnx'),os.path.join(models,'siglip2_tag_embeddings.npz'),50000000,10,18,.045)
         content=BytesIO();Image.new('RGB',(320,240),'white').save(content,format='PNG')
         result=analyzer.analyze(content.getvalue())
         self.assertEqual(result['people_count'],0);self.assertTrue(result['is_empty_shot'])
         self.assertEqual(result['color_bucket'],'white')
+        names={item['name'] for item in result['auto_tags']}
+        self.assertTrue({'空镜','无人','横构图','白色','明亮','低饱和'} <= names)
+        self.assertTrue({'大远景','远景','全景','中景','中近景','近景','特写','大特写','半身','全身','胸像'} <= set(analyzer.tag_names))
         with self.assertRaises((ValueError,OSError)):analyzer.analyze(b'invalid-image')
 
 if __name__=='__main__':unittest.main()

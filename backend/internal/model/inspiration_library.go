@@ -19,6 +19,15 @@ type InspirationAnalysis struct {
 	AnalysisVersion   int64      `gorm:"not null;default:0" json:"analysis_version"`
 	AnalysisAlgorithm string     `json:"analysis_algorithm"`
 	AnalyzedAt        *time.Time `json:"analyzed_at"`
+	// AutoTags 是模型和确定性规则返回的新标签，写库时合并为用户标签并保留来源分数。
+	AutoTags []InspirationAutoTag `gorm:"-" json:"-"`
+}
+
+// InspirationAutoTag 是单条自动标签结果；分数只用于运维和后续阈值调整，不作为用户权限依据。
+type InspirationAutoTag struct {
+	Name   string  `json:"name"`
+	Score  float64 `json:"score"`
+	Source string  `json:"source"`
 }
 
 // InspirationGoal 是当前空间当前用户的目标；提醒时间使用北京时间 HH:mm，不接受归属字段。

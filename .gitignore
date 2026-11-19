@@ -5,6 +5,9 @@
 /backend/dist/
 /backend/postgres17_data/
 /backend/uploads/
+/backend/ai/models/*.onnx
+/backend/ai/models/.cache/
+/backend/ai/__pycache__/
 /frontend/apps/web/node_modules/
 /frontend/apps/web/public/vendor/zrimo/
 /frontend/apps/web/dist/

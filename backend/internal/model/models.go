@@ -101,7 +101,9 @@ type Inspiration struct {
 	AsyncVersion int64 `gorm:"column:async_version;type:bigint;not null;default:0" json:"-"`
 	// ImageMetadata 将可检索的常见图像属性映射到独立可空列；额外标签使用 JSONB 扩展字段。
 	ImageMetadata InspirationImageMetadata `gorm:"embedded" json:"-"`
-	Data          JSONB                    `gorm:"column:data;type:jsonb;not null"`
+	// AutoTagging 保存自动标签版本、标签和分数；NULL 表示尚未完成自动标签，供每日补扫使用。
+	AutoTagging *JSONB `gorm:"column:auto_tags;type:jsonb" json:"-"`
+	Data        JSONB  `gorm:"column:data;type:jsonb;not null"`
 }
 
 // TableName 固定灵感图模型使用与版本化建表 SQL 相同的表名。

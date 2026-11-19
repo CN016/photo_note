@@ -189,6 +189,9 @@ func checkSchema(ctx context.Context, connection *gorm.DB) error {
 			if !migrator.HasColumn(table, "image_metadata_extra") {
 				return fmt.Errorf("PostgreSQL schema 缺少灵感图图片属性列，请先执行 backend/migrations/000016_add_inspiration_image_metadata.sql")
 			}
+			if !migrator.HasColumn(table, "AutoTagging") {
+				return fmt.Errorf("PostgreSQL schema 缺少 inspirations.auto_tags，请先执行 backend/migrations/000030_inspiration_auto_tags.sql")
+			}
 		}
 		if name == "notice_deliveries" {
 			migrator := connection.WithContext(ctx).Migrator()
