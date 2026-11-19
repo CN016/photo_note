@@ -1,0 +1,775 @@
+/*
+ * 全站 iOS 风格玻璃材质层。
+ * 该文件在基础组件样式之后加载，只覆盖视觉材料与层级，不修改路由、业务状态色或画布内容。
+ * 半透明表面依赖 backdrop-filter；不支持时仍保留带内高光的半透明底色作为降级。
+ */
+:root {
+  --page: #eaf2fb;
+  --surface: rgb(255 255 255 / 58%);
+  --surface-overlay: rgb(255 255 255 / 82%);
+  --surface-soft: rgb(255 255 255 / 36%);
+  --surface-muted: rgb(226 237 249 / 52%);
+  --ink: #102033;
+  --ink-soft: #34465b;
+  --muted: #53677b;
+  --line: rgb(32 61 91 / 14%);
+  --line-strong: rgb(32 61 91 / 24%);
+  --accent: #0878e8;
+  --accent-hover: #0a86f4;
+  --accent-pressed: #0068ce;
+  --accent-soft: rgb(76 157 244 / 17%);
+  --on-accent: #fff;
+  --focus: #0878e8;
+  --glass-blur: 26px;
+  --glass-saturation: 165%;
+  --glass-bg: linear-gradient(145deg, rgb(255 255 255 / 72%), rgb(255 255 255 / 42%));
+  --glass-bg-strong: linear-gradient(145deg, rgb(255 255 255 / 86%), rgb(248 252 255 / 65%));
+  --glass-bg-subtle: linear-gradient(145deg, rgb(255 255 255 / 48%), rgb(245 250 255 / 28%));
+  --glass-border: rgb(255 255 255 / 72%);
+  --glass-edge: rgb(255 255 255 / 92%);
+  --glass-shade: rgb(46 91 134 / 10%);
+  --glass-shadow: 0 24px 70px rgb(37 72 107 / 16%), 0 4px 16px rgb(37 72 107 / 7%), inset 0 1px 0 var(--glass-edge), inset 0 -1px 0 rgb(255 255 255 / 18%);
+  --glass-shadow-raised: 0 30px 90px rgb(29 65 103 / 22%), 0 8px 28px rgb(29 65 103 / 10%), inset 0 1px 0 var(--glass-edge), inset 0 -1px 0 rgb(255 255 255 / 22%);
+  --glass-control: linear-gradient(155deg, rgb(255 255 255 / 70%), rgb(247 251 255 / 42%));
+  --shadow: var(--glass-shadow-raised);
+  --soft-shadow: var(--glass-shadow);
+}
+
+:root[data-theme='dark'] {
+  --page: #07111e;
+  --surface: rgb(20 32 51 / 60%);
+  --surface-overlay: rgb(23 37 59 / 84%);
+  --surface-soft: rgb(255 255 255 / 7%);
+  --surface-muted: rgb(111 150 196 / 14%);
+  --ink: #f4f8ff;
+  --ink-soft: #d1ddeb;
+  --muted: #a8b7c9;
+  --line: rgb(216 235 255 / 14%);
+  --line-strong: rgb(216 235 255 / 24%);
+  --accent: #5aafff;
+  --accent-hover: #79bdff;
+  --accent-pressed: #3d9bf3;
+  --accent-soft: rgb(90 175 255 / 17%);
+  --on-accent: #041527;
+  --focus: #79bdff;
+  --glass-bg: linear-gradient(145deg, rgb(33 52 79 / 64%), rgb(14 26 43 / 44%));
+  --glass-bg-strong: linear-gradient(145deg, rgb(36 57 86 / 82%), rgb(15 28 47 / 70%));
+  --glass-bg-subtle: linear-gradient(145deg, rgb(255 255 255 / 9%), rgb(255 255 255 / 4%));
+  --glass-border: rgb(210 235 255 / 18%);
+  --glass-edge: rgb(255 255 255 / 20%);
+  --glass-shade: rgb(0 0 0 / 22%);
+  --glass-shadow: 0 26px 80px rgb(0 0 0 / 44%), 0 4px 18px rgb(0 0 0 / 28%), inset 0 1px 0 var(--glass-edge), inset 0 -1px 0 rgb(255 255 255 / 4%);
+  --glass-shadow-raised: 0 34px 100px rgb(0 0 0 / 58%), 0 8px 30px rgb(0 0 0 / 34%), inset 0 1px 0 var(--glass-edge), inset 0 -1px 0 rgb(255 255 255 / 5%);
+  --glass-control: linear-gradient(155deg, rgb(255 255 255 / 12%), rgb(255 255 255 / 5%));
+}
+
+/*
+ * 页面背景使用固定光场而非图片，避免占用网络和首屏解码时间。
+ * 伪元素只作环境光，不参与命中测试。
+ */
+html {
+  background: var(--page);
+}
+
+body {
+  background:
+    radial-gradient(44rem 34rem at 4% -8%, rgb(121 207 255 / 48%), transparent 70%),
+    radial-gradient(42rem 38rem at 102% 2%, rgb(178 183 255 / 36%), transparent 72%),
+    radial-gradient(46rem 34rem at 50% 108%, rgb(139 212 255 / 32%), transparent 70%),
+    linear-gradient(145deg, #edf7ff 0%, #e7f0fb 44%, #f4f8fe 100%);
+  background-attachment: fixed;
+  color: var(--ink);
+}
+
+:root[data-theme='dark'] body {
+  background:
+    radial-gradient(44rem 34rem at 4% -8%, rgb(31 122 214 / 40%), transparent 70%),
+    radial-gradient(44rem 38rem at 104% 4%, rgb(96 74 180 / 32%), transparent 72%),
+    radial-gradient(48rem 34rem at 48% 110%, rgb(15 117 151 / 24%), transparent 72%),
+    linear-gradient(145deg, #071522 0%, #091322 48%, #0b1020 100%);
+}
+
+#app {
+  position: relative;
+  min-height: 100svh;
+  isolation: isolate;
+}
+
+#app::before,
+#app::after {
+  position: fixed;
+  z-index: -1;
+  width: min(46vw, 640px);
+  aspect-ratio: 1;
+  border-radius: 50%;
+  content: '';
+  filter: blur(34px);
+  opacity: .62;
+  pointer-events: none;
+}
+
+#app::before {
+  top: 12%;
+  left: -14%;
+  background: radial-gradient(circle, rgb(255 255 255 / 82%) 0%, rgb(139 211 255 / 36%) 42%, transparent 72%);
+}
+
+#app::after {
+  right: -16%;
+  bottom: 4%;
+  background: radial-gradient(circle, rgb(255 255 255 / 56%) 0%, rgb(165 185 255 / 29%) 42%, transparent 74%);
+}
+
+:root[data-theme='dark'] #app::before {
+  background: radial-gradient(circle, rgb(60 152 255 / 27%) 0%, rgb(52 91 182 / 16%) 44%, transparent 74%);
+}
+
+:root[data-theme='dark'] #app::after {
+  background: radial-gradient(circle, rgb(112 90 209 / 24%) 0%, rgb(28 118 168 / 14%) 46%, transparent 74%);
+}
+
+body,
+.route-page-frame,
+.workspace-page,
+.auth-page,
+.public-booking-page,
+.maintenance-page,
+.delivery-app,
+.ledger-page {
+  background-color: transparent !important;
+}
+
+.route-page-frame,
+.workspace-page,
+.public-booking-page,
+.maintenance-page,
+.delivery-app,
+.ledger-page {
+  background: transparent !important;
+}
+
+:root[data-theme] {
+  --el-bg-color-page: transparent;
+  --el-bg-color: var(--surface);
+  --el-bg-color-overlay: var(--surface-overlay);
+  --el-fill-color-blank: var(--surface);
+  --el-fill-color-light: var(--surface-soft);
+  --el-fill-color-lighter: var(--surface-soft);
+  --el-fill-color-extra-light: var(--surface-soft);
+  --el-mask-color: rgb(12 30 49 / 24%);
+  --el-overlay-color-lighter: rgb(12 30 49 / 24%);
+}
+
+/*
+ * 大块面板使用真实高斯模糊；小型列表行只使用半透明底色和内高光，
+ * 避免移动端为几十个卡片同时建立模糊纹理。
+ */
+body .app-header,
+body .app-navigation,
+body .mobile-navigation-bar,
+body .drawer-preferences,
+body .delivery-top,
+body .app-context-menu,
+body .global-mobile-menu,
+body .el-popper.is-light,
+body .el-dropdown__popper,
+body .el-select__popper,
+body .el-dialog,
+body .el-message-box,
+body .el-drawer,
+body .decision-dialog,
+body .note-dialog,
+body .ledger-sheet,
+body .image-edit-dock,
+body .image-tool-panel,
+body .image-tool-popover,
+body .editor-controls,
+body .collage-tools,
+body .upload-panel,
+body .profile-card,
+body .messages-panel,
+body .console-user-card,
+body .console-config-card,
+body .console-feedback-card,
+body .notification-card,
+body .webhook-card,
+body .statistics-card,
+body .statistics-summary-card,
+body .schedule-share-card,
+body .schedule-calendar-panel,
+body .schedule-bookings-panel,
+body .schedule-day-card,
+body .project-card,
+body .plan-card,
+body .portfolio-card,
+body .overview-metric,
+body .task-card,
+body .photo-card,
+body .stage-nav,
+body .upload-queue,
+body .public-booking-shell,
+body .portfolio-public,
+body .space-grid .el-card {
+  border-color: var(--glass-border) !important;
+  background: var(--glass-bg) !important;
+  box-shadow: var(--glass-shadow) !important;
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturation));
+  backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturation));
+}
+
+/*
+ * 导航作为悬浮玻璃岛，和内容边缘保持间距；移动底栏也改成安全区内的胶囊形态。
+ */
+body .app-header {
+  top: 10px;
+  width: calc(100% - 24px);
+  height: 60px;
+  margin: 10px auto 0;
+  padding: 0 max(20px, calc((100vw - 1380px) / 2));
+  border: 1px solid var(--glass-border);
+  border-radius: 22px;
+  background: var(--glass-bg-strong) !important;
+  box-shadow: var(--glass-shadow) !important;
+}
+
+@media (min-width: 769px) {
+  /*
+   * 右上角消息入口是独立的操作层，不承载整条顶部栏。
+   * 保留透明定位层可避免再次出现压住侧栏圆角的直角玻璃块。
+   */
+  body .global-message-bar {
+    top: 10px;
+    left: 260px !important;
+    height: 56px;
+    padding: 0 16px;
+    border: 0 !important;
+    background: transparent !important;
+    box-shadow: none !important;
+    -webkit-backdrop-filter: none !important;
+    backdrop-filter: none !important;
+  }
+
+  body .app-header {
+    width: calc(100% - 272px);
+    margin-right: 12px;
+    margin-left: auto;
+  }
+
+  body .app-navigation {
+    inset: 12px auto 12px 12px;
+    width: 236px;
+    height: auto;
+    padding: 20px 14px 14px;
+    overflow: hidden;
+    border: 1px solid var(--glass-border);
+    border-radius: 28px;
+    background: var(--glass-bg) !important;
+    box-shadow: var(--glass-shadow) !important;
+  }
+
+  body .app-navigation .desktop-nav {
+    padding: 2px 0;
+  }
+
+  body .app-navigation .nav-item {
+    border-radius: 13px;
+  }
+
+  body .app-navigation .nav-item.active {
+    border: 1px solid rgb(255 255 255 / 40%);
+    background: var(--glass-bg-strong);
+    box-shadow: inset 3px 0 0 var(--accent), inset 0 1px 0 var(--glass-edge), 0 5px 16px rgb(27 74 120 / 8%);
+  }
+
+  /* 偏好栏单独成为侧栏底部的圆角玻璃卡，避免边框与侧栏圆角错位。 */
+  body .drawer-preferences {
+    margin: 10px 4px 4px;
+    padding: 8px;
+    gap: 6px;
+    border: 1px solid var(--glass-border) !important;
+    border-radius: 16px;
+    background: var(--glass-control) !important;
+    box-shadow: inset 0 1px 0 var(--glass-edge), 0 8px 22px rgb(37 72 107 / 8%) !important;
+  }
+
+  body .drawer-preferences .language-switcher {
+    width: 106px !important;
+    min-width: 0;
+  }
+
+  body .drawer-preferences .theme-switcher {
+    min-width: 44px;
+    gap: 4px;
+    padding: 0 6px;
+  }
+
+  /*
+   * 悬浮侧栏右侧到 248px 结束。此前按 226px 固定侧栏计算的页面在 769px
+   * 附近会被玻璃岛压住 20px；这里统一留出 20px 间距并相应收窄内容区。
+   */
+  body .plans-main {
+    width: min(calc(100vw - 350px), 960px) !important;
+    margin-left: calc(268px + max(0px, (100vw - 1708px) / 2)) !important;
+  }
+
+  body .schedule-main {
+    width: min(calc(100vw - 350px), 1440px) !important;
+    margin-left: calc(268px + max(0px, (100vw - 1708px) / 2)) !important;
+  }
+
+  body .project-editor-main {
+    width: min(calc(100vw - 350px), 1120px) !important;
+    margin-left: calc(268px + max(0px, (100vw - 1348px) / 2)) !important;
+  }
+}
+
+@media (min-width: 769px) and (max-width: 1000px) {
+  body .collage-main {
+    width: calc(100% - 288px) !important;
+    margin-left: 268px !important;
+  }
+}
+
+@media (min-width: 1001px) {
+  body .collage-main {
+    width: min(calc(100vw - 352px), 1450px) !important;
+    margin-left: calc(268px + max(0px, (100vw - 268px - min(calc(100vw - 352px), 1450px)) / 2)) !important;
+  }
+}
+
+body .mobile-navigation-bar {
+  right: 10px;
+  bottom: calc(10px + env(safe-area-inset-bottom));
+  left: 10px;
+  padding: 4px;
+  border: 1px solid var(--glass-border);
+  border-radius: 24px;
+  background: var(--glass-bg-strong) !important;
+  box-shadow: var(--glass-shadow-raised) !important;
+  -webkit-backdrop-filter: blur(28px) saturate(180%);
+  backdrop-filter: blur(28px) saturate(180%);
+}
+
+body .mobile-navigation-bar .mobile-nav {
+  border-radius: 20px;
+}
+
+body .mobile-navigation-bar .mobile-nav-item.active {
+  border-radius: 16px;
+  background: rgb(255 255 255 / 56%);
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 82%), 0 4px 14px rgb(30 75 117 / 10%);
+}
+
+:root[data-theme='dark'] body .mobile-navigation-bar .mobile-nav-item.active {
+  background: rgb(255 255 255 / 12%);
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 20%), 0 4px 14px rgb(0 0 0 / 24%);
+}
+
+body .app-navigation.drawer-visible {
+  border: 1px solid var(--glass-border);
+  border-radius: 0 28px 28px 0;
+  background: var(--glass-bg-strong) !important;
+}
+
+body .navigation-backdrop {
+  background: rgb(8 25 43 / 22%) !important;
+  -webkit-backdrop-filter: blur(6px);
+  backdrop-filter: blur(6px);
+}
+
+/*
+ * 登录、注册和公开预约页以整页玻璃画板呈现，表单仍保持可读文字与清晰焦点。
+ */
+body .auth-page,
+body .public-booking-page {
+  background: transparent !important;
+}
+
+body .auth-art,
+body .auth-panel {
+  background: var(--glass-bg-subtle) !important;
+  -webkit-backdrop-filter: blur(18px) saturate(145%);
+  backdrop-filter: blur(18px) saturate(145%);
+}
+
+body .auth-art {
+  border-right: 1px solid var(--glass-border);
+  box-shadow: inset -1px 0 0 rgb(255 255 255 / 18%);
+}
+
+body .auth-panel {
+  box-shadow: inset 1px 0 0 rgb(255 255 255 / 22%);
+}
+
+body .auth-form-wrap {
+  padding: 40px clamp(22px, 4vw, 38px);
+  border: 1px solid var(--glass-border);
+  border-radius: 30px;
+  background: var(--glass-bg);
+  box-shadow: var(--glass-shadow-raised);
+  -webkit-backdrop-filter: blur(30px) saturate(170%);
+  backdrop-filter: blur(30px) saturate(170%);
+}
+
+body .mood-card,
+body .hero-art,
+body .public-booking-state,
+body .public-slot-card {
+  border-color: var(--glass-border) !important;
+  background-color: var(--surface-soft) !important;
+  box-shadow: inset 0 1px 0 var(--glass-edge), 0 14px 38px rgb(28 75 118 / 9%) !important;
+}
+
+/*
+ * 列表和表单一律使用较浅的玻璃层，避免大段文字透过背景降低对比度。
+ */
+body .review-row,
+body .calendar-day,
+body .gallery-advanced-filters,
+body .gallery-tools,
+body .library-board,
+body .filter-panel,
+body .calendar-section,
+body .analysis-card,
+body .trend-card,
+body .yearly-card,
+body .heatmap-card,
+body .recent-card,
+body .group-card,
+body .kpi-card,
+body .draft-banner,
+body .overview-finance,
+body .overview-table,
+body .console-feedback-reply,
+body .delivery-list,
+body .selected-slot-summary,
+body .organization-members,
+body .upload-dropzone,
+body .new-upload-dropzone,
+body .upload-card,
+body .review-row,
+body .kpi-card,
+body .filter-panel,
+body .calendar-section,
+body .analysis-card,
+body .trend-card,
+body .yearly-card,
+body .heatmap-card,
+body .recent-card,
+body .group-card,
+body .draft-banner,
+body .gallery-tools,
+body .el-table,
+body .space-grid .el-card {
+  border-color: var(--glass-border) !important;
+  background: var(--glass-bg-subtle) !important;
+  box-shadow: inset 0 1px 0 var(--glass-edge), 0 12px 34px rgb(36 74 111 / 8%) !important;
+}
+
+body :is(.review-row, .kpi-card, .filter-panel, .calendar-section, .analysis-card, .trend-card, .yearly-card, .heatmap-card, .recent-card, .group-card, .draft-banner, .gallery-tools, .el-table) {
+  -webkit-backdrop-filter: blur(18px) saturate(150%);
+  backdrop-filter: blur(18px) saturate(150%);
+}
+
+body .public-booking-shell,
+body .portfolio-public {
+  padding: 24px;
+  border: 1px solid var(--glass-border);
+  border-radius: 28px;
+}
+
+@media (max-width: 768px) {
+  body .public-booking-shell,
+  body .portfolio-public {
+    padding: 16px;
+    border-radius: 22px;
+  }
+}
+
+body .project-reviews-list,
+body .review-row {
+  background-clip: padding-box;
+}
+
+body .review-row {
+  margin-bottom: 8px;
+  padding: 18px 16px;
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-card);
+}
+
+body .overview-finance,
+body .overview-table,
+body .messages-panel {
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-card);
+}
+
+body .overview-finance {
+  padding: 22px;
+}
+
+body .overview-table {
+  overflow: hidden;
+  border-collapse: separate;
+  border-spacing: 0;
+}
+
+body .messages-panel {
+  padding: 18px;
+}
+
+body .space-grid .el-card,
+body .space-grid .el-card__body {
+  background: transparent !important;
+}
+
+body .space-grid .el-card {
+  border-radius: 24px;
+}
+
+/*
+ * Tab、筛选和分段控件采用“液体玻璃”底座；选中项保留清晰的文字与边框状态。
+ */
+body .plan-tabs,
+body .schedule-view-switch,
+body .overview-modes,
+body .messages-filter,
+body .messages-tabs,
+body .segmented {
+  border: 1px solid var(--glass-border) !important;
+  background: var(--glass-control) !important;
+  box-shadow: inset 0 1px 0 var(--glass-edge), 0 8px 24px rgb(34 72 108 / 8%);
+  -webkit-backdrop-filter: blur(18px) saturate(160%);
+  backdrop-filter: blur(18px) saturate(160%);
+}
+
+body .messages-tabs {
+  width: fit-content;
+  gap: 4px;
+  padding: 4px;
+  border-radius: 15px;
+}
+
+body .messages-tabs button {
+  min-height: 42px;
+  padding: 0 14px;
+  border-radius: 11px;
+}
+
+body .messages-tabs button.active {
+  background: rgb(255 255 255 / 56%);
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 72%);
+}
+
+body .messages-tabs button.active::after {
+  content: none;
+}
+
+:root[data-theme='dark'] body .messages-tabs button.active,
+:root[data-theme='dark'] body .plan-tabs button.active,
+:root[data-theme='dark'] body .schedule-view-switch button.active,
+:root[data-theme='dark'] body .overview-modes button[aria-pressed='true'],
+:root[data-theme='dark'] body .segmented button[aria-pressed='true'] {
+  background: rgb(255 255 255 / 12%) !important;
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 16%);
+}
+
+/*
+ * 输入、按钮和图标按钮共用高光边缘；主操作保持系统蓝，不把状态色浸到整个页面。
+ */
+body :is(.primary-button, .secondary-button, .icon-button, .compact-button, .masked-button) {
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 72%), 0 8px 22px rgb(36 78 119 / 10%);
+}
+
+body .primary-button,
+body .primary-action,
+body .el-button--primary {
+  border-color: rgb(255 255 255 / 18%) !important;
+  background: linear-gradient(145deg, #1397ff, var(--accent) 58%, #006fda) !important;
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 38%), 0 10px 24px rgb(0 112 220 / 22%) !important;
+}
+
+body .primary-button:hover:not(:disabled),
+body .primary-action:hover:not(:disabled),
+body .el-button--primary:hover:not(:disabled) {
+  background: linear-gradient(145deg, #35aaff, var(--accent-hover) 58%, #0078e9) !important;
+}
+
+body :is(.secondary-button, .outline-action, .icon-button, .icon-action, .overview-refresh) {
+  border-color: var(--glass-border) !important;
+  background: var(--glass-control) !important;
+  -webkit-backdrop-filter: blur(16px) saturate(150%);
+  backdrop-filter: blur(16px) saturate(150%);
+}
+
+body :is(.el-input__wrapper, .el-select__wrapper, .field input, .field textarea, .overview-month input, .month-picker, .form-field input, .form-field select, .form-field textarea) {
+  border-color: var(--glass-border) !important;
+  background: var(--glass-control) !important;
+  box-shadow: inset 0 1px 0 var(--glass-edge), 0 4px 14px rgb(37 73 111 / 6%) !important;
+}
+
+body .el-textarea__inner {
+  border-color: var(--glass-border);
+  background: var(--glass-control);
+  box-shadow: inset 0 1px 0 var(--glass-edge), 0 4px 14px rgb(37 73 111 / 6%);
+}
+
+body :is(.el-input__wrapper.is-focus, .el-select__wrapper.is-focused, .field input:focus, .field textarea:focus) {
+  box-shadow: 0 0 0 1px var(--accent) inset, 0 0 0 4px color-mix(in srgb, var(--accent) 14%, transparent) !important;
+}
+
+/*
+ * 表格保留清晰的横线、悬停层和表头底色，避免玻璃效果吞掉数据层级。
+ */
+body .el-table {
+  --el-table-bg-color: transparent;
+  --el-table-tr-bg-color: transparent;
+  --el-table-header-bg-color: color-mix(in srgb, var(--surface-soft) 88%, var(--accent-soft));
+  --el-table-row-hover-bg-color: color-mix(in srgb, var(--surface-soft) 76%, var(--accent-soft));
+  border: 1px solid var(--glass-border);
+  background: var(--glass-bg-subtle) !important;
+  box-shadow: inset 0 1px 0 var(--glass-edge), 0 14px 34px rgb(36 74 111 / 8%);
+}
+
+body .el-table tr,
+body .el-table th.el-table__cell,
+body .el-table td.el-table__cell {
+  background: transparent;
+}
+
+body .el-table th.el-table__cell {
+  color: var(--muted);
+}
+
+body .el-table td.el-table__cell {
+  border-bottom-color: var(--line);
+}
+
+/*
+ * 图片容器只做外框和反射处理，内部图片、Canvas 与导出像素不被滤镜覆盖。
+ */
+body :is(.thumbnail-frame, .gallery-image-frame, .project-cover-image, .plan-cover-image, .preview-container) {
+  border-color: var(--glass-border) !important;
+  background: var(--surface-soft) !important;
+  box-shadow: inset 0 1px 0 var(--glass-edge), 0 16px 42px rgb(31 74 113 / 11%);
+}
+
+body .inspiration-card:hover .thumbnail-frame,
+body .project-card:hover .project-cover-image,
+body .portfolio-card:hover img {
+  box-shadow: inset 0 1px 0 var(--glass-edge), 0 20px 48px rgb(31 74 113 / 17%);
+}
+
+/*
+ * 浮层圆角和遮罩统一为系统面板。遮罩只压暗背景，不隐藏页面光场。
+ */
+body .el-dialog,
+body .el-message-box,
+body .el-drawer,
+body .decision-dialog,
+body .note-dialog,
+body .ledger-sheet {
+  border: 1px solid var(--glass-border) !important;
+  background: var(--glass-bg-strong) !important;
+  box-shadow: var(--glass-shadow-raised) !important;
+  -webkit-backdrop-filter: blur(32px) saturate(180%);
+  backdrop-filter: blur(32px) saturate(180%);
+}
+
+body .el-overlay {
+  background-color: rgb(8 25 43 / 22%) !important;
+  -webkit-backdrop-filter: blur(14px) saturate(130%);
+  backdrop-filter: blur(14px) saturate(130%);
+}
+
+body .el-popper.is-light,
+body .el-dropdown__popper,
+body .el-select__popper,
+body .app-context-menu,
+body .global-mobile-menu {
+  border: 1px solid var(--glass-border) !important;
+  background: var(--glass-bg-strong) !important;
+}
+
+body .app-context-menu button:hover:not(:disabled),
+body .app-context-menu button:focus-visible,
+body .global-mobile-menu-item:hover {
+  background: var(--glass-control) !important;
+}
+
+/*
+ * 移动端降低连续模糊半径，并减少装饰性背景光的不透明度，兼顾内存和触控可读性。
+ */
+@media (max-width: 768px) {
+  :root {
+    --glass-blur: 16px;
+    --glass-saturation: 150%;
+  }
+
+  body .app-header {
+    top: 8px;
+    width: calc(100% - 16px);
+    margin-right: auto;
+    margin-left: auto;
+    height: 56px;
+    margin-top: 8px;
+    padding: 0 12px;
+    border-radius: 19px;
+  }
+
+  body .global-message-bar {
+    display: none !important;
+  }
+
+  body .notification-card,
+  body .webhook-card,
+  body .profile-card,
+  body .statistics-card,
+  body .statistics-summary-card,
+  body .schedule-calendar-panel,
+  body .schedule-bookings-panel {
+    -webkit-backdrop-filter: blur(14px) saturate(145%);
+    backdrop-filter: blur(14px) saturate(145%);
+  }
+}
+
+/*
+ * 无模糊能力时使用更高不透明度的材料，保证文字和图片仍可读。
+ */
+@supports not ((-webkit-backdrop-filter: blur(1px)) or (backdrop-filter: blur(1px))) {
+  :root {
+    --surface: rgb(255 255 255 / 92%);
+    --surface-overlay: rgb(255 255 255 / 97%);
+    --surface-soft: rgb(245 249 254 / 88%);
+    --glass-bg: linear-gradient(145deg, rgb(255 255 255 / 96%), rgb(244 249 255 / 88%));
+    --glass-bg-strong: linear-gradient(145deg, rgb(255 255 255 / 98%), rgb(245 250 255 / 94%));
+    --glass-bg-subtle: linear-gradient(145deg, rgb(255 255 255 / 94%), rgb(245 249 254 / 84%));
+  }
+
+  :root[data-theme='dark'] {
+    --surface: rgb(20 32 51 / 96%);
+    --surface-overlay: rgb(23 37 59 / 98%);
+    --surface-soft: rgb(29 45 68 / 94%);
+    --glass-bg: linear-gradient(145deg, rgb(25 41 65 / 97%), rgb(14 26 44 / 94%));
+    --glass-bg-strong: linear-gradient(145deg, rgb(28 45 70 / 99%), rgb(14 26 44 / 97%));
+    --glass-bg-subtle: linear-gradient(145deg, rgb(25 41 65 / 95%), rgb(15 28 47 / 91%));
+  }
+}
+
+/*
+ * 用户明确减少透明度时移除模糊并提升表面不透明度，仍保留圆角和内高光。
+ */
+@media (prefers-reduced-transparency: reduce) {
+  body .app-header,
+  body .app-navigation,
+  body .mobile-navigation-bar,
+  body .el-dialog,
+  body .el-message-box,
+  body .el-drawer,
+  body .auth-form-wrap {
+    background: var(--glass-bg-strong) !important;
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
+}

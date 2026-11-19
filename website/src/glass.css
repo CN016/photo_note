@@ -1,0 +1,159 @@
+/*
+ * 官网玻璃材质层：与业务 Web 保持同一视觉语言，但不引入业务组件或状态。
+ * 玻璃层只覆盖表面、边框与背景光场，摄影场景、品牌色和可访问焦点保持原样。
+ */
+:root {
+  --page: #eaf2fb;
+  --surface: rgb(255 255 255 / 62%);
+  --surface-strong: rgb(255 255 255 / 82%);
+  --surface-soft: rgb(255 255 255 / 36%);
+  --ink: #102033;
+  --muted: #53677b;
+  --line: rgb(32 61 91 / 14%);
+  --glass-border: rgb(255 255 255 / 72%);
+  --glass-edge: rgb(255 255 255 / 92%);
+  --glass-bg: linear-gradient(145deg, rgb(255 255 255 / 72%), rgb(247 252 255 / 42%));
+  --glass-bg-strong: linear-gradient(145deg, rgb(255 255 255 / 86%), rgb(246 251 255 / 66%));
+  --glass-control: linear-gradient(155deg, rgb(255 255 255 / 74%), rgb(245 250 255 / 42%));
+  --glass-shadow: 0 26px 76px rgb(34 76 116 / 16%), 0 4px 16px rgb(34 76 116 / 7%), inset 0 1px 0 var(--glass-edge);
+}
+
+html {
+  background: var(--page);
+}
+
+body {
+  color: var(--ink);
+  background:
+    radial-gradient(44rem 34rem at 4% -8%, rgb(121 207 255 / 48%), transparent 70%),
+    radial-gradient(40rem 36rem at 102% 4%, rgb(182 183 255 / 34%), transparent 72%),
+    radial-gradient(42rem 32rem at 50% 106%, rgb(143 215 255 / 30%), transparent 70%),
+    linear-gradient(145deg, #edf7ff 0%, #e7f0fb 46%, #f5f9fe 100%);
+  background-attachment: fixed;
+}
+
+p,
+.intro,
+.section-intro,
+.hero-foot,
+.section-top,
+.feature-grid p,
+.platform-grid p,
+.mini-card p,
+.release-notice p,
+.footer-links,
+.footer p {
+  color: var(--muted);
+}
+
+body .header {
+  top: 10px;
+  width: calc(100% - 24px);
+  margin: 10px auto 0;
+  border: 1px solid var(--glass-border);
+  border-radius: 22px;
+  background: var(--glass-bg-strong);
+  box-shadow: var(--glass-shadow);
+  -webkit-backdrop-filter: blur(26px) saturate(170%);
+  backdrop-filter: blur(26px) saturate(170%);
+}
+
+body :is(.workspace, .feature-grid article, .web-card, .android-download, .mini-card, .platform-grid article, .cta) {
+  border-color: var(--glass-border) !important;
+  background: var(--glass-bg) !important;
+  box-shadow: var(--glass-shadow) !important;
+  -webkit-backdrop-filter: blur(24px) saturate(160%);
+  backdrop-filter: blur(24px) saturate(160%);
+}
+
+body .workspace {
+  overflow: hidden;
+  border-radius: 24px;
+}
+
+body .feature-grid article {
+  margin: -0.5px;
+  border-radius: 18px;
+}
+
+body :is(.hero-art, .workflow-art > .scene, .paper, .web-decoration .scene) {
+  border-color: var(--glass-border);
+  box-shadow: inset 0 1px 0 var(--glass-edge), 0 20px 52px rgb(33 77 117 / 13%);
+}
+
+body .workflow {
+  border-color: var(--glass-border);
+  background: rgb(255 255 255 / 22%);
+}
+
+body .button {
+  border: 1px solid rgb(255 255 255 / 18%);
+  background: linear-gradient(145deg, #159bff, #0878e8 58%, #006fda);
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 38%), 0 10px 24px rgb(0 112 220 / 22%);
+}
+
+body .button:hover {
+  background: linear-gradient(145deg, #35aaff, #0a86f4 58%, #0078e9);
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 42%), 0 13px 28px rgb(0 112 220 / 26%);
+}
+
+body :is(.status, .mock-tags span, .web-symbol) {
+  border: 1px solid var(--glass-border);
+  background: var(--glass-control);
+  box-shadow: inset 0 1px 0 var(--glass-edge);
+}
+
+body :is(.android-package, .paper) {
+  border: 1px solid var(--glass-border);
+  background: var(--glass-control);
+  box-shadow: inset 0 1px 0 var(--glass-edge), 0 12px 30px rgb(33 77 117 / 8%);
+}
+
+body .footer {
+  border-color: var(--line);
+}
+
+@media (max-width: 700px) {
+  body .header {
+    top: 8px;
+    width: calc(100% - 16px);
+    margin-top: 8px;
+    border-radius: 19px;
+  }
+
+  body .nav-wrap {
+    padding: 10px 14px;
+  }
+
+  body nav {
+    border-color: var(--glass-border);
+    background: var(--glass-bg-strong);
+    box-shadow: var(--glass-shadow);
+    -webkit-backdrop-filter: blur(24px) saturate(170%);
+    backdrop-filter: blur(24px) saturate(170%);
+  }
+
+  body :is(.workspace, .web-card, .android-download, .mini-card) {
+    -webkit-backdrop-filter: blur(18px) saturate(150%);
+    backdrop-filter: blur(18px) saturate(150%);
+  }
+}
+
+@supports not ((-webkit-backdrop-filter: blur(1px)) or (backdrop-filter: blur(1px))) {
+  :root {
+    --surface: rgb(255 255 255 / 94%);
+    --surface-strong: rgb(255 255 255 / 98%);
+    --glass-bg: linear-gradient(145deg, rgb(255 255 255 / 97%), rgb(245 250 255 / 90%));
+    --glass-bg-strong: linear-gradient(145deg, rgb(255 255 255 / 99%), rgb(246 251 255 / 95%));
+  }
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  body .header,
+  body nav,
+  body :is(.workspace, .feature-grid article, .web-card, .android-download, .mini-card, .platform-grid article, .cta) {
+    background: var(--glass-bg-strong) !important;
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
+}

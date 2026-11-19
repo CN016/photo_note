@@ -10,6 +10,7 @@ import 'element-plus/es/components/message-box/style/css'
 // 引入组件库完整暗色令牌，确保日期选择器、菜单和挂到 body 的弹层共享暗色状态。
 import 'element-plus/theme-chalk/dark/css-vars.css'
 import './style.css'
+import './glass.css'
 import { initializeTheme } from './theme'
 import { installBackendHealthMonitor } from './backendHealth'
 import { initializePlatform } from './platform'
