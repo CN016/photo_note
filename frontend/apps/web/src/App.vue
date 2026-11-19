@@ -71,6 +71,7 @@ const elementLocale = computed(() => locale.value === 'en-US' ? en : zhCn)
 // 图片详情使用自己的属性入口，避免全局右上角消息按钮覆盖三个点。
 const imageDetailRoute = computed(() => ['edit-inspiration', 'organization-edit-inspiration', 'platform-edit-inspiration'].includes(String(route.name)))
 const projectEditorRoute = computed(() => route.name === 'project-editor')
+watch(imageDetailRoute, active => document.body.classList.toggle('image-detail-route', active), { immediate: true })
 watch(projectEditorRoute, active => document.body.classList.toggle('project-editor-route', active), { immediate: true })
 
 /** 路由完成后用当前页面主标题更新文档标题，并向读屏器播报一次导航结果。 */

@@ -3,12 +3,13 @@ import { loadDetailImage, loadManagedDetailImage, takeDetailRecord } from '../im
 import EditorToolSurface from '../components/EditorToolSurface.vue'
 import { captureDetailImage, detailImageReady } from '../motion/imageMotion'
 import ContentZoom from '../components/ContentZoom.vue'
+import { createLongPress } from '../context-menu/longPress'
 import { friendlyExtra, formatMetadataValue as formatImageMetadataValue, rawMetadataValue, gpsMapUrl } from './imageMetadataDisplay'
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { onBeforeRouteLeave, useRoute, useRouter } from 'vue-router'
-import { ElMessageBox, type UploadFile } from 'element-plus'
-import { ArrowLeft, ArrowRight, Check, Close, Crop, FullScreen, Plus, RefreshLeft, RefreshRight, UploadFilled, MoreFilled, Edit, PriceTag, Aim, Operation, Document } from '@element-plus/icons-vue'
+import { ElMessage, ElMessageBox, type UploadFile } from 'element-plus'
+import { ArrowLeft, ArrowRight, Check, Close, Crop, FullScreen, Plus, RefreshLeft, RefreshRight, UploadFilled, MoreFilled, Aim, Operation, Document } from '@element-plus/icons-vue'
 import { api as baseApi } from '../api/client'
 import { ApiError, type InspirationImageMetadata, type InspirationRecord } from '../api/types'
 import { useAnchorDisplayStore } from '../stores/anchorDisplay'
@@ -46,20 +47,22 @@ const api = {
 const isExisting = computed(() => itemId.value.length > 0)
 const isEditing = ref(false)
 // 属性和工具按需打开，不把拍摄参数、标签与编辑控件堆在图片下方。
-const toolPanel = ref<'properties' | 'tags' | 'anchors' | 'adjust' | 'note' | null>(null)
+const toolPanel = ref<'properties' | 'anchors' | 'adjust' | 'note' | null>(null)
+const tagPickerOpen = ref(false)
+const detailTagQuery = ref('')
 const toolAnchor = shallowRef<HTMLElement>()
 const noteText = computed(() => typeof documentData.value.image_note === 'string' ? documentData.value.image_note : '')
 /** 图片备注沿用文档扩展JSON和已有保存接口，进入撤销历史，不增加数据库字段。 */
 function updateImageNote(value: string | number) { commit({ ...documentData.value, image_note: String(value).slice(0, 500) }) }
 /** 参数浮层不阻挡画布；锚点一键进入编辑和点按添加状态。 */
-function openTool(panel: 'tags' | 'anchors' | 'adjust' | 'note', event: MouseEvent) {
+function openTool(panel: 'anchors' | 'adjust' | 'note', event: MouseEvent) {
   toolAnchor.value = event.currentTarget as HTMLElement
-  if (panel !== 'tags' && !isEditing.value) beginEditing()
+  if (!isEditing.value) beginEditing()
   if (panel === 'anchors') { anchorMode.value = true; cropMode.value = false }
   else anchorMode.value = false
   toolPanel.value = toolPanel.value === panel ? null : panel
 }
-const toolTitle = computed(() => t(toolPanel.value === 'properties' ? 'editor.metadataPanelTitle' : toolPanel.value === 'tags' ? 'editor.tags' : toolPanel.value === 'anchors' ? 'editor.toolbarAnchors' : toolPanel.value === 'note' ? 'editor.imageNote' : 'editor.adjust'))
+const toolTitle = computed(() => t(toolPanel.value === 'properties' ? 'editor.metadataPanelTitle' : toolPanel.value === 'anchors' ? 'editor.toolbarAnchors' : toolPanel.value === 'note' ? 'editor.imageNote' : 'editor.adjust'))
 /** 锚点添加需要回到画布接收点击，先关闭工具浮窗，保留当前编辑状态。 */
 function toggleAnchorTool() { anchorMode.value = !anchorMode.value; toolPanel.value = null }
 
@@ -68,6 +71,7 @@ const documentData = ref<EditorDocument>(createEditorDocument())
 const sourceCanvas = shallowRef<HTMLCanvasElement | null>(null)
 const previewCanvas = ref<HTMLCanvasElement | null>(null)
 const backdropCanvas = ref<HTMLCanvasElement | null>(null)
+const fullscreenImageURL = ref('')
 const stageBox = ref<HTMLElement | null>(null)
 const record = shallowRef<InspirationRecord | null>(null)
 const imageFile = shallowRef<File | null>(null)
@@ -96,6 +100,7 @@ const transformDialog = ref<TransformAction | null>(null)
 const anchorDialog = ref(false)
 const anchorDraft = ref<AnchorDraft | null>(null)
 const movingAnchor = ref<AnchorMoveDraft | null>(null)
+const pressedDetailTag = ref('')
 const historyRevision = ref(0)
 const cropSelection = ref<NormalizedRect | null>(null)
 const fitBox = ref({ width: 0, height: 0 })
@@ -112,6 +117,13 @@ let tagWritePromise: Promise<void> | null = null
 let tagSearchTimer: number | undefined
 let tagSearchVersion = 0
 let suppressAnchorClick = false
+let suppressPreviewClick = false
+let pinchStartDistance = 0
+let pinchTriggered = false
+const detailTagLongPress = createLongPress(() => {
+  const name = pressedDetailTag.value
+  if (name) void removeDetailTag(name)
+})
 
 /** 详情页只展示已采集到的属性；元数据中的空值不会占据面板空间。 */
 const imageMetadataSections = computed(() => {
@@ -194,9 +206,10 @@ const displayDimensions = computed(() => {
   const crop = cropOnRotatedCanvas(documentData.value)
   const width = Math.max(1, Math.round(rotatedWidth * crop.width))
   const height = Math.max(1, Math.round(rotatedHeight * crop.height))
-  // 预留 24px 环绕留白，让贴近图像边缘的锚点仍能完整显示圆点与触控区域。
-  const availableWidth = Math.max(1, fitBox.value.width - 48)
-  const availableHeight = Math.max(1, fitBox.value.height - 48)
+  // 只读详情至少让图片的长边或宽边贴住渲染框；编辑态仍预留锚点触控区。
+  const detailInset = isExisting.value && !isEditing.value ? 0 : 48
+  const availableWidth = Math.max(1, fitBox.value.width - detailInset)
+  const availableHeight = Math.max(1, fitBox.value.height - detailInset)
   const scale = Math.min(1, availableWidth / width || 1, availableHeight / height || 1)
   return { width: Math.max(1, Math.round(width * scale)), height: Math.max(1, Math.round(height * scale)) }
 })
@@ -244,6 +257,13 @@ const cropDragStyle = computed(() => {
   if (!selection) return {}
   return { left: `${selection.x * 100}%`, top: `${selection.y * 100}%`, width: `${selection.width * 100}%`, height: `${selection.height * 100}%` }
 })
+/** 详情操作栏以图片主色做极轻环境染色，浅色页面上也能看出透明磨砂层次。 */
+const detailAmbientStyle = computed<Record<string, string>>(() => {
+  const ambient = record.value?.dominant_color || colorAnalysis.value?.palette[0]?.hex
+  const style: Record<string, string> = {}
+  if (ambient) style['--detail-ambient'] = ambient
+  return style
+})
 
 /** 将后端错误码映射到页面语言资源，不直接展示未经本地化的服务端文本。 */
 function localError(cause: unknown, fallback: string): string {
@@ -287,6 +307,7 @@ async function cancelEditing(): Promise<void> {
         confirmButtonText: t('editor.discardChangesConfirm'),
         cancelButtonText: t('common.cancel'),
         type: 'warning',
+        customClass: 'editor-glass-dialog',
       })
     } catch { return }
   }
@@ -504,14 +525,14 @@ function searchTagOptions(query: string): void {
 }
 
 /** 标签变更立即提交完整名称集合；失败时恢复服务端确认过的选择，避免误显示未保存内容。 */
-async function saveTagNames(names: string[]): Promise<void> {
+async function saveTagNames(names: string[]): Promise<boolean> {
   const current = record.value
-  if (!current || tagSaving.value) return
+  if (!current || tagSaving.value) return false
   const nextNames = [...new Set(names.map(name => name.trim()).filter(Boolean))]
   const previousNames = [...(current.tag_names ?? [])]
   if (nextNames.length === previousNames.length && nextNames.every((name, index) => name === previousNames[index])) {
     tagNames.value = previousNames
-    return
+    return true
   }
 
   tagNames.value = nextNames
@@ -519,6 +540,7 @@ async function saveTagNames(names: string[]): Promise<void> {
   tagSaveError.value = ''
   tagSaveStatus.value = ''
   tagSaving.value = true
+  let saved = false
   const pending = (async () => {
     try {
       const updated = await api.updateInspirationTags(current.business_id, nextNames)
@@ -529,6 +551,7 @@ async function saveTagNames(names: string[]): Promise<void> {
         tagOptions.value = [...new Set([...savedNames, ...tagOptions.value])]
         tagSaveStatus.value = t('editor.tagSaved')
       }
+      saved = true
     } catch (cause) {
       if (record.value?.business_id === current.business_id) tagNames.value = [...(record.value.tag_names ?? previousNames)]
       tagSaveError.value = localError(cause, t('editor.tagSaveFailed'))
@@ -541,7 +564,80 @@ async function saveTagNames(names: string[]): Promise<void> {
     if (tagWritePromise === pending) tagWritePromise = null
   })
   await pending
+  return saved
 }
+
+/** 长按或键盘删除单个标签，成功后用短提示确认，失败沿用现有标签错误反馈。 */
+async function removeDetailTag(name: string): Promise<void> {
+  pressedDetailTag.value = ''
+  detailTagLongPress.cancel()
+  if (tagSaving.value) return
+  const saved = await saveTagNames((record.value?.tag_names ?? []).filter(tag => tag !== name))
+  if (saved) ElMessage({ message: t('editor.tagRemoved', { name }), type: 'success', duration: 1600, grouping: true, customClass: 'editor-glass-message' })
+  else if (tagSaveError.value) ElMessage({ message: tagSaveError.value, type: 'error', duration: 2400, grouping: true, customClass: 'editor-glass-message' })
+}
+
+/** 标签设置独立于底部操作栏，通过行尾“更多”打开透明磨砂选择框。 */
+function toggleTagPicker(): void {
+  toolPanel.value = null
+  tagPickerOpen.value = !tagPickerOpen.value
+}
+
+function closeTagPicker(): void {
+  tagPickerOpen.value = false
+  detailTagQuery.value = ''
+}
+
+/** 点击选项切换标签；选择结果立即写入服务端并同步当前详情。 */
+async function toggleDetailTag(name: string): Promise<void> {
+  if (tagSaving.value) return
+  const selected = tagNames.value.includes(name)
+  await saveTagNames(selected ? tagNames.value.filter(tag => tag !== name) : [...tagNames.value, name])
+}
+
+/** 输入新名称后回车或点击新增，空值和重复值不会产生额外请求。 */
+async function addTypedDetailTag(): Promise<void> {
+  const name = detailTagQuery.value.trim()
+  if (!name || tagSaving.value || tagNames.value.includes(name)) return
+  const saved = await saveTagNames([...tagNames.value, name])
+  if (saved) {
+    detailTagQuery.value = ''
+    searchTagOptions('')
+  }
+}
+
+function handleTagQueryInput(value: string | number): void {
+  detailTagQuery.value = String(value)
+  searchTagOptions(detailTagQuery.value)
+}
+
+/** 长按期间显示按压进度；移动超过容差即转为滚动并取消删除。 */
+function beginDetailTagPress(event: PointerEvent, name: string): void {
+  if (tagSaving.value) return
+  pressedDetailTag.value = name
+  detailTagLongPress.start(event.clientX, event.clientY)
+}
+
+function moveDetailTagPress(event: PointerEvent): void {
+  detailTagLongPress.move(event.clientX, event.clientY)
+}
+
+function endDetailTagPress(): void {
+  detailTagLongPress.cancel()
+  pressedDetailTag.value = ''
+}
+
+const detailTagOptions = computed(() => [...new Set([...tagNames.value, ...tagOptions.value])])
+
+watch(tagPickerOpen, async open => {
+  if (!open) return
+  tagSaveError.value = ''
+  searchTagOptions(detailTagQuery.value)
+  await nextTick()
+  document.querySelector<HTMLInputElement>('.detail-tag-picker input')?.focus()
+})
+
+watch(isEditing, editing => { if (editing) tagPickerOpen.value = false })
 
 /** 画布更新合并到下一帧，避免 RGB 拖动时重复做高分辨率像素循环。 */
 function scheduleRender(): void {
@@ -557,13 +653,37 @@ function scheduleRender(): void {
       target.height = output.height
       const context = target.getContext('2d')
       if (context) context.drawImage(output, 0, 0)
-      // 玻璃背景只保留低分辨率预览，避免为移动端详情再复制一份原图像素。
+      // 背景按详情框比例裁切铺满，只保留低分辨率预览，避免再复制一份原图像素。
       const backdrop = backdropCanvas.value
       if (backdrop) {
-        const scale = Math.min(1, 240 / Math.max(target.width, target.height))
-        backdrop.width = Math.max(1, Math.round(target.width * scale))
-        backdrop.height = Math.max(1, Math.round(target.height * scale))
-        backdrop.getContext('2d')?.drawImage(target, 0, 0, backdrop.width, backdrop.height)
+        const stageWidth = Math.max(1, fitBox.value.width || target.width)
+        const stageHeight = Math.max(1, fitBox.value.height || target.height)
+        const stageRatio = stageWidth / stageHeight
+        const targetRatio = target.width / target.height
+        let sourceX = 0
+        let sourceY = 0
+        let sourceWidth = target.width
+        let sourceHeight = target.height
+        if (targetRatio > stageRatio) {
+          sourceWidth = target.height * stageRatio
+          sourceX = (target.width - sourceWidth) / 2
+        } else {
+          sourceHeight = target.width / stageRatio
+          sourceY = (target.height - sourceHeight) / 2
+        }
+        backdrop.width = Math.max(1, Math.min(480, Math.round(stageWidth)))
+        backdrop.height = Math.max(1, Math.round(backdrop.width / stageRatio))
+        backdrop.getContext('2d')?.drawImage(
+          target,
+          sourceX,
+          sourceY,
+          sourceWidth,
+          sourceHeight,
+          0,
+          0,
+          backdrop.width,
+          backdrop.height,
+        )
       }
       releaseCanvas(output)
       detailImageReady(target)
@@ -603,8 +723,16 @@ function endCropSelection(event: PointerEvent): void {
   selectionStart = null
 }
 
-/** 鼠标或触控点击图片时创建带原图归一化坐标的备注锚点。 */
+/** 详情点击进入无锚点的全屏预览；编辑态继续在当前画布上添加备注锚点。 */
 function onStageClick(event: MouseEvent): void {
+  if (isExisting.value && !isEditing.value) {
+    if (suppressPreviewClick) {
+      suppressPreviewClick = false
+      return
+    }
+    void openFullscreenPreview()
+    return
+  }
   if (!anchorMode.value || cropMode.value) return
   const bounds = previewCanvas.value?.getBoundingClientRect()
   if (!bounds) return
@@ -614,6 +742,50 @@ function onStageClick(event: MouseEvent): void {
   anchorDraft.value = { id: null, x: source.x, y: source.y, note: '' }
   toolPanel.value = null
   anchorDialog.value = true
+}
+
+/** 全屏预览使用当前编辑结果的真实像素快照，锚点属于页面叠层而不会进入图片。 */
+async function openFullscreenPreview(): Promise<void> {
+  const canvas = previewCanvas.value
+  if (!canvas || isEditing.value) return
+  const blob = await new Promise<Blob | null>(resolve => canvas.toBlob(resolve, 'image/jpeg', 0.94))
+  if (blob) {
+    closeFullscreenPreview()
+    fullscreenImageURL.value = URL.createObjectURL(blob)
+    return
+  }
+  fullscreenImageURL.value = canvas.toDataURL('image/jpeg', 0.94)
+}
+
+/** 关闭全屏预览时立即释放临时图片地址，避免连续打开积累大图内存。 */
+function closeFullscreenPreview(): void {
+  if (fullscreenImageURL.value.startsWith('blob:')) URL.revokeObjectURL(fullscreenImageURL.value)
+  fullscreenImageURL.value = ''
+}
+
+/** 双指放大达到阈值后打开全屏预览；单指仍可正常滚动正文。 */
+function beginPreviewPinch(event: TouchEvent): void {
+  if (isEditing.value || event.touches.length !== 2) return
+  pinchStartDistance = Math.hypot(
+    event.touches[0]!.clientX - event.touches[1]!.clientX,
+    event.touches[0]!.clientY - event.touches[1]!.clientY,
+  )
+  pinchTriggered = false
+}
+
+/** 只在双指确实放大时阻止浏览器页面缩放，非放大手势继续保留原生滚动。 */
+function movePreviewPinch(event: TouchEvent): void {
+  if (pinchTriggered || isEditing.value || event.touches.length !== 2 || pinchStartDistance < 1) return
+  const distance = Math.hypot(
+    event.touches[0]!.clientX - event.touches[1]!.clientX,
+    event.touches[0]!.clientY - event.touches[1]!.clientY,
+  )
+  if (distance / pinchStartDistance < 1.08) return
+  event.preventDefault()
+  pinchTriggered = true
+  suppressPreviewClick = true
+  window.setTimeout(() => { suppressPreviewClick = false }, 400)
+  void openFullscreenPreview()
 }
 
 /** 键盘用户聚焦预览画布并按 Enter/Space 时，在画面中心添加备注锚点。 */
@@ -879,6 +1051,7 @@ onBeforeRouteLeave(async to => {
       confirmButtonText: t('editor.discardChangesConfirm'),
       cancelButtonText: t('common.cancel'),
       type: 'warning',
+      customClass: 'editor-glass-dialog',
     })
     return true
   } catch { return false }
@@ -887,6 +1060,7 @@ onBeforeRouteLeave(async to => {
 onBeforeUnmount(() => {
   // 先交出真实渲染像素，再释放原画布；退出动画不依赖已经卸载的编辑组件。
   captureDetailImage(previewCanvas.value)
+  closeFullscreenPreview()
   decodeVersion += 1
   tagSearchVersion += 1
   if (tagSearchTimer !== undefined) window.clearTimeout(tagSearchTimer)
@@ -898,12 +1072,16 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div class="workspace-page editor-page" :class="{ 'is-editing': isEditing, 'is-detail': isExisting && !isEditing }">
-    <ContentZoom><main id="main-content" class="editor-main" :style="anchorDisplayStyle">
+  <div class="workspace-page editor-page" :class="{ 'is-editing': isEditing, 'is-detail': isExisting && !isEditing }" :style="[anchorDisplayStyle, detailAmbientStyle]">
+    <ContentZoom><main id="main-content" class="editor-main">
       <header class="image-detail-header">
-        <RouterLink class="detail-back" to="/inspirations" :aria-label="t('common.back')" :title="t('common.back')"><el-icon aria-hidden="true"><ArrowLeft /></el-icon></RouterLink>
+        <el-tooltip :content="t('common.back')" placement="bottom-start" effect="dark" popper-class="image-detail-tooltip" :show-after="260">
+          <RouterLink class="detail-back" to="/inspirations" :aria-label="t('common.back')"><el-icon aria-hidden="true"><ArrowLeft /></el-icon></RouterLink>
+        </el-tooltip>
         <h1 class="sr-only">{{ isEditing ? t('editor.editTitle') : t('editor.detailTitle') }}</h1>
-        <el-button class="detail-more" circle :aria-label="t('editor.metadataPanelTitle')" :title="t('editor.metadataPanelTitle')" :aria-expanded="toolPanel === 'properties'" @click="toolPanel = 'properties'"><el-icon aria-hidden="true"><MoreFilled /></el-icon></el-button>
+        <el-tooltip :content="t('editor.metadataPanelTitle')" placement="bottom-end" effect="dark" popper-class="image-detail-tooltip" :show-after="260">
+          <el-button class="detail-more" circle :aria-label="t('editor.metadataPanelTitle')" :aria-expanded="toolPanel === 'properties'" @click="toolPanel = 'properties'"><el-icon aria-hidden="true"><MoreFilled /></el-icon></el-button>
+        </el-tooltip>
       </header>
 
       <section v-if="!isExisting && !imageReady" class="upload-welcome">
@@ -915,10 +1093,30 @@ onBeforeUnmount(() => {
 
       <div v-else-if="imageReady" class="editor-workspace">
         <section class="editor-canvas-column" :aria-label="t('editor.previewLabel')">
-          <div ref="stageBox" class="canvas-stage" :data-content-zoom-ignore="cropMode || anchorMode ? 'true' : undefined" :class="{ 'anchor-active': anchorMode, 'crop-active': cropMode }" @click="onStageClick">
+          <div
+            ref="stageBox"
+            class="canvas-stage"
+            :data-content-zoom-ignore="cropMode || anchorMode || (isExisting && !isEditing) ? 'true' : undefined"
+            :class="{ 'anchor-active': anchorMode, 'crop-active': cropMode, 'preview-ready': isExisting && !isEditing }"
+            @click="onStageClick"
+            @touchstart="beginPreviewPinch"
+            @touchmove="movePreviewPinch"
+          >
             <canvas v-if="!isEditing" ref="backdropCanvas" class="canvas-backdrop" aria-hidden="true"></canvas>
             <div v-if="imageReady" class="editor-canvas-wrap" :style="{ width: `${displayDimensions.width}px`, height: `${displayDimensions.height}px` }">
-              <canvas ref="previewCanvas" class="editor-canvas" role="img" :tabindex="isEditing ? 0 : -1" :aria-label="anchorMode ? t('editor.anchorModeOn') : t('editor.previewLabel')" @keydown.enter.prevent="addAnchorAtCenter" @keydown.space.prevent="addAnchorAtCenter" @pointerdown="beginCropSelection" @pointermove="moveCropSelection" @pointerup="endCropSelection" @pointercancel="endCropSelection"></canvas>
+              <canvas
+                ref="previewCanvas"
+                class="editor-canvas"
+                :role="isExisting && !isEditing ? 'button' : 'img'"
+                :tabindex="0"
+                :aria-label="anchorMode ? t('editor.anchorModeOn') : isExisting && !isEditing ? t('editor.openFullscreenPreview') : t('editor.previewLabel')"
+                @keydown.enter.prevent="isEditing ? addAnchorAtCenter() : openFullscreenPreview()"
+                @keydown.space.prevent="isEditing ? addAnchorAtCenter() : openFullscreenPreview()"
+                @pointerdown="beginCropSelection"
+                @pointermove="moveCropSelection"
+                @pointerup="endCropSelection"
+                @pointercancel="endCropSelection"
+              ></canvas>
               <div v-if="cropMode && cropSelection" class="crop-selection" :style="cropDragStyle" aria-hidden="true"></div>
               <component
                 :is="isEditing ? 'button' : 'span'"
@@ -939,7 +1137,7 @@ onBeforeUnmount(() => {
                 @keydown.right.prevent="isEditing && moveAnchorByKeyboard(anchor, $event)"
                 @keydown.up.prevent="isEditing && moveAnchorByKeyboard(anchor, $event)"
                 @keydown.down.prevent="isEditing && moveAnchorByKeyboard(anchor, $event)"
-                @click.stop="isEditing && handleAnchorClick(anchor)"
+                @click="isEditing && handleAnchorClick(anchor)"
               >
                 <span class="image-anchor-label">{{ anchor.note }}</span>
                 <span class="image-anchor-dot" aria-hidden="true"><span></span></span>
@@ -957,10 +1155,29 @@ onBeforeUnmount(() => {
       </div>
 
       <section v-if="isExisting && !isEditing && record" class="detail-caption" :aria-label="t('editor.detailCaption')">
-        <h2>{{ record.file_name || t('gallery.untitled') }}</h2>
-        <p v-if="noteText">{{ noteText }}</p>
-        <div v-if="record.tag_names?.length" class="detail-caption-tags" :aria-label="t('editor.tags')">
-          <span v-for="name in record.tag_names" :key="name">{{ name }}</span>
+        <p v-if="noteText" class="detail-note">{{ noteText }}</p>
+        <div class="detail-tag-row" role="group" :aria-label="t('editor.tags')">
+          <button
+            v-for="name in record.tag_names ?? []"
+            :key="name"
+            type="button"
+            class="detail-tag-pill"
+            :class="{ 'is-pressing': pressedDetailTag === name }"
+            :disabled="tagSaving"
+            :aria-label="t('editor.tagDeleteHint', { name })"
+            @pointerdown="beginDetailTagPress($event, name)"
+            @pointermove="moveDetailTagPress"
+            @pointerup="endDetailTagPress"
+            @pointerleave="endDetailTagPress"
+            @pointercancel="endDetailTagPress"
+            @contextmenu.prevent="removeDetailTag(name)"
+            @keydown.delete.prevent="removeDetailTag(name)"
+            @keydown.backspace.prevent="removeDetailTag(name)"
+          >{{ name }}</button>
+          <button type="button" class="detail-tag-more" aria-controls="detail-tag-picker" :aria-expanded="tagPickerOpen" @click="toggleTagPicker">
+            <el-icon aria-hidden="true"><Plus /></el-icon>
+            <span>{{ t('editor.tagMore') }}</span>
+          </button>
         </div>
       </section>
 
@@ -968,22 +1185,24 @@ onBeforeUnmount(() => {
     </main></ContentZoom>
     <div v-if="imageReady" class="image-edit-dock" :class="{ 'is-editing': isEditing }" role="region" :aria-label="t('editor.tools')">
       <div class="image-dock-tools" role="toolbar" :aria-label="t('editor.tools')">
-        <button type="button" :class="{ active: isEditing }" :disabled="loading || saving" @click="isEditing ? cancelEditing() : beginEditing()"><el-icon aria-hidden="true"><Edit /></el-icon><span>{{ isEditing ? t('editor.cancelEdit') : t('editor.edit') }}</span></button>
-        <button v-if="isExisting" type="button" :class="{ active: toolPanel === 'tags' }" @click="openTool('tags', $event)"><el-icon aria-hidden="true"><PriceTag /></el-icon><span>{{ t('editor.tags') }}</span></button>
         <button type="button" :class="{ active: anchorMode || toolPanel === 'anchors' }" @click="openTool('anchors', $event)"><el-icon aria-hidden="true"><Aim /></el-icon><span>{{ t('editor.toolbarAnchors') }}</span></button>
         <button type="button" :disabled="saving || cropMode" :class="{ active: toolPanel === 'adjust' }" @click="openTool('adjust', $event)"><el-icon aria-hidden="true"><Operation /></el-icon><span>{{ t('editor.adjust') }}</span></button>
         <button type="button" :disabled="saving" :class="{ active: toolPanel === 'note' }" @click="openTool('note', $event)"><el-icon aria-hidden="true"><Document /></el-icon><span>{{ t('editor.imageNote') }}</span></button>
       </div>
       <div v-if="isEditing" class="image-dock-save">
-        <el-button circle :disabled="!canUndo || saving" :aria-label="t('editor.undo')" :title="t('editor.undo')" @click="undo"><el-icon aria-hidden="true"><RefreshLeft /></el-icon></el-button>
-        <el-button circle :disabled="!canRedo || saving" :aria-label="t('editor.redo')" :title="t('editor.redo')" @click="redo"><el-icon aria-hidden="true"><RefreshRight /></el-icon></el-button>
+        <el-tooltip :content="t('editor.undo')" placement="top" effect="dark" popper-class="image-detail-tooltip" :show-after="260">
+          <el-button circle :disabled="!canUndo || saving" :aria-label="t('editor.undo')" @click="undo"><el-icon aria-hidden="true"><RefreshLeft /></el-icon></el-button>
+        </el-tooltip>
+        <el-tooltip :content="t('editor.redo')" placement="top" effect="dark" popper-class="image-detail-tooltip" :show-after="260">
+          <el-button circle :disabled="!canRedo || saving" :aria-label="t('editor.redo')" @click="redo"><el-icon aria-hidden="true"><RefreshRight /></el-icon></el-button>
+        </el-tooltip>
         <el-button type="primary" :disabled="saving || loading || cropMode || anchorDialog || !!transformDialog" :loading="saving" @click="save"><el-icon aria-hidden="true"><Check /></el-icon>{{ isExisting ? t('editor.saveEdit') : t('editor.saveNew') }}</el-button>
       </div>
       <p v-if="error" class="image-dock-status form-error" role="alert">{{ error }}</p>
       <p v-else-if="busyPhase" class="image-dock-status" role="status">{{ busyPhase }}</p>
       <p v-else-if="status" class="image-dock-status success-message" role="status">{{ status }}</p>
     </div>
-    <EditorToolSurface v-if="toolPanel" :panel="toolPanel" :title="toolTitle" :anchor="toolAnchor" @close="panel => { if (toolPanel === panel) toolPanel = null }">
+    <EditorToolSurface v-if="toolPanel" :panel="toolPanel" :title="toolTitle" :anchor="toolAnchor" :ambient="detailAmbientStyle['--detail-ambient']" @close="panel => { if (toolPanel === panel) toolPanel = null }">
         <div class="image-tool-panel">
           <el-input v-if="toolPanel === 'note'" :model-value="noteText" type="textarea" :rows="3" maxlength="500" show-word-limit :aria-label="t('editor.imageNote')" :placeholder="t('editor.imageNotePlaceholder')" @update:model-value="updateImageNote" />
           <dl v-if="toolPanel === 'properties' && sourceCanvas" class="image-metadata-list basic-image-properties">
@@ -1014,38 +1233,6 @@ onBeforeUnmount(() => {
             </div>
           </section>
 
-          <section v-if="isExisting && toolPanel === 'tags'" class="control-section inspiration-tags-section" :aria-label="t('editor.tags')">
-            <div class="section-title-row">
-              <h2>{{ t('editor.tags') }}</h2>
-              <span v-if="tagSaving" class="profile-saving" role="status">{{ t('editor.tagSaving') }}</span>
-            </div>
-            <el-select
-              v-model="tagNames"
-              :aria-label="t('editor.tags')"
-              class="inspiration-tag-select"
-              multiple
-              filterable
-              remote
-              allow-create
-              clearable
-              default-first-option
-              collapse-tags
-              collapse-tags-tooltip
-              :max-collapse-tags="2"
-              append-to=".image-tool-popover"
-              :remote-method="searchTagOptions"
-              :loading="tagOptionsLoading"
-              :disabled="tagSaving || loading"
-              :placeholder="t('editor.tagSearchPlaceholder')"
-              @change="saveTagNames"
-            >
-              <el-option v-for="name in tagOptions" :key="name" :label="name" :value="name" />
-            </el-select>
-            <p v-if="tagSearchError" class="profile-error" role="alert">{{ tagSearchError }}</p>
-            <p v-else-if="tagSaveError" class="profile-error" role="alert">{{ tagSaveError }}</p>
-            <p v-else-if="tagSaveStatus" class="tag-save-status" role="status">{{ tagSaveStatus }}</p>
-          </section>
-
           <section v-if="toolPanel === 'properties' && hasImageMetadata" class="control-section image-metadata-section" :aria-label="t('editor.metadataPanelTitle')">
             <div class="section-title-row"><h2>{{ t('editor.metadataPanelTitle') }}</h2></div>
             <div class="metadata-scroll" tabindex="0" :aria-label="t('editor.metadataPanelTitle')">
@@ -1068,7 +1255,7 @@ onBeforeUnmount(() => {
           <p v-if="toolPanel === 'anchors' && !isEditing && !documentData.anchors.length" class="notes-empty">{{ t('editor.anchorEmpty') }}</p>
           <section v-if="toolPanel === 'anchors'" class="control-section anchor-size-section">
             <div class="section-title-row"><h2>{{ t('editor.anchorDisplaySize') }}</h2><output class="anchor-size-value">{{ anchorDisplayStore.size }}%</output></div>
-            <el-slider :model-value="anchorDisplayStore.size" :min="70" :max="150" :step="5" :aria-label="t('editor.anchorDisplaySize')" @input="anchorDisplayStore.setSize(Number($event))" />
+            <el-slider :model-value="anchorDisplayStore.size" :min="70" :max="150" :step="5" :show-tooltip="false" :aria-label="t('editor.anchorDisplaySize')" @input="anchorDisplayStore.setSize(Number($event))" />
 
           </section>
 
@@ -1084,9 +1271,9 @@ onBeforeUnmount(() => {
 
             <section v-if="toolPanel === 'adjust'" class="control-section color-section">
               <div class="section-title-row"><h2>{{ t('editor.rgb') }}</h2></div>
-              <label class="color-slider red-slider"><span>{{ t('editor.red') }}</span><el-slider :model-value="documentData.rgb.red" :min="-100" :max="100" :aria-label="t('editor.red')" @input="updateRgb('red', String($event))" @change="finishRgbChange" /><output>{{ documentData.rgb.red }}</output></label>
-              <label class="color-slider green-slider"><span>{{ t('editor.green') }}</span><el-slider :model-value="documentData.rgb.green" :min="-100" :max="100" :aria-label="t('editor.green')" @input="updateRgb('green', String($event))" @change="finishRgbChange" /><output>{{ documentData.rgb.green }}</output></label>
-              <label class="color-slider blue-slider"><span>{{ t('editor.blue') }}</span><el-slider :model-value="documentData.rgb.blue" :min="-100" :max="100" :aria-label="t('editor.blue')" @input="updateRgb('blue', String($event))" @change="finishRgbChange" /><output>{{ documentData.rgb.blue }}</output></label>
+              <label class="color-slider red-slider"><span>{{ t('editor.red') }}</span><el-slider :model-value="documentData.rgb.red" :min="-100" :max="100" :show-tooltip="false" :aria-label="t('editor.red')" @input="updateRgb('red', String($event))" @change="finishRgbChange" /><output>{{ documentData.rgb.red }}</output></label>
+              <label class="color-slider green-slider"><span>{{ t('editor.green') }}</span><el-slider :model-value="documentData.rgb.green" :min="-100" :max="100" :show-tooltip="false" :aria-label="t('editor.green')" @input="updateRgb('green', String($event))" @change="finishRgbChange" /><output>{{ documentData.rgb.green }}</output></label>
+              <label class="color-slider blue-slider"><span>{{ t('editor.blue') }}</span><el-slider :model-value="documentData.rgb.blue" :min="-100" :max="100" :show-tooltip="false" :aria-label="t('editor.blue')" @input="updateRgb('blue', String($event))" @change="finishRgbChange" /><output>{{ documentData.rgb.blue }}</output></label>
             </section>
 
             <section v-if="toolPanel === 'anchors' && documentData.anchors.length" class="control-section notes-section">
@@ -1096,7 +1283,9 @@ onBeforeUnmount(() => {
               <div v-else class="note-list">
                 <div v-for="(anchor, index) in documentData.anchors" :key="anchor.id" class="note-list-item-row">
                   <el-button class="note-list-item" @click="editAnchor(anchor)"><span class="note-index">{{ index + 1 }}</span><span>{{ anchor.note }}</span><el-icon class="note-arrow" aria-hidden="true"><ArrowRight /></el-icon></el-button>
-                  <el-button class="note-delete-button" text :aria-label="t('editor.anchorDeleteLabel', { number: index + 1 })" :title="t('editor.anchorDeleteLabel', { number: index + 1 })" @click="deleteAnchorById(anchor.id)"><el-icon aria-hidden="true"><Close /></el-icon></el-button>
+                  <el-tooltip :content="t('editor.anchorDeleteLabel', { number: index + 1 })" placement="top" effect="dark" popper-class="image-detail-tooltip" :show-after="260">
+                    <el-button class="note-delete-button" text :aria-label="t('editor.anchorDeleteLabel', { number: index + 1 })" @click="deleteAnchorById(anchor.id)"><el-icon aria-hidden="true"><Close /></el-icon></el-button>
+                  </el-tooltip>
                 </div>
               </div>
             </section>
@@ -1110,7 +1299,7 @@ onBeforeUnmount(() => {
         </div>
     </EditorToolSurface>
 
-    <el-dialog :model-value="!!transformDialog" :title="t('editor.transformTitle')" width="min(500px, calc(100vw - 32px))" @close="transformDialog = null">
+    <el-dialog :model-value="!!transformDialog" class="editor-glass-dialog" :title="t('editor.transformTitle')" width="min(500px, calc(100vw - 32px))" @close="transformDialog = null">
       <p>{{ t('editor.transformText') }}</p>
       <template #footer>
         <div class="dialog-actions">
@@ -1121,7 +1310,7 @@ onBeforeUnmount(() => {
       </template>
     </el-dialog>
 
-    <el-dialog :model-value="anchorDialog && !!anchorDraft" :title="anchorDraft?.id ? t('editor.anchorEdit') : t('editor.anchorMode')" width="min(500px, calc(100vw - 32px))" @close="anchorDialog = false">
+    <el-dialog :model-value="anchorDialog && !!anchorDraft" class="editor-glass-dialog" :title="anchorDraft?.id ? t('editor.anchorEdit') : t('editor.anchorMode')" width="min(500px, calc(100vw - 32px))" @close="anchorDialog = false">
       <el-input v-if="anchorDraft" v-model="anchorDraft.note" type="textarea" :rows="4" maxlength="500" :placeholder="t('editor.anchorPlaceholder')" />
       <p v-if="error" class="form-error" role="alert">{{ error }}</p>
       <template #footer>
@@ -1133,6 +1322,70 @@ onBeforeUnmount(() => {
         </div>
       </template>
     </el-dialog>
+
+    <Teleport to="body">
+      <Transition name="detail-tag-picker">
+        <div v-if="tagPickerOpen" class="detail-tag-picker-layer" @click.self="closeTagPicker">
+          <section
+            id="detail-tag-picker"
+            class="detail-tag-picker"
+            role="dialog"
+            aria-modal="true"
+            :aria-label="t('editor.tags')"
+            :style="detailAmbientStyle"
+            @keydown.esc.prevent="closeTagPicker"
+          >
+            <header class="detail-tag-picker-header">
+              <h2>{{ t('editor.tags') }}</h2>
+              <button type="button" :aria-label="t('common.close')" @click="closeTagPicker"><el-icon aria-hidden="true"><Close /></el-icon></button>
+            </header>
+            <div class="detail-tag-picker-input">
+              <el-input
+                v-model="detailTagQuery"
+                :aria-label="t('editor.tagSearchPlaceholder')"
+                :placeholder="t('editor.tagSearchPlaceholder')"
+                maxlength="50"
+                @update:model-value="handleTagQueryInput"
+                @keyup.enter.prevent="addTypedDetailTag"
+              />
+              <el-button type="primary" :disabled="!detailTagQuery.trim() || tagSaving" :loading="tagSaving" @click="addTypedDetailTag">{{ t('editor.tagAdd') }}</el-button>
+            </div>
+            <p v-if="tagSearchError" class="profile-error" role="alert">{{ tagSearchError }}</p>
+            <p v-else-if="tagSaveError" class="profile-error" role="alert">{{ tagSaveError }}</p>
+            <p v-else-if="tagSaveStatus" class="tag-save-status" role="status">{{ tagSaveStatus }}</p>
+            <div class="detail-tag-picker-list">
+              <button
+                v-for="name in detailTagOptions"
+                :key="name"
+                type="button"
+                :class="{ selected: tagNames.includes(name) }"
+                :aria-pressed="tagNames.includes(name)"
+                :disabled="tagSaving"
+                @click="toggleDetailTag(name)"
+              >
+                <el-icon v-if="tagNames.includes(name)" aria-hidden="true"><Check /></el-icon>
+                <span>{{ name }}</span>
+              </button>
+              <p v-if="!detailTagOptions.length && !tagOptionsLoading">{{ t('editor.tagPickerEmpty') }}</p>
+            </div>
+          </section>
+        </div>
+      </Transition>
+    </Teleport>
+
+    <el-image-viewer
+      v-if="fullscreenImageURL"
+      class="inspiration-image-viewer"
+      :url-list="[fullscreenImageURL]"
+      :initial-index="0"
+      :min-scale="1"
+      :max-scale="4"
+      :zoom-rate="1.25"
+      :hide-on-click-modal="true"
+      :close-on-press-escape="true"
+      teleported
+      @close="closeFullscreenPreview"
+    />
   </div>
 </template>
 
@@ -1146,19 +1399,44 @@ onBeforeUnmount(() => {
 .detail-more { width: 44px; height: 44px; font-size: 22px; }
 .editor-workspace { display: block; }
 .canvas-stage { height: calc(100dvh - 228px); min-height: 280px; max-height: none; background-image: none; border: 0; background-color: var(--surface-soft); isolation: isolate; }
-.is-detail .canvas-stage { background-color: #202020; }
-.canvas-backdrop { position: absolute; z-index: -1; inset: -28px; width: calc(100% + 56px); height: calc(100% + 56px); filter: blur(24px); opacity: .42; transform: scale(1.05); }
-.image-edit-dock { position: fixed; z-index: 45; bottom: 20px; left: calc(50% + 112px); transform: translateX(-50%); display: flex; flex-wrap: wrap; align-items: center; gap: 12px; max-width: calc(100% - 290px); padding: 8px; border: 1px solid var(--line); border-radius: 24px; background: color-mix(in srgb, var(--surface) 94%, transparent); box-shadow: 0 8px 32px rgb(0 0 0 / 12%); backdrop-filter: blur(20px); }
+.is-detail .canvas-stage { background-color: #0c0c0e; }
+.canvas-backdrop { position: absolute; z-index: -1; inset: -36px; width: calc(100% + 72px); height: calc(100% + 72px); filter: blur(28px) saturate(1.15); opacity: .62; transform: scale(1.035); }
+.is-detail .editor-canvas-wrap { box-shadow: none; }
+.image-edit-dock { position: fixed; z-index: 45; bottom: 20px; left: calc(50% + 112px); transform: translateX(-50%); display: flex; flex-wrap: wrap; align-items: center; gap: 12px; max-width: calc(100% - 290px); padding: 8px; border: 1px solid color-mix(in srgb, var(--ink) 10%, transparent); border-radius: 24px; background: radial-gradient(150% 180% at 8% 0%, color-mix(in srgb, var(--detail-ambient, var(--accent)) 20%, transparent), transparent 58%), linear-gradient(180deg, rgb(255 255 255 / 24%), rgb(255 255 255 / 5%)), color-mix(in srgb, var(--ink) 7%, transparent); box-shadow: inset 0 1px 0 rgb(255 255 255 / 50%), inset 0 -1px 0 rgb(0 0 0 / 8%), 0 12px 34px rgb(0 0 0 / 15%); backdrop-filter: blur(30px) saturate(190%); -webkit-backdrop-filter: blur(30px) saturate(190%); }
 .detail-caption { display: grid; gap: 8px; max-width: 760px; margin: 16px auto 0; padding: 0 8px; color: var(--ink); }
-.detail-caption h2, .detail-caption p { margin: 0; }
-.detail-caption h2 { overflow-wrap: anywhere; font-size: 16px; font-weight: 600; }
-.detail-caption p { color: var(--ink-soft); font-size: 14px; line-height: 1.6; white-space: pre-wrap; overflow-wrap: anywhere; }
-.detail-caption-tags { display: flex; flex-wrap: wrap; gap: 8px; }
-.detail-caption-tags span { padding: 6px 12px; border-radius: 999px; background: color-mix(in srgb, var(--surface) 70%, transparent); color: var(--ink-soft); font-size: 12px; }
+.detail-caption p { margin: 0; color: var(--ink-soft); font-size: 14px; line-height: 1.6; white-space: pre-wrap; overflow-wrap: anywhere; }
+.detail-tag-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.detail-tag-pill, .detail-tag-more { position: relative; display: inline-flex; min-height: 34px; align-items: center; justify-content: center; gap: 4px; overflow: hidden; padding: 6px 12px; border: 1px solid color-mix(in srgb, var(--line) 78%, transparent); border-radius: 999px; background: color-mix(in srgb, var(--surface) 74%, transparent); color: var(--ink-soft); cursor: pointer; font: inherit; font-size: 12px; line-height: 1; white-space: nowrap; touch-action: manipulation; user-select: none; -webkit-touch-callout: none; }
+.detail-tag-pill:hover, .detail-tag-more:hover { border-color: color-mix(in srgb, var(--ink) 18%, transparent); color: var(--ink); }
+.detail-tag-pill:focus-visible, .detail-tag-more:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.detail-tag-pill.is-pressing { border-color: color-mix(in srgb, var(--accent) 46%, transparent); background: color-mix(in srgb, var(--accent) 16%, var(--surface)); color: var(--ink); transform: scale(.97); }
+.detail-tag-pill.is-pressing::after { position: absolute; right: 9px; bottom: 4px; left: 9px; height: 2px; border-radius: 99px; background: var(--accent); content: ''; transform-origin: left; animation: detail-tag-hold 500ms linear forwards; }
+.detail-tag-more { border-color: color-mix(in srgb, var(--accent) 30%, var(--line)); background: color-mix(in srgb, var(--accent) 10%, transparent); color: var(--accent-hover); }
+.detail-tag-more .el-icon { font-size: 14px; }
+@keyframes detail-tag-hold { from { transform: scaleX(0); } to { transform: scaleX(1); } }
+.detail-tag-picker-layer { position: fixed; z-index: 2003; inset: 0; display: flex; align-items: flex-end; justify-content: center; padding: 16px 12px calc(94px + env(safe-area-inset-bottom)); background: rgb(0 0 0 / 7%); }
+.detail-tag-picker { display: flex; width: min(420px, 100%); max-height: min(54dvh, 460px); flex-direction: column; gap: 14px; overflow: hidden; padding: 16px; border: 1px solid color-mix(in srgb, var(--ink) 12%, transparent); border-radius: 28px; background: radial-gradient(130% 180% at 8% 0%, color-mix(in srgb, var(--detail-ambient, var(--accent)) 24%, transparent), transparent 60%), radial-gradient(120% 170% at 92% 100%, rgb(255 255 255 / 16%), transparent 58%), linear-gradient(180deg, rgb(255 255 255 / 25%), rgb(255 255 255 / 4%)), color-mix(in srgb, var(--ink) 8%, transparent); box-shadow: inset 0 1px 0 rgb(255 255 255 / 62%), inset 0 -1px 0 rgb(0 0 0 / 9%), 0 24px 64px rgb(0 0 0 / 22%); backdrop-filter: blur(34px) saturate(200%); -webkit-backdrop-filter: blur(34px) saturate(200%); }
+.detail-tag-picker-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.detail-tag-picker-header h2 { margin: 0; color: var(--ink); font-size: 18px; font-weight: 600; letter-spacing: -.02em; }
+.detail-tag-picker-header button { display: grid; width: 40px; height: 40px; place-items: center; border: 1px solid color-mix(in srgb, var(--ink) 10%, transparent); border-radius: 50%; background: color-mix(in srgb, var(--surface) 28%, transparent); color: var(--ink-soft); cursor: pointer; font-size: 17px; }
+.detail-tag-picker-input { display: flex; align-items: center; gap: 8px; }
+.detail-tag-picker-input :deep(.el-input) { flex: 1; min-width: 0; }
+.detail-tag-picker-input :deep(.el-input__wrapper) { border-radius: 15px; background: color-mix(in srgb, var(--surface) 36%, transparent); box-shadow: inset 0 1px 0 rgb(255 255 255 / 52%), 0 0 0 1px color-mix(in srgb, var(--ink) 9%, transparent); }
+.detail-tag-picker-input .el-button { margin: 0; min-width: 72px; border-radius: 15px; }
+.detail-tag-picker-list { display: flex; min-height: 56px; flex-wrap: wrap; align-content: flex-start; gap: 8px; overflow-y: auto; padding: 2px; overscroll-behavior: contain; }
+.detail-tag-picker-list button { display: inline-flex; min-height: 38px; align-items: center; gap: 5px; padding: 8px 14px; border: 1px solid color-mix(in srgb, var(--ink) 10%, transparent); border-radius: 999px; background: color-mix(in srgb, var(--surface) 46%, transparent); color: var(--ink-soft); cursor: pointer; font: inherit; font-size: 13px; }
+.detail-tag-picker-list button.selected { border-color: color-mix(in srgb, var(--accent) 34%, transparent); background: color-mix(in srgb, var(--accent) 17%, transparent); color: var(--accent-hover); }
+.detail-tag-picker-list button:disabled { opacity: .52; cursor: wait; }
+.detail-tag-picker-list button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.detail-tag-picker-list p { margin: 8px 2px; color: var(--muted); font-size: 13px; }
+.detail-tag-picker-enter-active, .detail-tag-picker-leave-active { transition: opacity 180ms ease; }
+.detail-tag-picker-enter-active .detail-tag-picker, .detail-tag-picker-leave-active .detail-tag-picker { transition: transform 220ms cubic-bezier(0.22, 1, 0.36, 1), opacity 180ms ease; }
+.detail-tag-picker-enter-from, .detail-tag-picker-leave-to { opacity: 0; }
+.detail-tag-picker-enter-from .detail-tag-picker, .detail-tag-picker-leave-to .detail-tag-picker { opacity: 0; transform: translateY(16px) scale(.98); }
 .image-dock-tools { display: flex; gap: 4px; flex: 1; }
 .image-dock-tools button { display: flex; flex: 1; min-width: 70px; min-height: 56px; flex-direction: column; justify-content: center; align-items: center; gap: 5px; padding: 6px 12px; border: 0; border-radius: 16px; background: transparent; color: var(--ink-soft); cursor: pointer; white-space: nowrap; font: inherit; font-size: 12px; }
 .image-dock-tools button .el-icon { font-size: 22px; }
-.image-dock-tools button:hover:not(:disabled), .image-dock-tools button.active { background: var(--accent-soft); color: var(--accent); }
+.image-dock-tools button:hover:not(:disabled), .image-dock-tools button.active { background: color-mix(in srgb, var(--accent) 16%, transparent); color: var(--accent-hover); }
 .image-dock-tools button:disabled { opacity: .4; cursor: default; }
 .image-dock-tools button:focus-visible { outline: 2px solid var(--accent); }
 .image-dock-save { display: flex; align-items: center; justify-content: flex-end; gap: 8px; padding: 4px 8px; }
@@ -1174,26 +1452,54 @@ onBeforeUnmount(() => {
 }
 @media (max-width: 768px) {
   .editor-page { padding-bottom: 0 !important; }
-  .editor-main { position: relative; width: 100%; margin: 0; padding: 0 0 150px; }
+  .editor-main { position: relative; width: 100%; margin: 0; padding: 0 0 150px !important; }
+  .editor-page.is-detail .editor-main { padding-bottom: calc(132px + env(safe-area-inset-bottom)) !important; }
   .image-detail-header { position: absolute; inset: max(12px, env(safe-area-inset-top)) 12px auto; z-index: 4; margin: 0; pointer-events: none; }
   .image-detail-header > * { pointer-events: auto; }
-  .detail-back, .detail-more { border: 1px solid rgb(255 255 255 / 22%); background: rgb(245 245 245 / 17%); color: #fff; backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); box-shadow: 0 2px 12px rgb(0 0 0 / 12%); }
-  .canvas-stage { width: 100%; height: auto; min-height: 0; aspect-ratio: 2 / 3; border-radius: 0; background-color: var(--surface-soft); }
-  .editor-page.is-detail .canvas-stage { height: auto; min-height: 0; max-height: none; aspect-ratio: 2 / 3; }
+  .detail-back, .detail-more { width: 48px; height: 48px; border: 1px solid rgb(255 255 255 / 28%); background: linear-gradient(145deg, rgb(255 255 255 / 12%), rgb(255 255 255 / 3%)), rgb(16 16 18 / 7%); color: #fff; text-shadow: 0 1px 3px rgb(0 0 0 / 38%); backdrop-filter: blur(26px) saturate(180%); -webkit-backdrop-filter: blur(26px) saturate(180%); box-shadow: inset 0 1px 0 rgb(255 255 255 / 34%), 0 8px 26px rgb(0 0 0 / 11%); transition: transform 160ms ease, background-color 160ms ease; }
+  .detail-more { --el-button-bg-color: transparent; --el-button-border-color: transparent; --el-button-hover-bg-color: rgb(255 255 255 / 16%); --el-button-hover-border-color: transparent; --el-button-active-bg-color: rgb(255 255 255 / 24%); --el-button-active-border-color: transparent; }
+  .detail-back:active, .detail-more:active { transform: scale(.94); }
+  .canvas-stage { width: 100%; height: auto; min-height: 0; aspect-ratio: 2 / 3; border-radius: 0; background-color: var(--surface-soft); touch-action: pan-y; }
+  .editor-page.is-detail .canvas-stage { height: auto; min-height: 0; max-height: none; aspect-ratio: 2 / 3; background-color: #09090b; }
+  .editor-page.is-detail .canvas-stage::after { position: absolute; z-index: 0; inset: 0; background: linear-gradient(180deg, rgb(0 0 0 / 9%), transparent 18%, transparent 82%, rgb(0 0 0 / 6%)); content: ''; pointer-events: none; }
+  .editor-page.is-detail .editor-canvas-wrap { z-index: 1; box-shadow: none; }
+  .editor-page.is-detail .canvas-backdrop { inset: -44px; width: calc(100% + 88px); height: calc(100% + 88px); filter: blur(34px) saturate(1.18); opacity: .58; transform: scale(1.04); }
+  .preview-ready .editor-canvas { cursor: zoom-in; -webkit-touch-callout: none; }
   .editor-page.is-editing .canvas-stage { height: calc(100dvh - 280px); }
-  .detail-caption { margin: 0; padding: 14px 16px 20px; }
-  .image-edit-dock { right: 10px; bottom: calc(64px + env(safe-area-inset-bottom) + 8px); left: 10px; transform: none; max-width: none; padding: 7px; gap: 4px; border: 1px solid rgb(255 255 255 / 27%); border-radius: 20px; background: color-mix(in srgb, var(--surface) 42%, transparent); box-shadow: 0 8px 28px rgb(0 0 0 / 17%); backdrop-filter: blur(22px) saturate(145%); -webkit-backdrop-filter: blur(22px) saturate(145%); }
+  .detail-caption { gap: 12px; margin: 0; padding: 18px 18px 28px; }
+  .detail-caption .detail-note { color: var(--ink); font-size: 16px; letter-spacing: -.012em; line-height: 1.72; }
+  .detail-tag-row { flex-wrap: nowrap; gap: 8px; overflow-x: auto; padding: 1px 0 4px; scrollbar-width: none; overscroll-behavior-inline: contain; }
+  .detail-tag-row::-webkit-scrollbar { display: none; }
+  .detail-tag-pill, .detail-tag-more { min-height: 38px; flex: 0 0 auto; padding: 8px 14px; font-size: 13px; }
+  .detail-tag-more { position: sticky; right: 0; border-color: color-mix(in srgb, var(--accent) 28%, var(--line)); background: radial-gradient(120% 150% at 20% 0%, color-mix(in srgb, var(--detail-ambient, var(--accent)) 20%, transparent), transparent 64%), color-mix(in srgb, var(--surface) 45%, transparent); box-shadow: inset 0 1px 0 rgb(255 255 255 / 46%), 0 4px 14px rgb(0 0 0 / 7%); backdrop-filter: blur(18px) saturate(180%); -webkit-backdrop-filter: blur(18px) saturate(180%); }
+  .image-edit-dock { right: 12px; bottom: calc(10px + env(safe-area-inset-bottom)); left: 12px; transform: none; max-width: none; overflow: hidden; padding: 7px; gap: 4px; border: 1px solid color-mix(in srgb, var(--ink) 12%, transparent); border-radius: 24px; background: radial-gradient(120% 180% at 10% 0%, color-mix(in srgb, var(--detail-ambient, var(--accent)) 24%, transparent), transparent 58%), radial-gradient(120% 170% at 90% 100%, rgb(255 255 255 / 16%), transparent 58%), linear-gradient(180deg, rgb(255 255 255 / 25%), rgb(255 255 255 / 4%)), color-mix(in srgb, var(--ink) 8%, transparent); box-shadow: inset 0 1px 0 rgb(255 255 255 / 62%), inset 0 -1px 0 rgb(0 0 0 / 9%), 0 14px 38px rgb(0 0 0 / 16%); backdrop-filter: blur(32px) saturate(200%); -webkit-backdrop-filter: blur(32px) saturate(200%); }
+  .image-edit-dock::before { position: absolute; z-index: 0; inset: 0; border-radius: inherit; background: linear-gradient(118deg, rgb(255 255 255 / 18%), transparent 38%, rgb(255 255 255 / 5%) 76%, transparent); content: ''; pointer-events: none; }
   .image-dock-tools { flex-basis: 100%; }
-  .image-dock-tools button { min-width: 0; padding-inline: 6px; }
+  .image-dock-tools button { min-width: 0; min-height: 54px; gap: 4px; padding: 5px 6px; border-radius: 18px; font-size: 11px; }
+  .image-dock-tools button .el-icon { font-size: 21px; }
+  .image-dock-tools button:active:not(:disabled) { transform: scale(.96); }
   .image-dock-save { width: 100%; padding-top: 6px; border-top: 1px solid var(--line); }
   .image-dock-save .el-button:last-child { margin-left: auto; }
+}
+
+:global(.inspiration-image-viewer .el-image-viewer__mask) { background: #000; opacity: .97; }
+:global(.inspiration-image-viewer .el-image-viewer__close) { top: max(12px, env(safe-area-inset-top)); right: max(12px, env(safe-area-inset-right)); width: 48px; height: 48px; border: 1px solid rgb(255 255 255 / 30%); background: rgb(255 255 255 / 12%); color: #fff; backdrop-filter: blur(24px) saturate(180%); -webkit-backdrop-filter: blur(24px) saturate(180%); box-shadow: inset 0 1px 0 rgb(255 255 255 / 34%), 0 8px 26px rgb(0 0 0 / 28%); }
+:global(.inspiration-image-viewer .el-image-viewer__actions) { bottom: calc(18px + env(safe-area-inset-bottom)); border: 1px solid rgb(255 255 255 / 26%); border-radius: 999px; background: rgb(255 255 255 / 12%); backdrop-filter: blur(24px) saturate(180%); -webkit-backdrop-filter: blur(24px) saturate(180%); box-shadow: inset 0 1px 0 rgb(255 255 255 / 30%), 0 8px 26px rgb(0 0 0 / 24%); }
+:global(body.image-detail-route .el-popper.is-dark) { border: 1px solid rgb(255 255 255 / 24%); border-radius: 12px; background: linear-gradient(180deg, rgb(255 255 255 / 18%), rgb(255 255 255 / 4%)), rgb(16 16 18 / 46%); color: #fff; backdrop-filter: blur(22px) saturate(180%); -webkit-backdrop-filter: blur(22px) saturate(180%); box-shadow: inset 0 1px 0 rgb(255 255 255 / 30%), 0 10px 28px rgb(0 0 0 / 18%); }
+:global(body.image-detail-route .el-popper.is-dark .el-popper__arrow::before) { border-color: rgb(255 255 255 / 18%); background: rgb(48 48 52 / 64%); }
+:global(.editor-glass-dialog.el-dialog), :global(.editor-glass-dialog.el-message-box) { overflow: hidden; border: 1px solid color-mix(in srgb, var(--ink) 12%, transparent); background: radial-gradient(140% 180% at 8% 0%, color-mix(in srgb, var(--detail-ambient, var(--accent)) 18%, transparent), transparent 62%), linear-gradient(180deg, rgb(255 255 255 / 20%), rgb(255 255 255 / 3%)), color-mix(in srgb, var(--ink) 8%, transparent); box-shadow: inset 0 1px 0 rgb(255 255 255 / 58%), 0 24px 70px rgb(0 0 0 / 24%); backdrop-filter: blur(34px) saturate(190%); -webkit-backdrop-filter: blur(34px) saturate(190%); }
+:global(.editor-glass-dialog .el-dialog__header), :global(.editor-glass-dialog .el-message-box__header) { border-bottom: 1px solid color-mix(in srgb, var(--ink) 8%, transparent); }
+:global(.editor-glass-message.el-message) { border: 1px solid color-mix(in srgb, var(--ink) 12%, transparent); background: linear-gradient(180deg, rgb(255 255 255 / 20%), rgb(255 255 255 / 3%)), color-mix(in srgb, var(--ink) 8%, transparent); backdrop-filter: blur(26px) saturate(180%); -webkit-backdrop-filter: blur(26px) saturate(180%); box-shadow: inset 0 1px 0 rgb(255 255 255 / 48%), 0 14px 38px rgb(0 0 0 / 18%); }
+@media (prefers-reduced-motion: reduce) {
+  .detail-back, .detail-more, .image-dock-tools button, .detail-tag-picker, .detail-tag-picker-layer { transition: none; }
 }
 </style>
 
 <style scoped>
 /* 预览快照在画布上方，保留可见、可点按的返回和属性按钮。 */
-.image-detail-header { position: relative; z-index: 2; }
+.image-detail-header { z-index: 2; }
 .image-dock-tools button { min-width: 58px; }
+@media (min-width: 769px) { .image-detail-header { position: relative; } }
 @media (max-width: 768px) { .image-dock-tools button { min-width: 0; } }
 </style>
 
