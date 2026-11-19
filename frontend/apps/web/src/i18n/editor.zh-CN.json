@@ -8,6 +8,7 @@
 
   "newTitle": "添加图片到灵感库",
   "detailTitle": "灵感库图片详情",
+  "detailCaption": "图片说明",
   "editTitle": "编辑灵感库图片",
   "edit": "编辑",
   "cancelEdit": "取消编辑",

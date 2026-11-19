@@ -8,6 +8,7 @@
 
   "newTitle": "Add image to inspiration library",
   "detailTitle": "Inspiration library image details",
+  "detailCaption": "Image details",
   "editTitle": "Edit an image in your inspiration library",
   "edit": "Edit",
   "cancelEdit": "Cancel editing",

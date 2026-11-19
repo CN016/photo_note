@@ -4,7 +4,7 @@ import EditorToolSurface from '../components/EditorToolSurface.vue'
 import { captureDetailImage, detailImageReady } from '../motion/imageMotion'
 import ContentZoom from '../components/ContentZoom.vue'
 import { friendlyExtra, formatMetadataValue as formatImageMetadataValue, rawMetadataValue, gpsMapUrl } from './imageMetadataDisplay'
-import { computed, nextTick, onBeforeUnmount, onMounted, ref, shallowRef } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { onBeforeRouteLeave, useRoute, useRouter } from 'vue-router'
 import { ElMessageBox, type UploadFile } from 'element-plus'
@@ -67,6 +67,7 @@ const editSnapshot = ref('')
 const documentData = ref<EditorDocument>(createEditorDocument())
 const sourceCanvas = shallowRef<HTMLCanvasElement | null>(null)
 const previewCanvas = ref<HTMLCanvasElement | null>(null)
+const backdropCanvas = ref<HTMLCanvasElement | null>(null)
 const stageBox = ref<HTMLElement | null>(null)
 const record = shallowRef<InspirationRecord | null>(null)
 const imageFile = shallowRef<File | null>(null)
@@ -556,11 +557,22 @@ function scheduleRender(): void {
       target.height = output.height
       const context = target.getContext('2d')
       if (context) context.drawImage(output, 0, 0)
+      // 玻璃背景只保留低分辨率预览，避免为移动端详情再复制一份原图像素。
+      const backdrop = backdropCanvas.value
+      if (backdrop) {
+        const scale = Math.min(1, 240 / Math.max(target.width, target.height))
+        backdrop.width = Math.max(1, Math.round(target.width * scale))
+        backdrop.height = Math.max(1, Math.round(target.height * scale))
+        backdrop.getContext('2d')?.drawImage(target, 0, 0, backdrop.width, backdrop.height)
+      }
       releaseCanvas(output)
       detailImageReady(target)
     } catch { error.value = t('editor.decodeFailed') }
   })
 }
+
+// 进入或退出详情态会挂载/移除低清背景画布；下一帧同步当前编辑结果。
+watch(isEditing, () => { void nextTick(() => scheduleRender()) })
 
 /** 按用户当前拖动框反算原图坐标；坐标语义不随旋转角度改变。 */
 function stagePoint(event: PointerEvent): { x: number; y: number } {
@@ -886,7 +898,7 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div class="workspace-page editor-page" :class="{ 'is-editing': isEditing }">
+  <div class="workspace-page editor-page" :class="{ 'is-editing': isEditing, 'is-detail': isExisting && !isEditing }">
     <ContentZoom><main id="main-content" class="editor-main" :style="anchorDisplayStyle">
       <header class="image-detail-header">
         <RouterLink class="detail-back" to="/inspirations" :aria-label="t('common.back')" :title="t('common.back')"><el-icon aria-hidden="true"><ArrowLeft /></el-icon></RouterLink>
@@ -904,6 +916,7 @@ onBeforeUnmount(() => {
       <div v-else-if="imageReady" class="editor-workspace">
         <section class="editor-canvas-column" :aria-label="t('editor.previewLabel')">
           <div ref="stageBox" class="canvas-stage" :data-content-zoom-ignore="cropMode || anchorMode ? 'true' : undefined" :class="{ 'anchor-active': anchorMode, 'crop-active': cropMode }" @click="onStageClick">
+            <canvas v-if="!isEditing" ref="backdropCanvas" class="canvas-backdrop" aria-hidden="true"></canvas>
             <div v-if="imageReady" class="editor-canvas-wrap" :style="{ width: `${displayDimensions.width}px`, height: `${displayDimensions.height}px` }">
               <canvas ref="previewCanvas" class="editor-canvas" role="img" :tabindex="isEditing ? 0 : -1" :aria-label="anchorMode ? t('editor.anchorModeOn') : t('editor.previewLabel')" @keydown.enter.prevent="addAnchorAtCenter" @keydown.space.prevent="addAnchorAtCenter" @pointerdown="beginCropSelection" @pointermove="moveCropSelection" @pointerup="endCropSelection" @pointercancel="endCropSelection"></canvas>
               <div v-if="cropMode && cropSelection" class="crop-selection" :style="cropDragStyle" aria-hidden="true"></div>
@@ -942,6 +955,14 @@ onBeforeUnmount(() => {
 
 
       </div>
+
+      <section v-if="isExisting && !isEditing && record" class="detail-caption" :aria-label="t('editor.detailCaption')">
+        <h2>{{ record.file_name || t('gallery.untitled') }}</h2>
+        <p v-if="noteText">{{ noteText }}</p>
+        <div v-if="record.tag_names?.length" class="detail-caption-tags" :aria-label="t('editor.tags')">
+          <span v-for="name in record.tag_names" :key="name">{{ name }}</span>
+        </div>
+      </section>
 
       <div v-if="error && !imageReady" class="editor-load-error" role="alert"><p>{{ error }}</p><RouterLink class="secondary-button" to="/inspirations">{{ t('common.back') }}</RouterLink></div>
     </main></ContentZoom>
@@ -1124,8 +1145,16 @@ onBeforeUnmount(() => {
 .detail-back:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
 .detail-more { width: 44px; height: 44px; font-size: 22px; }
 .editor-workspace { display: block; }
-.canvas-stage { height: calc(100dvh - 228px); min-height: 280px; max-height: none; background-image: none; border: 0; background-color: var(--surface-soft); }
+.canvas-stage { height: calc(100dvh - 228px); min-height: 280px; max-height: none; background-image: none; border: 0; background-color: var(--surface-soft); isolation: isolate; }
+.is-detail .canvas-stage { background-color: #202020; }
+.canvas-backdrop { position: absolute; z-index: -1; inset: -28px; width: calc(100% + 56px); height: calc(100% + 56px); filter: blur(24px); opacity: .42; transform: scale(1.05); }
 .image-edit-dock { position: fixed; z-index: 45; bottom: 20px; left: calc(50% + 112px); transform: translateX(-50%); display: flex; flex-wrap: wrap; align-items: center; gap: 12px; max-width: calc(100% - 290px); padding: 8px; border: 1px solid var(--line); border-radius: 24px; background: color-mix(in srgb, var(--surface) 94%, transparent); box-shadow: 0 8px 32px rgb(0 0 0 / 12%); backdrop-filter: blur(20px); }
+.detail-caption { display: grid; gap: 8px; max-width: 760px; margin: 16px auto 0; padding: 0 8px; color: var(--ink); }
+.detail-caption h2, .detail-caption p { margin: 0; }
+.detail-caption h2 { overflow-wrap: anywhere; font-size: 16px; font-weight: 600; }
+.detail-caption p { color: var(--ink-soft); font-size: 14px; line-height: 1.6; white-space: pre-wrap; overflow-wrap: anywhere; }
+.detail-caption-tags { display: flex; flex-wrap: wrap; gap: 8px; }
+.detail-caption-tags span { padding: 6px 12px; border-radius: 999px; background: color-mix(in srgb, var(--surface) 70%, transparent); color: var(--ink-soft); font-size: 12px; }
 .image-dock-tools { display: flex; gap: 4px; flex: 1; }
 .image-dock-tools button { display: flex; flex: 1; min-width: 70px; min-height: 56px; flex-direction: column; justify-content: center; align-items: center; gap: 5px; padding: 6px 12px; border: 0; border-radius: 16px; background: transparent; color: var(--ink-soft); cursor: pointer; white-space: nowrap; font: inherit; font-size: 12px; }
 .image-dock-tools button .el-icon { font-size: 22px; }
@@ -1145,11 +1174,15 @@ onBeforeUnmount(() => {
 }
 @media (max-width: 768px) {
   .editor-page { padding-bottom: 0 !important; }
-  .editor-main { width: 100%; margin: 0; padding: 8px 10px 150px; }
-  .image-detail-header { margin-bottom: 8px; }
-  .canvas-stage { height: calc(100dvh - 210px); min-height: 220px; border-radius: 16px; }
+  .editor-main { position: relative; width: 100%; margin: 0; padding: 0 0 150px; }
+  .image-detail-header { position: absolute; inset: max(12px, env(safe-area-inset-top)) 12px auto; z-index: 4; margin: 0; pointer-events: none; }
+  .image-detail-header > * { pointer-events: auto; }
+  .detail-back, .detail-more { border: 1px solid rgb(255 255 255 / 22%); background: rgb(245 245 245 / 17%); color: #fff; backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); box-shadow: 0 2px 12px rgb(0 0 0 / 12%); }
+  .canvas-stage { width: 100%; height: auto; min-height: 0; aspect-ratio: 2 / 3; border-radius: 0; background-color: var(--surface-soft); }
+  .editor-page.is-detail .canvas-stage { height: auto; min-height: 0; max-height: none; aspect-ratio: 2 / 3; }
   .editor-page.is-editing .canvas-stage { height: calc(100dvh - 280px); }
-  .image-edit-dock { right: 0; bottom: 0; left: 0; transform: none; max-width: none; padding: 8px 10px calc(8px + env(safe-area-inset-bottom)); gap: 4px; border-radius: 22px 22px 0 0; }
+  .detail-caption { margin: 0; padding: 14px 16px 20px; }
+  .image-edit-dock { right: 10px; bottom: calc(64px + env(safe-area-inset-bottom) + 8px); left: 10px; transform: none; max-width: none; padding: 7px; gap: 4px; border: 1px solid rgb(255 255 255 / 27%); border-radius: 20px; background: color-mix(in srgb, var(--surface) 42%, transparent); box-shadow: 0 8px 28px rgb(0 0 0 / 17%); backdrop-filter: blur(22px) saturate(145%); -webkit-backdrop-filter: blur(22px) saturate(145%); }
   .image-dock-tools { flex-basis: 100%; }
   .image-dock-tools button { min-width: 0; padding-inline: 6px; }
   .image-dock-save { width: 100%; padding-top: 6px; border-top: 1px solid var(--line); }
