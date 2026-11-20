@@ -24,7 +24,7 @@ function palette() {
   const accent = styles.getPropertyValue('--accent').trim() || '#315fe9'
   const ink = styles.getPropertyValue('--ink').trim() || '#172544'
   const muted = styles.getPropertyValue('--muted').trim() || '#6b7890'
-  return { accent, ink, muted, colors: [accent, '#65a9e8', '#7c79d5', '#48b5a0', '#e7a85a', '#dc7790'] }
+  return { accent, ink, muted, colors: [accent, '#7d9274', '#8e7770', '#a5b797', '#b79068', '#9c826a'] }
 }
 
 /** ECharts 的 HTML tooltip 会渲染图片元数据名称，必须先转义。 */

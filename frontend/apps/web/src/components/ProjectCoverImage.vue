@@ -38,7 +38,7 @@ onBeforeUnmount(() => { version += 1; if (url.value) URL.revokeObjectURL(url.val
 </template>
 
 <style scoped>
-.project-cover-image { display: grid; width: 70px; height: 70px; flex: 0 0 70px; overflow: hidden; place-items: center; border-radius: 9px; background: var(--surface-muted, #f1f3f7); font-size: 34px; }
+.project-cover-image { display: grid; width: 70px; height: 70px; flex: 0 0 70px; overflow: hidden; place-items: center; border-radius: 9px; background: var(--surface-muted, #eeece3); font-size: 34px; }
 .project-cover-image img { width: 100%; height: 100%; object-fit: cover; }
 @media (max-width: 768px) { .project-cover-image { width: 62px; height: 62px; flex-basis: 62px; font-size: 30px; } }
 </style>

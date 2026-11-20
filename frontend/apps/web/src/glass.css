@@ -4,33 +4,33 @@
  * 半透明表面依赖 backdrop-filter；不支持时仍保留带内高光的半透明底色作为降级。
  */
 :root {
-  --page: #eaf2fb;
-  --surface: rgb(255 255 255 / 58%);
-  --surface-overlay: rgb(255 255 255 / 82%);
-  --surface-soft: rgb(255 255 255 / 36%);
-  --surface-muted: rgb(226 237 249 / 52%);
-  --ink: #102033;
-  --ink-soft: #34465b;
-  --muted: #53677b;
-  --line: rgb(32 61 91 / 14%);
-  --line-strong: rgb(32 61 91 / 24%);
-  --accent: #0878e8;
-  --accent-hover: #0a86f4;
-  --accent-pressed: #0068ce;
-  --accent-soft: rgb(76 157 244 / 17%);
-  --on-accent: #fff;
-  --focus: #0878e8;
+  --page: #abc896;
+  --surface: rgb(250 247 239 / 66%);
+  --surface-overlay: rgb(251 248 240 / 88%);
+  --surface-soft: rgb(244 240 230 / 48%);
+  --surface-muted: rgb(218 222 208 / 58%);
+  --ink: #293128;
+  --ink-soft: #3e483b;
+  --muted: #455043;
+  --line: rgb(65 75 62 / 14%);
+  --line-strong: rgb(65 75 62 / 24%);
+  --accent: #405137;
+  --accent-hover: #4a5c3f;
+  --accent-pressed: #35452d;
+  --accent-soft: rgb(64 81 55 / 16%);
+  --on-accent: #fffaf3;
+  --focus: #405137;
   --glass-blur: 26px;
-  --glass-saturation: 165%;
-  --glass-bg: linear-gradient(145deg, rgb(255 255 255 / 72%), rgb(255 255 255 / 42%));
-  --glass-bg-strong: linear-gradient(145deg, rgb(255 255 255 / 86%), rgb(248 252 255 / 65%));
-  --glass-bg-subtle: linear-gradient(145deg, rgb(255 255 255 / 48%), rgb(245 250 255 / 28%));
-  --glass-border: rgb(255 255 255 / 72%);
-  --glass-edge: rgb(255 255 255 / 92%);
-  --glass-shade: rgb(46 91 134 / 10%);
-  --glass-shadow: 0 24px 70px rgb(37 72 107 / 16%), 0 4px 16px rgb(37 72 107 / 7%), inset 0 1px 0 var(--glass-edge), inset 0 -1px 0 rgb(255 255 255 / 18%);
-  --glass-shadow-raised: 0 30px 90px rgb(29 65 103 / 22%), 0 8px 28px rgb(29 65 103 / 10%), inset 0 1px 0 var(--glass-edge), inset 0 -1px 0 rgb(255 255 255 / 22%);
-  --glass-control: linear-gradient(155deg, rgb(255 255 255 / 70%), rgb(247 251 255 / 42%));
+  --glass-saturation: 122%;
+  --glass-bg: linear-gradient(145deg, rgb(251 248 240 / 78%), rgb(244 240 230 / 50%));
+  --glass-bg-strong: linear-gradient(145deg, rgb(252 249 242 / 90%), rgb(245 241 232 / 68%));
+  --glass-bg-subtle: linear-gradient(145deg, rgb(251 248 240 / 58%), rgb(244 240 230 / 38%));
+  --glass-border: rgb(252 249 242 / 76%);
+  --glass-edge: rgb(255 253 247 / 94%);
+  --glass-shade: rgb(63 71 58 / 10%);
+  --glass-shadow: 0 24px 70px rgb(55 64 51 / 15%), 0 4px 16px rgb(55 64 51 / 7%), inset 0 1px 0 var(--glass-edge), inset 0 -1px 0 rgb(255 253 247 / 18%);
+  --glass-shadow-raised: 0 30px 90px rgb(50 59 47 / 21%), 0 8px 28px rgb(50 59 47 / 9%), inset 0 1px 0 var(--glass-edge), inset 0 -1px 0 rgb(255 253 247 / 22%);
+  --glass-control: linear-gradient(155deg, rgb(251 248 240 / 76%), rgb(244 240 230 / 50%));
   --shadow: var(--glass-shadow-raised);
   --soft-shadow: var(--glass-shadow);
 }
@@ -67,26 +67,16 @@
  * 页面背景使用固定光场而非图片，避免占用网络和首屏解码时间。
  * 伪元素只作环境光，不参与命中测试。
  */
-html {
-  background: var(--page);
-}
+html { background: var(--page-gradient); }
 
 body {
-  background:
-    radial-gradient(44rem 34rem at 4% -8%, rgb(121 207 255 / 48%), transparent 70%),
-    radial-gradient(42rem 38rem at 102% 2%, rgb(178 183 255 / 36%), transparent 72%),
-    radial-gradient(46rem 34rem at 50% 108%, rgb(139 212 255 / 32%), transparent 70%),
-    linear-gradient(145deg, #edf7ff 0%, #e7f0fb 44%, #f4f8fe 100%);
+  background: var(--page-gradient);
   background-attachment: fixed;
   color: var(--ink);
 }
 
 :root[data-theme='dark'] body {
-  background:
-    radial-gradient(44rem 34rem at 4% -8%, rgb(31 122 214 / 40%), transparent 70%),
-    radial-gradient(44rem 38rem at 104% 4%, rgb(96 74 180 / 32%), transparent 72%),
-    radial-gradient(48rem 34rem at 48% 110%, rgb(15 117 151 / 24%), transparent 72%),
-    linear-gradient(145deg, #071522 0%, #091322 48%, #0b1020 100%);
+  background: var(--page-gradient);
 }
 
 #app {
@@ -111,13 +101,13 @@ body {
 #app::before {
   top: 12%;
   left: -14%;
-  background: radial-gradient(circle, rgb(255 255 255 / 82%) 0%, rgb(139 211 255 / 36%) 42%, transparent 72%);
+  background: radial-gradient(circle, rgb(248 243 232 / 42%) 0%, rgb(186 206 165 / 22%) 42%, transparent 72%);
 }
 
 #app::after {
   right: -16%;
   bottom: 4%;
-  background: radial-gradient(circle, rgb(255 255 255 / 56%) 0%, rgb(165 185 255 / 29%) 42%, transparent 74%);
+  background: radial-gradient(circle, rgb(250 243 226 / 38%) 0%, rgb(210 214 192 / 20%) 42%, transparent 74%);
 }
 
 :root[data-theme='dark'] #app::before {
@@ -156,8 +146,8 @@ body,
   --el-fill-color-light: var(--surface-soft);
   --el-fill-color-lighter: var(--surface-soft);
   --el-fill-color-extra-light: var(--surface-soft);
-  --el-mask-color: rgb(12 30 49 / 24%);
-  --el-overlay-color-lighter: rgb(12 30 49 / 24%);
+  --el-mask-color: rgb(44 50 41 / 26%);
+  --el-overlay-color-lighter: rgb(44 50 41 / 26%);
 }
 
 /*
@@ -276,9 +266,9 @@ body .app-header {
   }
 
   body .app-navigation .nav-item.active {
-    border: 1px solid rgb(255 255 255 / 40%);
+    border: 1px solid rgb(252 249 242 / 48%);
     background: var(--glass-bg-strong);
-    box-shadow: inset 3px 0 0 var(--accent), inset 0 1px 0 var(--glass-edge), 0 5px 16px rgb(27 74 120 / 8%);
+    box-shadow: inset 3px 0 0 var(--accent), inset 0 1px 0 var(--glass-edge), 0 5px 16px rgb(55 64 51 / 8%);
   }
 
   /* 偏好栏单独成为侧栏底部的圆角玻璃卡，避免边框与侧栏圆角错位。 */
@@ -289,7 +279,7 @@ body .app-header {
     border: 1px solid var(--glass-border) !important;
     border-radius: 16px;
     background: var(--glass-control) !important;
-    box-shadow: inset 0 1px 0 var(--glass-edge), 0 8px 22px rgb(37 72 107 / 8%) !important;
+    box-shadow: inset 0 1px 0 var(--glass-edge), 0 8px 22px rgb(55 64 51 / 8%) !important;
   }
 
   body .drawer-preferences .language-switcher {
@@ -356,8 +346,8 @@ body .mobile-navigation-bar .mobile-nav {
 
 body .mobile-navigation-bar .mobile-nav-item.active {
   border-radius: 16px;
-  background: rgb(255 255 255 / 56%);
-  box-shadow: inset 0 1px 0 rgb(255 255 255 / 82%), 0 4px 14px rgb(30 75 117 / 10%);
+  background: rgb(252 249 242 / 64%);
+  box-shadow: inset 0 1px 0 rgb(255 253 247 / 88%), 0 4px 14px rgb(55 64 51 / 10%);
 }
 
 :root[data-theme='dark'] body .mobile-navigation-bar .mobile-nav-item.active {
@@ -372,7 +362,7 @@ body .app-navigation.drawer-visible {
 }
 
 body .navigation-backdrop {
-  background: rgb(8 25 43 / 22%) !important;
+  background: rgb(44 50 41 / 24%) !important;
   -webkit-backdrop-filter: blur(6px);
   backdrop-filter: blur(6px);
 }
@@ -417,7 +407,7 @@ body .public-booking-state,
 body .public-slot-card {
   border-color: var(--glass-border) !important;
   background-color: var(--surface-soft) !important;
-  box-shadow: inset 0 1px 0 var(--glass-edge), 0 14px 38px rgb(28 75 118 / 9%) !important;
+  box-shadow: inset 0 1px 0 var(--glass-edge), 0 14px 38px rgb(55 64 51 / 9%) !important;
 }
 
 /*
@@ -463,7 +453,7 @@ body .el-table,
 body .space-grid .el-card {
   border-color: var(--glass-border) !important;
   background: var(--glass-bg-subtle) !important;
-  box-shadow: inset 0 1px 0 var(--glass-edge), 0 12px 34px rgb(36 74 111 / 8%) !important;
+  box-shadow: inset 0 1px 0 var(--glass-edge), 0 12px 34px rgb(55 64 51 / 8%) !important;
 }
 
 body :is(.review-row, .kpi-card, .filter-panel, .calendar-section, .analysis-card, .trend-card, .yearly-card, .heatmap-card, .recent-card, .group-card, .draft-banner, .gallery-tools, .el-table) {
@@ -539,7 +529,7 @@ body .messages-tabs,
 body .segmented {
   border: 1px solid var(--glass-border) !important;
   background: var(--glass-control) !important;
-  box-shadow: inset 0 1px 0 var(--glass-edge), 0 8px 24px rgb(34 72 108 / 8%);
+  box-shadow: inset 0 1px 0 var(--glass-edge), 0 8px 24px rgb(55 64 51 / 8%);
   -webkit-backdrop-filter: blur(18px) saturate(160%);
   backdrop-filter: blur(18px) saturate(160%);
 }
@@ -558,8 +548,8 @@ body .messages-tabs button {
 }
 
 body .messages-tabs button.active {
-  background: rgb(255 255 255 / 56%);
-  box-shadow: inset 0 1px 0 rgb(255 255 255 / 72%);
+  background: rgb(252 249 242 / 64%);
+  box-shadow: inset 0 1px 0 rgb(255 253 247 / 78%);
 }
 
 body .messages-tabs button.active::after {
@@ -576,24 +566,24 @@ body .messages-tabs button.active::after {
 }
 
 /*
- * 输入、按钮和图标按钮共用高光边缘；主操作保持系统蓝，不把状态色浸到整个页面。
+ * 输入、按钮和图标按钮共用高光边缘；主操作保持低饱和鼠尾草绿，不把状态色浸到整个页面。
  */
 body :is(.primary-button, .secondary-button, .icon-button, .compact-button, .masked-button) {
-  box-shadow: inset 0 1px 0 rgb(255 255 255 / 72%), 0 8px 22px rgb(36 78 119 / 10%);
+  box-shadow: inset 0 1px 0 rgb(255 253 247 / 76%), 0 8px 22px rgb(55 64 51 / 10%);
 }
 
 body .primary-button,
 body .primary-action,
 body .el-button--primary {
-  border-color: rgb(255 255 255 / 18%) !important;
-  background: linear-gradient(145deg, #1397ff, var(--accent) 58%, #006fda) !important;
-  box-shadow: inset 0 1px 0 rgb(255 255 255 / 38%), 0 10px 24px rgb(0 112 220 / 22%) !important;
+  border-color: rgb(255 253 247 / 20%) !important;
+  background: linear-gradient(145deg, color-mix(in srgb, var(--accent) 82%, #d7e1cd), var(--accent) 58%, var(--accent-pressed)) !important;
+  box-shadow: inset 0 1px 0 rgb(255 253 247 / 34%), 0 10px 24px color-mix(in srgb, var(--accent) 24%, transparent) !important;
 }
 
 body .primary-button:hover:not(:disabled),
 body .primary-action:hover:not(:disabled),
 body .el-button--primary:hover:not(:disabled) {
-  background: linear-gradient(145deg, #35aaff, var(--accent-hover) 58%, #0078e9) !important;
+  background: linear-gradient(145deg, color-mix(in srgb, var(--accent-hover) 82%, #dce5d4), var(--accent-hover) 58%, var(--accent)) !important;
 }
 
 body :is(.secondary-button, .outline-action, .icon-button, .icon-action, .overview-refresh) {
@@ -606,13 +596,13 @@ body :is(.secondary-button, .outline-action, .icon-button, .icon-action, .overvi
 body :is(.el-input__wrapper, .el-select__wrapper, .field input, .field textarea, .overview-month input, .month-picker, .form-field input, .form-field select, .form-field textarea) {
   border-color: var(--glass-border) !important;
   background: var(--glass-control) !important;
-  box-shadow: inset 0 1px 0 var(--glass-edge), 0 4px 14px rgb(37 73 111 / 6%) !important;
+  box-shadow: inset 0 1px 0 var(--glass-edge), 0 4px 14px rgb(55 64 51 / 6%) !important;
 }
 
 body .el-textarea__inner {
   border-color: var(--glass-border);
   background: var(--glass-control);
-  box-shadow: inset 0 1px 0 var(--glass-edge), 0 4px 14px rgb(37 73 111 / 6%);
+  box-shadow: inset 0 1px 0 var(--glass-edge), 0 4px 14px rgb(55 64 51 / 6%);
 }
 
 body :is(.el-input__wrapper.is-focus, .el-select__wrapper.is-focused, .field input:focus, .field textarea:focus) {
@@ -629,7 +619,7 @@ body .el-table {
   --el-table-row-hover-bg-color: color-mix(in srgb, var(--surface-soft) 76%, var(--accent-soft));
   border: 1px solid var(--glass-border);
   background: var(--glass-bg-subtle) !important;
-  box-shadow: inset 0 1px 0 var(--glass-edge), 0 14px 34px rgb(36 74 111 / 8%);
+  box-shadow: inset 0 1px 0 var(--glass-edge), 0 14px 34px rgb(55 64 51 / 8%);
 }
 
 body .el-table tr,
@@ -652,13 +642,13 @@ body .el-table td.el-table__cell {
 body :is(.thumbnail-frame, .gallery-image-frame, .project-cover-image, .plan-cover-image, .preview-container) {
   border-color: var(--glass-border) !important;
   background: var(--surface-soft) !important;
-  box-shadow: inset 0 1px 0 var(--glass-edge), 0 16px 42px rgb(31 74 113 / 11%);
+  box-shadow: inset 0 1px 0 var(--glass-edge), 0 16px 42px rgb(55 64 51 / 11%);
 }
 
 body .inspiration-card:hover .thumbnail-frame,
 body .project-card:hover .project-cover-image,
 body .portfolio-card:hover img {
-  box-shadow: inset 0 1px 0 var(--glass-edge), 0 20px 48px rgb(31 74 113 / 17%);
+  box-shadow: inset 0 1px 0 var(--glass-edge), 0 20px 48px rgb(55 64 51 / 17%);
 }
 
 /*
@@ -678,7 +668,7 @@ body .ledger-sheet {
 }
 
 body .el-overlay {
-  background-color: rgb(8 25 43 / 22%) !important;
+  background-color: rgb(44 50 41 / 24%) !important;
   -webkit-backdrop-filter: blur(14px) saturate(130%);
   backdrop-filter: blur(14px) saturate(130%);
 }
@@ -739,12 +729,12 @@ body .global-mobile-menu-item:hover {
  */
 @supports not ((-webkit-backdrop-filter: blur(1px)) or (backdrop-filter: blur(1px))) {
   :root {
-    --surface: rgb(255 255 255 / 92%);
-    --surface-overlay: rgb(255 255 255 / 97%);
-    --surface-soft: rgb(245 249 254 / 88%);
-    --glass-bg: linear-gradient(145deg, rgb(255 255 255 / 96%), rgb(244 249 255 / 88%));
-    --glass-bg-strong: linear-gradient(145deg, rgb(255 255 255 / 98%), rgb(245 250 255 / 94%));
-    --glass-bg-subtle: linear-gradient(145deg, rgb(255 255 255 / 94%), rgb(245 249 254 / 84%));
+    --surface: rgb(249 246 237 / 94%);
+    --surface-overlay: rgb(251 248 240 / 98%);
+    --surface-soft: rgb(242 238 228 / 90%);
+    --glass-bg: linear-gradient(145deg, rgb(251 248 240 / 97%), rgb(243 239 229 / 90%));
+    --glass-bg-strong: linear-gradient(145deg, rgb(252 249 242 / 99%), rgb(244 240 230 / 95%));
+    --glass-bg-subtle: linear-gradient(145deg, rgb(251 248 240 / 95%), rgb(243 239 229 / 86%));
   }
 
   :root[data-theme='dark'] {

@@ -6,30 +6,30 @@
  */
 
 body.image-detail-route {
-  --page: #f5f5f7;
-  --surface: #fff;
-  --surface-overlay: #fff;
-  --surface-soft: #f2f2f7;
-  --surface-muted: #e8e8ed;
-  --ink: #1d1d1f;
-  --ink-soft: #424245;
-  --muted: #6e6e73;
-  --line: #d2d2d7;
-  --line-strong: #b8b8bd;
-  --accent: #0068d9;
-  --accent-hover: #006edb;
-  --accent-pressed: #005bb5;
-  --accent-soft: #e8f2ff;
+  --page: #abc896;
+  --surface: rgb(250 247 239 / 72%);
+  --surface-overlay: rgb(251 248 240 / 90%);
+  --surface-soft: rgb(244 240 230 / 52%);
+  --surface-muted: rgb(218 222 208 / 62%);
+  --ink: #293128;
+  --ink-soft: #3e483b;
+  --muted: #455043;
+  --line: rgb(65 75 62 / 16%);
+  --line-strong: rgb(65 75 62 / 26%);
+  --accent: #405137;
+  --accent-hover: #4a5c3f;
+  --accent-pressed: #35452d;
+  --accent-soft: rgb(64 81 55 / 16%);
   --glass-blur: 30px;
-  --glass-saturation: 190%;
-  --glass-bg: radial-gradient(150% 180% at 8% 0%, color-mix(in srgb, var(--detail-ambient, var(--accent)) 20%, transparent), transparent 58%), linear-gradient(180deg, rgb(255 255 255 / 24%), rgb(255 255 255 / 5%)), color-mix(in srgb, var(--ink) 7%, transparent);
-  --glass-bg-strong: linear-gradient(180deg, rgb(255 255 255 / 34%), rgb(255 255 255 / 8%)), color-mix(in srgb, var(--ink) 8%, transparent);
-  --glass-bg-subtle: linear-gradient(180deg, rgb(255 255 255 / 18%), rgb(255 255 255 / 3%)), color-mix(in srgb, var(--ink) 6%, transparent);
+  --glass-saturation: 135%;
+  --glass-bg: radial-gradient(150% 180% at 8% 0%, color-mix(in srgb, var(--detail-ambient, var(--accent)) 18%, transparent), transparent 58%), linear-gradient(180deg, rgb(252 249 242 / 28%), rgb(249 246 237 / 8%)), color-mix(in srgb, var(--ink) 7%, transparent);
+  --glass-bg-strong: linear-gradient(180deg, rgb(252 249 242 / 38%), rgb(249 246 237 / 10%)), color-mix(in srgb, var(--ink) 8%, transparent);
+  --glass-bg-subtle: linear-gradient(180deg, rgb(252 249 242 / 22%), rgb(249 246 237 / 6%)), color-mix(in srgb, var(--ink) 6%, transparent);
   --glass-border: color-mix(in srgb, var(--ink) 12%, transparent);
-  --glass-edge: rgb(255 255 255 / 62%);
-  --glass-shadow: inset 0 1px 0 rgb(255 255 255 / 62%), inset 0 -1px 0 rgb(0 0 0 / 9%), 0 18px 48px rgb(0 0 0 / 18%);
-  --glass-shadow-raised: inset 0 1px 0 rgb(255 255 255 / 62%), inset 0 -1px 0 rgb(0 0 0 / 9%), 0 24px 64px rgb(0 0 0 / 22%);
-  background: var(--page) !important;
+  --glass-edge: rgb(255 253 247 / 66%);
+  --glass-shadow: inset 0 1px 0 rgb(255 253 247 / 64%), inset 0 -1px 0 rgb(48 55 45 / 10%), 0 18px 48px rgb(48 55 45 / 18%);
+  --glass-shadow-raised: inset 0 1px 0 rgb(255 253 247 / 64%), inset 0 -1px 0 rgb(48 55 45 / 10%), 0 24px 64px rgb(48 55 45 / 22%);
+  background: var(--page-gradient) !important;
 }
 
 :root[data-theme='dark'] body.image-detail-route {
@@ -59,7 +59,7 @@ body.image-detail-route {
 body.image-detail-route .route-page-frame,
 body.image-detail-route .workspace-page,
 body.image-detail-route .editor-page {
-  background: var(--page) !important;
+  background: transparent !important;
 }
 
 body.image-detail-route #app::before,
@@ -71,14 +71,14 @@ body.image-detail-route .image-edit-dock {
   border-color: color-mix(in srgb, var(--ink) 10%, transparent) !important;
   background:
     radial-gradient(150% 180% at 8% 0%, color-mix(in srgb, var(--detail-ambient, var(--accent)) 20%, transparent), transparent 58%),
-    linear-gradient(180deg, rgb(255 255 255 / 24%), rgb(255 255 255 / 5%)),
+    linear-gradient(180deg, rgb(252 249 242 / 28%), rgb(249 246 237 / 8%)),
     color-mix(in srgb, var(--ink) 7%, transparent) !important;
   box-shadow:
-    inset 0 1px 0 rgb(255 255 255 / 50%),
-    inset 0 -1px 0 rgb(0 0 0 / 8%),
-    0 12px 34px rgb(0 0 0 / 15%) !important;
-  -webkit-backdrop-filter: blur(30px) saturate(190%) !important;
-  backdrop-filter: blur(30px) saturate(190%) !important;
+    inset 0 1px 0 rgb(255 253 247 / 54%),
+    inset 0 -1px 0 rgb(48 55 45 / 9%),
+    0 12px 34px rgb(48 55 45 / 15%) !important;
+  -webkit-backdrop-filter: blur(30px) saturate(135%) !important;
+  backdrop-filter: blur(30px) saturate(135%) !important;
 }
 
 body.image-detail-route .image-tool-popover.el-popover.el-popper {
@@ -86,13 +86,13 @@ body.image-detail-route .image-tool-popover.el-popover.el-popper {
   border-radius: 24px !important;
   background:
     radial-gradient(130% 180% at 8% 0%, color-mix(in srgb, var(--detail-ambient, var(--accent)) 22%, transparent), transparent 60%),
-    linear-gradient(180deg, rgb(255 255 255 / 24%), rgb(255 255 255 / 4%)),
+    linear-gradient(180deg, rgb(252 249 242 / 28%), rgb(249 246 237 / 7%)),
     color-mix(in srgb, var(--ink) 8%, transparent) !important;
   box-shadow:
-    inset 0 1px 0 rgb(255 255 255 / 62%),
-    0 18px 48px rgb(0 0 0 / 18%) !important;
-  -webkit-backdrop-filter: blur(32px) saturate(200%) !important;
-  backdrop-filter: blur(32px) saturate(200%) !important;
+    inset 0 1px 0 rgb(255 253 247 / 66%),
+    0 18px 48px rgb(48 55 45 / 18%) !important;
+  -webkit-backdrop-filter: blur(32px) saturate(140%) !important;
+  backdrop-filter: blur(32px) saturate(140%) !important;
 }
 
 body.image-detail-route .image-tool-popover .el-popper__arrow::before {
@@ -114,32 +114,32 @@ body.image-detail-route .editor-glass-dialog.el-message-box {
   border: 1px solid color-mix(in srgb, var(--ink) 12%, transparent) !important;
   background:
     radial-gradient(140% 180% at 8% 0%, color-mix(in srgb, var(--detail-ambient, var(--accent)) 18%, transparent), transparent 62%),
-    linear-gradient(180deg, rgb(255 255 255 / 20%), rgb(255 255 255 / 3%)),
+    linear-gradient(180deg, rgb(252 249 242 / 24%), rgb(249 246 237 / 6%)),
     color-mix(in srgb, var(--ink) 8%, transparent) !important;
   box-shadow:
-    inset 0 1px 0 rgb(255 255 255 / 58%),
-    0 24px 70px rgb(0 0 0 / 24%) !important;
-  -webkit-backdrop-filter: blur(34px) saturate(190%) !important;
-  backdrop-filter: blur(34px) saturate(190%) !important;
+    inset 0 1px 0 rgb(255 253 247 / 62%),
+    0 24px 70px rgb(48 55 45 / 24%) !important;
+  -webkit-backdrop-filter: blur(34px) saturate(135%) !important;
+  backdrop-filter: blur(34px) saturate(135%) !important;
 }
 
 body.image-detail-route .editor-glass-message.el-message {
   border: 1px solid color-mix(in srgb, var(--ink) 12%, transparent) !important;
   background:
-    linear-gradient(180deg, rgb(255 255 255 / 20%), rgb(255 255 255 / 3%)),
+    linear-gradient(180deg, rgb(252 249 242 / 24%), rgb(249 246 237 / 6%)),
     color-mix(in srgb, var(--ink) 8%, transparent) !important;
   box-shadow:
-    inset 0 1px 0 rgb(255 255 255 / 48%),
-    0 14px 38px rgb(0 0 0 / 18%) !important;
-  -webkit-backdrop-filter: blur(26px) saturate(180%) !important;
-  backdrop-filter: blur(26px) saturate(180%) !important;
+    inset 0 1px 0 rgb(255 253 247 / 52%),
+    0 14px 38px rgb(48 55 45 / 18%) !important;
+  -webkit-backdrop-filter: blur(26px) saturate(130%) !important;
+  backdrop-filter: blur(26px) saturate(130%) !important;
 }
 
 body.image-detail-route .detail-tag-picker-input .el-input__wrapper {
   border-radius: 15px !important;
   background: color-mix(in srgb, var(--surface) 36%, transparent) !important;
   box-shadow:
-    inset 0 1px 0 rgb(255 255 255 / 52%),
+    inset 0 1px 0 rgb(255 253 247 / 56%),
     0 0 0 1px color-mix(in srgb, var(--ink) 9%, transparent) !important;
 }
 
