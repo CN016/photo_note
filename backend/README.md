@@ -10,6 +10,8 @@ docker compose -f backend/docker-compose.yml up -d --build
 
 API 默认通过宿主机 `127.0.0.1:8089` 提供服务，监听地址、请求上限、超时、token 有效期和文件存储配置从 `app_configs` 读取；`000002_seed_runtime_config.sql` 和 `000003_seed_file_storage_config.sql` 为新数据库添加初始值。readiness 地址 `/healthz` 和公开配置地址 `GET /api/v1/configs/public` 均无需鉴权；健康检查成功响应包含 `data.version` 当前后端版本。版本号统一维护在 `internal/version/version.go`，每批后端改动都必须按仓库根目录 `AGENTS.md` 递增。公开配置接口只返回 `is_public=true` 的配置项 key/value；可不传参数读取全部开放项，或重复传 `keys` 查询特定 key，例如 `?keys=frontend.theme&keys=frontend.upload_limit`。现有数据库升级时需备份后单独执行新增迁移 `backend/migrations/000004_add_config_public_flag.sql`；历史迁移保持不变，新增字段默认关闭。Compose 内的服务使用 `POSTGRES_USER` 连接 PostgreSQL；该账号是 PostgreSQL 初始化管理员，适合本地快速部署。生产环境应预先创建权限受限的数据库账号，并设置 `DB_USER`、`DB_PASSWORD` 覆盖默认值。
 
+后端 PostgreSQL 连接固定使用 pgx 简单协议。版本化迁移增删灵感图表字段后，旧扩展协议连接可能因缓存的 `SELECT *` 结果列描述继续复用而返回 SQLSTATE `0A000`；简单协议不复用预编译结果描述，因此 API 与迁移的启动顺序不再要求同一次连接重建。
+
 文件上传使用 `POST /api/v1/files`，请求为单文件 `multipart/form-data`，字段名为 `file`；上传大小由配置表中的 `files.max_upload_bytes` 控制，默认 50 MiB。当前 `files.active_store_type` 默认为 `local`，上传时每次读取该配置；文件 key 的类型前缀用于后续下载分发。下载使用 `GET /api/v1/files/{storekey}`，上传和下载均需 Bearer Access Token。V1 不建立文件元数据、不绑定用户，也不提供文件列表、删除和自动清理接口；拥有有效 storekey 的已鉴权用户都能获取对应文件。`oss` 类型已保留 key 路由分支，但当前尚未接入 OSS 后端，切换到 `oss` 后上传和读取会返回 501。
 
 反馈上传的图片使用 `public_` 标记和单独的本地物理目录；只有带标记且实际 MIME 为 JPEG、PNG、GIF 或 WebP 的 key 能通过无需 token 的 `GET /api/v1/public-feedback-images/{storekey}` 读取。普通文件仍只由原有 Bearer 鉴权下载接口读取；给普通 key 添加 `public_` 前缀不会指向同一文件。
@@ -44,7 +46,7 @@ API 默认通过宿主机 `127.0.0.1:8089` 提供服务，监听地址、请求�
 
 ### 服务端错误日志与管理员通知
 
-统一 HTTP 5xx、灵感图图片处理后台失败、通知 worker 数据库操作失败会进入 `error_logs` 表。请求线程只生成安全摘要并非阻塞地投递到容量为 512 的内存队列；标准输出、数据库写入、一分钟去重和管理员站内通知由后台 worker 处理。重复键优先按源码文件和行号计算，一分钟内同一代码行的重复只增加 `occurrence_count` 并更新时间；缺少源码位置时才按错误码和原因类型区分。间隔超过一分钟后再次发生会新增一行。PostgreSQL 原因保存 SQLSTATE 等结构化信息，其他原因会遮蔽常见凭据格式，不保存请求正文、上传内容或访问令牌。
+统一 HTTP 5xx、灵感图图片处理后台失败、通知 worker 数据库操作失败会进入 `error_logs` 表。请求线程只生成安全摘要并非阻塞地投递到容量为 512 的内存队列；标准输出、数据库写入、一分钟去重和管理员站内通知由后台 worker 处理。重复键按调用位置、错误码、原因类型和脱敏原因摘要共同计算，一分钟内同一根因的重复只增加 `occurrence_count` 并更新时间，同一代码行上的不同根因不会互相覆盖。间隔超过一分钟后再次发生会新增一行。后台任务保留实际异常的安全摘要；PostgreSQL 原因保存 SQLSTATE 等结构化信息，其他原因会遮蔽常见凭据格式，不保存请求正文、上传内容或访问令牌。
 
 迁移 `backend/migrations/000012_create_error_logs.sql` 创建错误日志表，并增加私有配置 `error_logs.notify_admin`（初始为 `true`）和 `error_logs.admin_phone`（初始为空）。需要通知管理员时，将 `error_logs.admin_phone` 更新为已注册用户的 11 位手机号；worker 每条新日志读取配置并按手机号查找用户，找到后只创建该用户的站内通知，不将错误内容发送到 webhook。将 `error_logs.notify_admin` 设为 `false` 可暂停通知。已有数据库应先备份，再按顺序手动执行所有尚未应用的迁移直至 `000012`；API 启动会检查 `error_logs` 表是否存在。
 

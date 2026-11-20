@@ -20,7 +20,7 @@ import (
 // OpenPostgres 建立 GORM 與底層連線池，確認 V1 schema 已由版本化 SQL 建立且不存在外鍵。
 func OpenPostgres(ctx context.Context, cfg config.Config) (*gorm.DB, *sql.DB, error) {
 	dsn := postgresDSN(cfg)
-	connection, err := gorm.Open(postgres.Open(dsn), &gorm.Config{
+	connection, err := gorm.Open(newPostgresDialector(dsn), &gorm.Config{
 		// 嚴禁 GORM 自動建立外鍵；本服務不執行 AutoMigrate，資料結構只由版本化 SQL 管理。
 		DisableForeignKeyConstraintWhenMigrating: true,
 		TranslateError:                           true,
@@ -51,6 +51,16 @@ func OpenPostgres(ctx context.Context, cfg config.Config) (*gorm.DB, *sql.DB, er
 		return nil, nil, err
 	}
 	return connection, sqlDB, nil
+}
+
+// newPostgresDialector 固定使用简单协议。扩展协议会缓存预编译语句和结果列描述，
+// 版本化迁移增删 inspirations 等表的列后，长期连接复用旧 SELECT * 会触发 SQLSTATE 0A000。
+// 本服务不走 PgBouncer，简单协议仍保持单次往返，且避免要求 API 与迁移必须在同一时刻重启。
+func newPostgresDialector(dsn string) gorm.Dialector {
+	return postgres.New(postgres.Config{
+		DSN:                  dsn,
+		PreferSimpleProtocol: true,
+	})
 }
 
 // postgresDSN 使用 URL 编码保存账号密码，避免密码中的保留字符破坏 PostgreSQL DSN。

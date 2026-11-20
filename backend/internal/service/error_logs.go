@@ -98,7 +98,7 @@ func (service *ErrorLogService) CaptureHTTP(appError *fault.Error, requestID, me
 		Occurrences:    1,
 		LastSeenAt:     time.Now().UTC(),
 	}
-	entry.DedupKey = errorLogDedupKey(entry.SourceFile, entry.SourceLine, entry.ErrorCode, entry.CauseType)
+	entry.DedupKey = errorLogDedupKey(entry.SourceFile, entry.SourceLine, entry.ErrorCode, entry.CauseType, entry.CauseMessage)
 	service.enqueue(entry)
 	return entry
 }
@@ -121,7 +121,7 @@ func (service *ErrorLogService) CaptureBackground(code string, cause error) mode
 		Occurrences:    1,
 		LastSeenAt:     time.Now().UTC(),
 	}
-	entry.DedupKey = errorLogDedupKey(entry.SourceFile, entry.SourceLine, entry.ErrorCode, entry.CauseType)
+	entry.DedupKey = errorLogDedupKey(entry.SourceFile, entry.SourceLine, entry.ErrorCode, entry.CauseType, entry.CauseMessage)
 	service.enqueue(entry)
 	return entry
 }
@@ -287,12 +287,9 @@ func safeErrorCause(err error) (string, string) {
 	return causeType, limitLogText(strings.TrimSpace(message), 2048)
 }
 
-// errorLogDedupKey 按源码文件和行号合并一分钟内的重复错误；无源码位置时再使用错误码和原因类型区分。
-func errorLogDedupKey(file string, line int, code, causeType string) string {
-	input := fmt.Sprintf("%s:%d", file, line)
-	if file == "" || line < 1 {
-		input = fmt.Sprintf("unknown|%s|%s", code, causeType)
-	}
+// errorLogDedupKey 按调用位置和脱敏原因合并一分钟内的同类错误，避免同一行上的不同根因被误合并。
+func errorLogDedupKey(file string, line int, code, causeType, causeMessage string) string {
+	input := fmt.Sprintf("%s:%d|%s|%s|%s", file, line, code, causeType, causeMessage)
 	return fmt.Sprintf("%x", sha256.Sum256([]byte(input)))
 }
 

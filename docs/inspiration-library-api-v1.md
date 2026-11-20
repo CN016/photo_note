@@ -1,4 +1,4 @@
-# 灵感库存图 API 与处理约定（4.11.0）
+# 灵感库存图 API 与处理约定（4.11.1）
 
 所有以下接口位于 `/api/v1`，要求现有 Access Token 与可信 tenant.Scope；个人空间 orgid=-1，组织内仍只访问创建者数据。不接受请求指定 user_id/orgid，响应不返回内部自增 ID。现有图库接口保持兼容。
 
@@ -27,7 +27,7 @@ GET /inspirations 在原有参数上增加 `date_from`、`date_to`（包含两�
 
 AI服务在Docker `--memory=2g --cpus=2`下实测最大推理重叠数为10：10张图约14.20秒，Python进程峰值RSS约1.228GB，单图24个标签。请求正文总预算256MB、解码像素预算384MB；模型只加载一份共享Session，并限制ORT内部单线程，避免十任务产生额外线程池。该结果只证明单AI容器内存可用，部署时仍需为Go API、PostgreSQL、Redis和宿主系统预留内存。
 
-部署保持单API容器及现有Compose。先备份数据库，再按顺序执行未应用迁移（至少包含 `000023`、`000024` 与本批 `000030_inspiration_auto_tags.sql`），API启动只检查，不自动迁移。构建前先运行 `backend/ai/prepare_tag_embeddings.py` 生成并校验FP16视觉模型；ONNX模型不提交Git，最终API镜像必须包含视觉模型、标签向量和许可文件。Linux amd64已验证；Windows原生Go运行及其他架构需另配Python/Socket路径与运行环境，不能视为已验证。
+部署保持单API容器及现有Compose。先备份数据库，再按顺序执行未应用迁移（至少包含 `000023`、`000024` 与本批 `000030_inspiration_auto_tags.sql`），API启动只检查，不自动迁移。4.11.1起PostgreSQL连接固定使用pgx简单协议，避免应用长期连接在迁移增列后继续复用旧`SELECT *`结果描述并返回SQLSTATE `0A000`。构建前先运行 `backend/ai/prepare_tag_embeddings.py` 生成并校验FP16视觉模型；ONNX模型不提交Git，最终API镜像必须包含视觉模型、标签向量和许可文件。Linux amd64已验证；Windows原生Go运行及其他架构需另配Python/Socket路径与运行环境，不能视为已验证。
 
 ## 4.2.1 缩略图读取
 

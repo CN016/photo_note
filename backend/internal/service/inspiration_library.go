@@ -255,10 +255,10 @@ func (s *InspirationLibraryService) Wait(ctx context.Context) error {
 	}
 }
 
-// capture 只记录安全错误类别；不记录图片字节、storekey、套接字或底层响应正文。
+// capture 记录脱敏后的真实后台异常类别；不记录图片字节、storekey、套接字或底层响应正文。
 func (s *InspirationLibraryService) capture(code string, err error) {
 	if s.errors != nil && err != nil {
-		s.errors.CaptureBackground(code, errors.New(code))
+		s.errors.CaptureBackground(code, err)
 	}
 }
 
