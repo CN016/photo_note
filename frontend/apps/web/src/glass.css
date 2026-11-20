@@ -4,33 +4,66 @@
  * 半透明表面依赖 backdrop-filter；不支持时仍保留带内高光的半透明底色作为降级。
  */
 :root {
-  --page: #abc896;
-  --surface: rgb(250 247 239 / 66%);
-  --surface-overlay: rgb(251 248 240 / 88%);
-  --surface-soft: rgb(244 240 230 / 48%);
-  --surface-muted: rgb(218 222 208 / 58%);
-  --ink: #293128;
-  --ink-soft: #3e483b;
-  --muted: #455043;
-  --line: rgb(65 75 62 / 14%);
-  --line-strong: rgb(65 75 62 / 24%);
-  --accent: #405137;
-  --accent-hover: #4a5c3f;
-  --accent-pressed: #35452d;
-  --accent-soft: rgb(64 81 55 / 16%);
+  --page: #dcecdf;
+  --surface: rgb(255 252 247 / 42%);
+  --surface-overlay: rgb(255 253 249 / 68%);
+  --surface-soft: rgb(255 252 247 / 24%);
+  --surface-muted: rgb(231 231 226 / 32%);
+  --ink: #2f3b34;
+  --ink-soft: #4a574f;
+  --muted: #526159;
+  --line: rgb(69 85 75 / 14%);
+  --line-strong: rgb(69 85 75 / 24%);
+  --accent: #456f5b;
+  --accent-hover: #4f7c67;
+  --accent-pressed: #3f6754;
+  --accent-soft: rgb(157 205 179 / 22%);
   --on-accent: #fffaf3;
-  --focus: #405137;
+  --focus: #456f5b;
   --glass-blur: 26px;
-  --glass-saturation: 122%;
-  --glass-bg: linear-gradient(145deg, rgb(251 248 240 / 78%), rgb(244 240 230 / 50%));
-  --glass-bg-strong: linear-gradient(145deg, rgb(252 249 242 / 90%), rgb(245 241 232 / 68%));
-  --glass-bg-subtle: linear-gradient(145deg, rgb(251 248 240 / 58%), rgb(244 240 230 / 38%));
-  --glass-border: rgb(252 249 242 / 76%);
-  --glass-edge: rgb(255 253 247 / 94%);
-  --glass-shade: rgb(63 71 58 / 10%);
-  --glass-shadow: 0 24px 70px rgb(55 64 51 / 15%), 0 4px 16px rgb(55 64 51 / 7%), inset 0 1px 0 var(--glass-edge), inset 0 -1px 0 rgb(255 253 247 / 18%);
-  --glass-shadow-raised: 0 30px 90px rgb(50 59 47 / 21%), 0 8px 28px rgb(50 59 47 / 9%), inset 0 1px 0 var(--glass-edge), inset 0 -1px 0 rgb(255 253 247 / 22%);
-  --glass-control: linear-gradient(155deg, rgb(251 248 240 / 76%), rgb(244 240 230 / 50%));
+  --glass-saturation: 108%;
+  --glass-noise: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='96' height='96' viewBox='0 0 96 96'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.62' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='96' height='96' filter='url(%23n)' opacity='.12'/%3E%3C/svg%3E");
+  --glass-bg:
+    linear-gradient(135deg, rgb(255 255 255 / 44%) 0%, rgb(255 255 255 / 12%) 16%, transparent 34%, rgb(255 255 255 / 4%) 58%, rgb(255 255 255 / 9%) 100%),
+    radial-gradient(90% 42% at 16% -2%, rgb(255 255 255 / 48%) 0%, transparent 70%),
+    radial-gradient(70% 34% at 92% 108%, rgb(255 255 255 / 13%) 0%, transparent 76%),
+    var(--glass-noise),
+    linear-gradient(145deg, rgb(255 252 247 / 18%), rgb(248 246 240 / 8%));
+  --glass-bg-strong:
+    linear-gradient(135deg, rgb(255 255 255 / 50%) 0%, rgb(255 255 255 / 14%) 18%, transparent 36%, rgb(255 255 255 / 5%) 60%, rgb(255 255 255 / 10%) 100%),
+    radial-gradient(90% 42% at 16% -2%, rgb(255 255 255 / 54%) 0%, transparent 72%),
+    radial-gradient(72% 36% at 92% 108%, rgb(255 255 255 / 14%) 0%, transparent 76%),
+    var(--glass-noise),
+    linear-gradient(145deg, rgb(255 253 249 / 32%), rgb(248 246 240 / 14%));
+  --glass-bg-subtle:
+    linear-gradient(135deg, rgb(255 255 255 / 34%) 0%, rgb(255 255 255 / 8%) 18%, transparent 36%, rgb(255 255 255 / 7%) 100%),
+    radial-gradient(90% 42% at 16% -2%, rgb(255 255 255 / 38%) 0%, transparent 70%),
+    var(--glass-noise),
+    linear-gradient(145deg, rgb(255 252 247 / 10%), rgb(248 246 240 / 4%));
+  --glass-border: rgb(255 254 250 / 92%);
+  --glass-edge: rgb(255 255 255 / 98%);
+  --glass-shade: rgb(54 59 55 / 9%);
+  --glass-shadow:
+    0 26px 70px rgb(54 59 55 / 14%),
+    0 5px 18px rgb(54 59 55 / 7%),
+    inset 0 1px 0 var(--glass-edge),
+    inset 0 2px 7px rgb(255 255 255 / 18%),
+    inset 1px 0 0 rgb(255 255 255 / 42%),
+    inset -1px 0 0 rgb(255 255 255 / 18%),
+    inset 0 -1px 0 rgb(54 59 55 / 15%);
+  --glass-shadow-raised:
+    0 30px 90px rgb(54 59 55 / 17%),
+    0 8px 28px rgb(54 59 55 / 8%),
+    inset 0 1px 0 var(--glass-edge),
+    inset 0 2px 9px rgb(255 255 255 / 20%),
+    inset 1px 0 0 rgb(255 255 255 / 48%),
+    inset -1px 0 0 rgb(255 255 255 / 20%),
+    inset 0 -1px 0 rgb(54 59 55 / 17%);
+  --glass-control:
+    linear-gradient(135deg, rgb(255 255 255 / 36%) 0%, transparent 38%, rgb(255 255 255 / 8%) 100%),
+    radial-gradient(90% 42% at 16% -2%, rgb(255 255 255 / 40%) 0%, transparent 72%),
+    var(--glass-noise),
+    linear-gradient(155deg, rgb(255 252 247 / 22%), rgb(248 246 240 / 9%));
   --shadow: var(--glass-shadow-raised);
   --soft-shadow: var(--glass-shadow);
 }
@@ -101,13 +134,13 @@ body {
 #app::before {
   top: 12%;
   left: -14%;
-  background: radial-gradient(circle, rgb(248 243 232 / 42%) 0%, rgb(186 206 165 / 22%) 42%, transparent 72%);
+  background: radial-gradient(circle, rgb(222 243 231 / 52%) 0%, rgb(157 205 179 / 24%) 42%, transparent 72%);
 }
 
 #app::after {
   right: -16%;
   bottom: 4%;
-  background: radial-gradient(circle, rgb(250 243 226 / 38%) 0%, rgb(210 214 192 / 20%) 42%, transparent 74%);
+  background: radial-gradient(circle, rgb(255 248 236 / 52%) 0%, rgb(232 222 207 / 18%) 42%, transparent 74%);
 }
 
 :root[data-theme='dark'] #app::before {
@@ -202,9 +235,10 @@ body .portfolio-public,
 body .space-grid .el-card {
   border-color: var(--glass-border) !important;
   background: var(--glass-bg) !important;
+  background-blend-mode: screen, normal, soft-light, normal, normal;
   box-shadow: var(--glass-shadow) !important;
-  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturation));
-  backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturation));
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturation)) brightness(103%) contrast(104%);
+  backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturation)) brightness(103%) contrast(104%);
 }
 
 /*
@@ -453,12 +487,58 @@ body .el-table,
 body .space-grid .el-card {
   border-color: var(--glass-border) !important;
   background: var(--glass-bg-subtle) !important;
-  box-shadow: inset 0 1px 0 var(--glass-edge), 0 12px 34px rgb(55 64 51 / 8%) !important;
+  box-shadow: var(--glass-shadow) !important;
+}
+
+/*
+ * 图库工具栏只有一个外轮廓：桌面端把搜索和筛选收进同一圆角玻璃面板，
+ * 移动端则让搜索框与筛选按钮独立排布，避免外层矩形和内部圆角控件互相冲突。
+ */
+body .gallery-tools {
+  border: 1px solid var(--glass-border) !important;
+  border-radius: 20px !important;
+}
+
+body .drawer-preferences {
+  margin: 10px 4px 4px;
+  padding: 8px;
+  border: 1px solid var(--glass-border) !important;
+  border-radius: 16px !important;
+  background: var(--glass-control) !important;
+  box-shadow: inset 0 1px 0 var(--glass-edge), 0 8px 22px rgb(72 94 81 / 8%) !important;
+}
+
+body .gallery-tools :is(.el-input__wrapper, .el-select__wrapper) {
+  background: color-mix(in srgb, var(--surface-overlay) 66%, transparent) !important;
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--line) 72%, transparent) !important;
+}
+
+@media (min-width: 769px) {
+  body .gallery-tools .gallery-advanced-filters {
+    border-color: transparent !important;
+    background: transparent !important;
+    box-shadow: none !important;
+    -webkit-backdrop-filter: none !important;
+    backdrop-filter: none !important;
+  }
+}
+
+body .inspiration-card {
+  border-radius: var(--radius-card);
+}
+
+body .inspiration-card:focus-visible {
+  outline: none;
+}
+
+body .inspiration-card:focus-visible .thumbnail-frame {
+  outline: 3px solid var(--focus);
+  outline-offset: 3px;
 }
 
 body :is(.review-row, .kpi-card, .filter-panel, .calendar-section, .analysis-card, .trend-card, .yearly-card, .heatmap-card, .recent-card, .group-card, .draft-banner, .gallery-tools, .el-table) {
-  -webkit-backdrop-filter: blur(18px) saturate(150%);
-  backdrop-filter: blur(18px) saturate(150%);
+  -webkit-backdrop-filter: blur(18px) saturate(var(--glass-saturation)) contrast(103%);
+  backdrop-filter: blur(18px) saturate(var(--glass-saturation)) contrast(103%);
 }
 
 body .public-booking-shell,
@@ -566,7 +646,7 @@ body .messages-tabs button.active::after {
 }
 
 /*
- * 输入、按钮和图标按钮共用高光边缘；主操作保持低饱和鼠尾草绿，不把状态色浸到整个页面。
+ * 输入、按钮和图标按钮共用高光边缘；主操作使用较深一阶的海玻璃绿，保持清晰对比。
  */
 body :is(.primary-button, .secondary-button, .icon-button, .compact-button, .masked-button) {
   box-shadow: inset 0 1px 0 rgb(255 253 247 / 76%), 0 8px 22px rgb(55 64 51 / 10%);
@@ -692,6 +772,20 @@ body .global-mobile-menu-item:hover {
  * 移动端降低连续模糊半径，并减少装饰性背景光的不透明度，兼顾内存和触控可读性。
  */
 @media (max-width: 768px) {
+  body .gallery-tools {
+    border: 0 !important;
+    border-radius: 0 !important;
+    background: transparent !important;
+    box-shadow: none !important;
+    -webkit-backdrop-filter: none !important;
+    backdrop-filter: none !important;
+  }
+
+  body .gallery-tools :is(.el-input__wrapper, .el-select__wrapper) {
+    background: var(--glass-control) !important;
+    box-shadow: inset 0 1px 0 var(--glass-edge), 0 4px 14px rgb(72 94 81 / 6%) !important;
+  }
+
   :root {
     --glass-blur: 16px;
     --glass-saturation: 150%;

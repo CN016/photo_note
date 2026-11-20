@@ -555,11 +555,11 @@ function exportItem(record: LedgerRecord) {
   }
 }
 
-/** 导出报告使用固定的暖灰绿主题；不读取界面暗色变量，收支仍保留业务状态色。 */
+/** 导出报告使用固定的浅玻璃绿与奶雾暖白主题；收支仍保留业务状态色。 */
 const reportColors = {
-  page: '#e8e9dd', surface: '#f7f3e9', wash: '#d8e0cc', line: '#ccd2c3',
-  ink: '#2d352c', inkSoft: '#465044', muted: '#596356',
-  accent: '#405137', secondary: '#a5b797', income: '#4f7157', expense: '#995950',
+  page: '#eef0e7', surface: '#fff9f0', wash: '#dceadf', line: '#d3dbd1',
+  ink: '#2f3b34', inkSoft: '#4a574f', muted: '#526159',
+  accent: '#456f5b', secondary: '#9fc2b0', income: '#47735f', expense: '#995950',
 } as const
 
 /** 使用 Canvas 生成独立月报图片，便于保存和分享。 */

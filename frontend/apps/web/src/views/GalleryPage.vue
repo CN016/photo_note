@@ -358,23 +358,26 @@ onBeforeUnmount(() => { alive = false; inspirationDetails.clear(); openVersion +
 /* 双列优先呈现图片，元信息保留在详情；人数是可选的图上角标，不改变卡片高度。 */
 .gallery-main { padding-top: 20px; }
 .gallery-subnav { margin-top: 0; }
-.gallery-tools { display: flex; flex-wrap: wrap; padding: 0; margin-top: 12px; border: 0; box-shadow: none; background: transparent; }
-.gallery-search { flex: 1; min-width: 100px; max-width: 360px; }
-.gallery-advanced-filters { flex: 1; }
+.gallery-tools { display: grid; grid-template-columns: minmax(220px, .9fr) minmax(0, 1.35fr); align-items: center; gap: 10px; margin-top: 12px; padding: 10px; }
+.gallery-search { width: 100%; min-width: 0; max-width: none; }
+.gallery-advanced-filters { display: grid; min-width: 0; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 8px; }
 .gallery-meta { justify-content: space-between; margin: 8px 0; }
-.gallery-people-toggle { display: grid; place-items: center; width: 36px; height: 36px; border: 1px solid var(--line); border-radius: 50%; background: var(--surface); color: var(--muted); cursor: pointer; }
+.gallery-people-toggle { display: grid; place-items: center; width: 36px; height: 36px; border: 1px solid var(--line); border-radius: var(--radius-control); background: var(--surface); color: var(--muted); cursor: pointer; }
 .gallery-people-toggle.is-active { color: var(--accent); background: var(--accent-soft); border-color: var(--accent); }
 .gallery-people-toggle:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .inspiration-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
-.inspiration-card { position: relative; }
+.inspiration-card { position: relative; border-radius: var(--radius-card); }
+.inspiration-card:focus-visible { outline: none; }
+.inspiration-card:focus-visible .thumbnail-frame { outline: 3px solid var(--focus); outline-offset: 3px; }
 .gallery-analysis { position: absolute; left: 8px; bottom: 8px; max-width: calc(100% - 16px); padding: 5px 8px; border-radius: 999px; background: var(--surface); color: var(--ink); pointer-events: none; }
 @media (max-width: 768px) {
   .gallery-main { width: calc(100% - 20px); padding-top: 0; }
   .gallery-subnav { gap: 24px; padding-inline: 4px; }
+  .gallery-tools { grid-template-columns: minmax(0, 1fr) 44px; padding: 0; }
   .gallery-search { max-width: none; }
   .gallery-filter-toggle { min-height: 38px; height: 38px; width: 40px; }
   .gallery-tools :deep(.el-input__wrapper) { min-height: 36px; }
-  .gallery-advanced-filters { flex-basis: 100%; }
+  .gallery-advanced-filters { grid-column: 1 / -1; grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .inspiration-grid { gap: 8px; }
   .inspiration-card :deep(.thumbnail-frame) { border-radius: 14px; }
 }
