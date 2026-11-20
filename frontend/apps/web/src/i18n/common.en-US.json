@@ -12,6 +12,13 @@
   "switchToDark": "Switch to dark mode",
   "lightTheme": "Light",
   "darkTheme": "Dark",
+  "lightPalette": "Light palette",
+  "paletteNames": {
+    "green": "Glass green",
+    "aqua": "Clear aqua",
+    "blue": "Clear blue",
+    "gold": "Warm gold"
+  },
   "back": "Back",
   "login": "Sign in",
   "cancel": "Cancel",

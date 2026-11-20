@@ -22,6 +22,10 @@
   --focus: #456f5b;
   --glass-blur: 26px;
   --glass-saturation: 108%;
+  --ambient-a: rgb(222 243 231 / 52%);
+  --ambient-a-soft: rgb(157 205 179 / 24%);
+  --ambient-b: rgb(231 247 238 / 52%);
+  --ambient-b-soft: rgb(189 226 204 / 18%);
   --glass-noise: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='96' height='96' viewBox='0 0 96 96'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.62' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='96' height='96' filter='url(%23n)' opacity='.12'/%3E%3C/svg%3E");
   --glass-bg:
     linear-gradient(135deg, rgb(255 255 255 / 44%) 0%, rgb(255 255 255 / 12%) 16%, transparent 34%, rgb(255 255 255 / 4%) 58%, rgb(255 255 255 / 9%) 100%),
@@ -97,6 +101,94 @@
 }
 
 /*
+ * 浅色色盘只改变环境光、装饰和主操作色；无色透明玻璃材质、文字层级
+ * 与状态色保持一致，避免切换色盘后出现多套不同的视觉语言。
+ */
+:root[data-theme='light'][data-palette='aqua'] {
+  --page: #d3f3ed;
+  --page-gradient:
+    radial-gradient(46rem 38rem at 0% 6%, rgb(75 192 173 / 50%), transparent 72%),
+    radial-gradient(18rem 16rem at 42% 72%, rgb(194 239 231 / 20%), transparent 76%),
+    radial-gradient(15rem 14rem at 82% 34%, rgb(221 248 242 / 28%), transparent 78%),
+    radial-gradient(56rem 44rem at 72% 18%, rgb(235 251 247 / 76%), transparent 76%),
+    linear-gradient(112deg, #d3f3ed 0%, #def6f1 34%, #e8f9f5 68%, #f2fcfa 100%);
+  --accent: #267568;
+  --accent-hover: #2b7d70;
+  --accent-pressed: #20685d;
+  --accent-soft: rgb(75 192 173 / 20%);
+  --focus: #267568;
+  --sage: #dff4ee;
+  --sage-ink: #267568;
+  --blue: #e1f2ee;
+  --ambient-a: rgb(196 241 232 / 58%);
+  --ambient-a-soft: rgb(75 192 173 / 25%);
+  --ambient-b: rgb(228 250 245 / 52%);
+  --ambient-b-soft: rgb(174 234 223 / 18%);
+  --mood-one: #d5efe9;
+  --mood-hill: #75b9aa;
+  --mood-two: #ece9df;
+  --mood-leaf: #6cae9d;
+  --mood-five: #e0efeb;
+  --mood-arch: #9ccabd;
+}
+
+:root[data-theme='light'][data-palette='blue'] {
+  --page: #dcecf8;
+  --page-gradient:
+    radial-gradient(46rem 38rem at 0% 6%, rgb(103 174 220 / 48%), transparent 72%),
+    radial-gradient(18rem 16rem at 42% 72%, rgb(203 229 245 / 20%), transparent 76%),
+    radial-gradient(15rem 14rem at 82% 34%, rgb(226 240 251 / 28%), transparent 78%),
+    radial-gradient(56rem 44rem at 72% 18%, rgb(239 248 254 / 76%), transparent 76%),
+    linear-gradient(112deg, #dcecf8 0%, #e4f1fa 34%, #edf6fc 68%, #f6fbff 100%);
+  --accent: #376f93;
+  --accent-hover: #40799d;
+  --accent-pressed: #2d5d7c;
+  --accent-soft: rgb(103 174 220 / 19%);
+  --focus: #376f93;
+  --sage: #e2eef6;
+  --sage-ink: #376f93;
+  --blue: #e2eef6;
+  --ambient-a: rgb(205 231 246 / 58%);
+  --ambient-a-soft: rgb(103 174 220 / 24%);
+  --ambient-b: rgb(232 244 252 / 52%);
+  --ambient-b-soft: rgb(179 216 240 / 18%);
+  --mood-one: #d9e9f4;
+  --mood-hill: #7ba7c1;
+  --mood-two: #eeeae1;
+  --mood-leaf: #719eb9;
+  --mood-five: #e2ecf3;
+  --mood-arch: #a7c4d6;
+}
+
+:root[data-theme='light'][data-palette='gold'] {
+  --page: #f8e8bd;
+  --page-gradient:
+    radial-gradient(46rem 38rem at 0% 6%, rgb(246 195 88 / 46%), transparent 72%),
+    radial-gradient(18rem 16rem at 42% 72%, rgb(249 232 184 / 20%), transparent 76%),
+    radial-gradient(15rem 14rem at 82% 34%, rgb(251 240 205 / 30%), transparent 78%),
+    radial-gradient(56rem 44rem at 72% 18%, rgb(253 246 224 / 78%), transparent 76%),
+    linear-gradient(112deg, #f8e8bd 0%, #f9edcc 34%, #fbf2dd 68%, #fdf8eb 100%);
+  --accent: #8a6a1f;
+  --accent-hover: #7d5e18;
+  --accent-pressed: #6b4f12;
+  --accent-soft: rgb(246 195 88 / 22%);
+  --focus: #8a6a1f;
+  --sage: #f4ecd4;
+  --sage-ink: #8a6a1f;
+  --blue: #f5eedb;
+  --ambient-a: rgb(250 232 183 / 58%);
+  --ambient-a-soft: rgb(246 195 88 / 24%);
+  --ambient-b: rgb(253 245 220 / 54%);
+  --ambient-b-soft: rgb(242 213 135 / 18%);
+  --mood-one: #f1e9c8;
+  --mood-hill: #c8b36d;
+  --mood-two: #f1ece0;
+  --mood-leaf: #b5a167;
+  --mood-five: #f3edd5;
+  --mood-arch: #d1c185;
+}
+
+/*
  * 页面背景使用固定光场而非图片，避免占用网络和首屏解码时间。
  * 伪元素只作环境光，不参与命中测试。
  */
@@ -134,13 +226,13 @@ body {
 #app::before {
   top: 12%;
   left: -14%;
-  background: radial-gradient(circle, rgb(222 243 231 / 52%) 0%, rgb(157 205 179 / 24%) 42%, transparent 72%);
+  background: radial-gradient(circle, var(--ambient-a) 0%, var(--ambient-a-soft) 42%, transparent 72%);
 }
 
 #app::after {
   right: -16%;
   bottom: 4%;
-  background: radial-gradient(circle, rgb(255 248 236 / 52%) 0%, rgb(232 222 207 / 18%) 42%, transparent 74%);
+  background: radial-gradient(circle, var(--ambient-b) 0%, var(--ambient-b-soft) 42%, transparent 74%);
 }
 
 :root[data-theme='dark'] #app::before {

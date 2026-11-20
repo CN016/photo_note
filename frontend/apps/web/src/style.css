@@ -8,10 +8,10 @@
   --page: #dcecdf;
   --page-gradient:
     radial-gradient(46rem 38rem at 0% 6%, rgb(157 205 179 / 58%), transparent 72%),
-    radial-gradient(18rem 16rem at 42% 72%, rgb(198 228 210 / 18%), transparent 76%),
-    radial-gradient(15rem 14rem at 82% 34%, rgb(255 246 232 / 28%), transparent 78%),
-    radial-gradient(56rem 44rem at 72% 18%, rgb(255 249 239 / 76%), transparent 76%),
-    linear-gradient(112deg, #d3e8da 0%, #e0ece2 34%, #efece4 68%, #f5efe5 100%);
+    radial-gradient(18rem 16rem at 42% 72%, rgb(210 238 220 / 18%), transparent 76%),
+    radial-gradient(15rem 14rem at 82% 34%, rgb(232 246 237 / 28%), transparent 78%),
+    radial-gradient(56rem 44rem at 72% 18%, rgb(237 249 241 / 76%), transparent 76%),
+    linear-gradient(112deg, #d3e8da 0%, #deefe4 34%, #e9f4ed 68%, #f3faf6 100%);
   --surface: #fbf6ed;
   --surface-overlay: #fffaf2;
   --surface-soft: #f2eee6;
@@ -30,6 +30,12 @@
   --sage: #e3efe7;
   --sage-ink: #456f5b;
   --blue: #e7eee9;
+  --mood-one: #d6e8dc;
+  --mood-hill: #8eb19c;
+  --mood-two: #ebe9df;
+  --mood-leaf: #88a992;
+  --mood-five: #e1ebe2;
+  --mood-arch: #a8c5b2;
   --success: #47735f;
   --success-soft: #e3efe8;
   --warning: #81653f;
@@ -156,11 +162,11 @@ p { line-height: 1.55; }
 .moodboard { position: relative; z-index: 1; display: grid; width: min(100%, 580px); height: clamp(255px, 36vh, 390px); grid-template-columns: 1.15fr .85fr; grid-template-rows: 1fr .82fr; gap: 12px; margin: 32px auto 20px;  }
 .mood-card { position: relative; overflow: hidden; border: 1px solid var(--line); border-radius: var(--radius-card); box-shadow: none; }
 .mood-card > span { position: absolute; right: 14px; bottom: 13px; left: 14px; color: var(--ink-soft); font-size: 12px; font-weight: 600; letter-spacing: 0; text-transform: none; }
-.mood-card-one { grid-row: 1 / 3; background: #d6e8dc; }
+.mood-card-one { grid-row: 1 / 3; background: var(--mood-one); }
 .sun-disc { position: absolute; top: 15%; left: 16%; width: 33%; aspect-ratio: 1; border-radius: 50%; background: color-mix(in srgb, var(--surface) 80%, var(--accent)); box-shadow: 0 0 0 15px color-mix(in srgb, var(--surface) 16%, transparent), 0 0 0 31px color-mix(in srgb, var(--surface) 12%, transparent); }
-.sand-hill { position: absolute; right: -12%; bottom: 14%; left: -10%; height: 54%; border-radius: 50% 50% 0 0; background: #8eb19c; transform: rotate(-10deg); }
-.mood-card-two { background: #ebe9df; }
-.leaf-shape { position: absolute; top: 17%; left: 31%; width: 45%; height: 70%; border: 2px solid color-mix(in srgb, var(--surface) 75%, transparent); border-radius: 100% 0 100% 0; background: #88a992; transform: rotate(25deg); }
+.sand-hill { position: absolute; right: -12%; bottom: 14%; left: -10%; height: 54%; border-radius: 50% 50% 0 0; background: var(--mood-hill); transform: rotate(-10deg); }
+.mood-card-two { background: var(--mood-two); }
+.leaf-shape { position: absolute; top: 17%; left: 31%; width: 45%; height: 70%; border: 2px solid color-mix(in srgb, var(--surface) 75%, transparent); border-radius: 100% 0 100% 0; background: var(--mood-leaf); transform: rotate(25deg); }
 .leaf-shape::after { position: absolute; top: 12%; bottom: 7%; left: 49%; border-left: 1px solid color-mix(in srgb, var(--surface) 80%, transparent); content: ''; transform: rotate(-18deg); }
 .mood-card-three { display: flex; align-items: center; justify-content: center; background: var(--surface); }
 .mood-card-three > span { position: static; color: var(--ink-soft); font-family: 'Manrope', 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif; font-size: 15px; letter-spacing: 0; line-height: 1.4; text-align: center; text-transform: none; }
@@ -168,8 +174,8 @@ p { line-height: 1.55; }
 .mood-card-four { display: flex; align-items: center; justify-content: center; background: var(--surface); }
 .mood-card-four > span { position: static; color: var(--ink-soft); font-family: 'Manrope', 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif; font-size: 17px; line-height: 1.4; text-align: center; text-transform: none; }
 .mood-card-four i { position: absolute; top: 4px; right: 13px; color: var(--accent); font-size: 42px; font-style: normal; }
-.mood-card-five { grid-row: 1 / 3; background: #e1ebe2; }
-.blue-arch { position: absolute; top: 17%; left: 19%; width: 62%; height: 66%; border: 18px solid color-mix(in srgb, var(--surface) 80%, var(--accent)); border-bottom: 0; border-radius: 50% 50% 0 0; background: #a8c5b2; }
+.mood-card-five { grid-row: 1 / 3; background: var(--mood-five); }
+.blue-arch { position: absolute; top: 17%; left: 19%; width: 62%; height: 66%; border: 18px solid color-mix(in srgb, var(--surface) 80%, var(--accent)); border-bottom: 0; border-radius: 50% 50% 0 0; background: var(--mood-arch); }
 .mood-card-six { display: flex; align-items: center; justify-content: center; background: var(--surface); }
 .flower-dots { color: var(--accent); font-size: 49px; }
 .art-caption { z-index: 1; margin: 0; color: var(--muted); font-size: 12px; font-weight: 600; letter-spacing: 0; }

@@ -66,6 +66,7 @@ declare module 'vue' {
     InspirationLibraryTools: typeof import('./src/components/InspirationLibraryTools.vue')['default']
     InspirationThumbnail: typeof import('./src/components/InspirationThumbnail.vue')['default']
     LanguageSwitcher: typeof import('./src/components/LanguageSwitcher.vue')['default']
+    PaletteSwitcher: typeof import('./src/components/PaletteSwitcher.vue')['default']
     PlanCoverImage: typeof import('./src/components/PlanCoverImage.vue')['default']
     PortfolioGallery: typeof import('./src/components/PortfolioGallery.vue')['default']
     ProjectAttachmentPreview: typeof import('./src/components/ProjectAttachmentPreview.vue')['default']

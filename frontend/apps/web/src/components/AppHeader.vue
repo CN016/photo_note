@@ -7,6 +7,7 @@ import { Calendar, ChatDotRound, Clock, Files, House, List, Picture, PictureFill
 import { useAuthStore } from '../stores/auth'
 import { useAppShellStore } from '../stores/appShell'
 import LanguageSwitcher from './LanguageSwitcher.vue'
+import PaletteSwitcher from './PaletteSwitcher.vue'
 import ThemeSwitcher from './ThemeSwitcher.vue'
 import InspirationGoalReminder from './InspirationGoalReminder.vue'
 import { navigationDrawer, setNavigationDrawer, drawerRelease, drawerListRoutes } from '../navigationDrawer'
@@ -215,7 +216,10 @@ function ariaMobileCurrent(path: string): 'page' | 'location' | undefined {
       <el-button class="sign-out" text @click="signOut">{{ t('common.logout') }}</el-button>
     </div>
 
-    <footer class="drawer-preferences"><LanguageSwitcher :teleported="false" /><ThemeSwitcher /></footer>
+    <footer class="drawer-preferences">
+      <div class="drawer-preferences-row"><LanguageSwitcher :teleported="false" /><ThemeSwitcher /></div>
+      <PaletteSwitcher />
+    </footer>
   </aside>
   <!-- 底栏独立于抽屉，避免继承抽屉的隐藏、位移和滚动状态。 -->
   <div v-if="!route.meta.standalone && !['edit-inspiration', 'organization-edit-inspiration', 'platform-edit-inspiration'].includes(String(route.name))" class="mobile-navigation-bar">
@@ -240,7 +244,8 @@ function ariaMobileCurrent(path: string): 'page' | 'location' | undefined {
 .app-navigation > .brand-lockup { display: none; }
 .desktop-nav { flex: 1 1 auto; margin-top: 0; }
 .navigation-account { flex: 0 0 auto; margin-top: 8px; padding-top: 8px; }
-.drawer-preferences { display: flex; flex: 0 0 auto; align-items: center; justify-content: space-between; gap: 12px; border-top: 1px solid var(--line); padding-top: 14px; background: var(--surface); }
+.drawer-preferences { display: grid; flex: 0 0 auto; gap: 7px; }
+.drawer-preferences-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .drawer-preferences :deep(.language-switcher) { width: 120px; }
 .app-navigation.drawer-visible { z-index: 2001; inset: 0 auto 0 0; width: min(320px, 86vw); height: 100dvh; background: var(--surface); transform: translateX(calc((var(--drawer-progress) - 1) * 100%)); transition: transform 220ms ease; }
 .drawer-visible .desktop-nav, .drawer-visible .navigation-account { display: grid; }

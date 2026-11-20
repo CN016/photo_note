@@ -12,6 +12,7 @@ import { useAuthStore } from '../stores/auth'
 import { useAppShellStore } from '../stores/appShell'
 import { useFeedbackStore } from '../stores/feedback'
 import ThemeSwitcher from '../components/ThemeSwitcher.vue'
+import PaletteSwitcher from '../components/PaletteSwitcher.vue'
 import LanguageSwitcher from '../components/LanguageSwitcher.vue'
 
 const { t } = useI18n()
@@ -126,6 +127,7 @@ onBeforeUnmount(() => {
         <section class="profile-card profile-preferences">
           <h2>{{ t('profile.preferencesTitle') }}</h2>
           <div class="profile-preference-row"><span>{{ t('common.theme') }}</span><ThemeSwitcher /></div>
+          <div class="profile-preference-row profile-palette-row"><PaletteSwitcher /></div>
           <div class="profile-preference-row"><span>{{ t('common.language') }}</span><LanguageSwitcher /></div>
         </section>
       </div>
@@ -137,5 +139,7 @@ onBeforeUnmount(() => {
 .profile-preference-row { display: flex; min-height: 44px; align-items: center; justify-content: space-between; gap: 16px; border-top: 1px solid var(--line); color: var(--ink-soft); font-size: 13px; }
 .profile-preference-row:first-of-type { border-top: 0; }
 .profile-preference-row :deep(.theme-switcher) { margin-left: auto; }
+.profile-preference-row :deep(.palette-switcher) { margin-left: auto; }
+.profile-palette-row { justify-content: flex-end; }
 .profile-preference-row :deep(.language-switcher) { flex: none; }
 </style>

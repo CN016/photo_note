@@ -12,6 +12,13 @@
   "switchToDark": "切换到深色模式",
   "lightTheme": "浅色",
   "darkTheme": "深色",
+  "lightPalette": "浅色配色",
+  "paletteNames": {
+    "green": "玻璃绿",
+    "aqua": "清透青",
+    "blue": "清透蓝",
+    "gold": "暖金色"
+  },
   "back": "返回",
   "login": "登录",
   "cancel": "取消",
