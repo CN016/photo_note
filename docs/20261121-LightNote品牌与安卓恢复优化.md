@@ -18,9 +18,9 @@
 
 ## 验证方式及结果
 
-- 业务 Web：`pnpm test` 通过，34 个测试文件、141 项测试；`pnpm typecheck` 通过。
+- 合并最新 `master` 后，业务 Web：`pnpm test` 通过，36 个测试文件、150 项测试；`pnpm typecheck` 通过。
 - 官网：`pnpm typecheck`、`pnpm check:i18n`、配置检查和 `pnpm build` 通过。
-- 后端：`go test ./internal/service ./internal/httpapi` 通过。
+- 后端：`go test ./internal/service ./internal/httpapi ./internal/store` 通过。
 - Android：`testDebugUnitTest`、`lintDebug`、`assembleDebug` 通过；API 28 模拟器执行 `connectedDebugAndroidTest`，29 项通过。
 - Android 新增测试验证本地启动不请求远端清单，并验证后台下载包只在下次本地启动切换。
 - API 28 模拟器实测：后台 15 秒后恢复 `TotalTime` 为 169ms，页面内容保持可见；强制回收进程后启动时持续显示品牌启动页，直到共享 Web 提交首帧后才退场，不再出现无反馈纯白屏。
