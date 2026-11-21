@@ -3,7 +3,7 @@
     "sharp": "0.35.5"
   },
   "name": "@photo-nini/android",
-  "version": "1.4.1",
+  "version": "1.4.2",
   "private": true,
   "description": "LightNote Android 9+ 内置 GeckoView 平台壳",
   "scripts": {
@@ -15,6 +15,6 @@
     "node": ">=22",
     "npm": ">=10"
   },
-  "androidVersionCode": 12,
+  "androidVersionCode": 13,
   "webMinShellCode": 11
 }
