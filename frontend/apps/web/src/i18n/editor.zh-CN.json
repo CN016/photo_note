@@ -1,10 +1,16 @@
 {
   "imageNote": "备注",
   "imageNotePlaceholder": "添加图片备注",
+  "notePlaceholder": "点击添加图片备注",
+  "noteEditLabel": "编辑图片备注",
+  "noteAutosaved": "备注已自动保存",
+  "noteSaveFailed": "备注保存失败，请稍后重试",
 
   "toolbarAnchors": "锚点",
   "tools": "图片编辑工具",
   "adjust": "调整",
+  "fullscreenImage": "全屏查看",
+  "editImage": "编辑图片",
 
   "newTitle": "添加图片到灵感库",
   "detailTitle": "灵感库图片详情",
@@ -56,6 +62,7 @@
   "blue": "蓝色",
   "anchorMode": "添加备注锚点",
   "anchorModeOn": "点击图片放置锚点",
+  "anchorAtImage": "单击图片添加锚点，双指放大查看全图",
   "anchorDisplaySize": "锚点显示大小",
   "anchorDisplaySizeHelp": "此设置应用于所有锚点，并保存在本机浏览器。",
   "anchorMoveHelp": "可拖动锚点移动；聚焦后按方向键微调，按住 Shift 可加大步幅；点击可编辑备注。",
@@ -64,6 +71,8 @@
   "anchorEmpty": "点击图片，为某个细节添加备注。",
   "anchorPlaceholder": "写下这个细节让你想到什么…",
   "anchorSave": "保存备注",
+  "anchorSaved": "锚点已保存",
+  "anchorSaveFailed": "锚点保存失败，请稍后重试",
   "anchorDelete": "删除锚点",
   "anchorEdit": "编辑备注",
   "anchorLabel": "备注锚点 {number}：{note}",

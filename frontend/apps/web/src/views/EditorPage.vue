@@ -1,11 +1,13 @@
 <script setup lang="ts">
 import { loadDetailImage, loadManagedDetailImage, takeDetailRecord } from '../images/detailImages'
 import EditorToolSurface from '../components/EditorToolSurface.vue'
-import { captureDetailImage, detailImageReady } from '../motion/imageMotion'
+import { captureDetailImage, copyVisibleImage, detailImageReady } from '../motion/imageMotion'
+import { PINCH_FULLSCREEN_THRESHOLD, pinchTargetScale, pinchZoomFrame, pointDistance, type PinchFrame, type PinchPoints, type ZoomRect } from '../images/pinchZoom'
 import ContentZoom from '../components/ContentZoom.vue'
 import { createLongPress } from '../context-menu/longPress'
 import { friendlyExtra, formatMetadataValue as formatImageMetadataValue, rawMetadataValue, gpsMapUrl } from './imageMetadataDisplay'
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue'
+import { gsap } from 'gsap'
 import { useI18n } from 'vue-i18n'
 import { onBeforeRouteLeave, useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox, type UploadFile } from 'element-plus'
@@ -52,7 +54,12 @@ const tagPickerOpen = ref(false)
 const detailTagQuery = ref('')
 const toolAnchor = shallowRef<HTMLElement>()
 const noteText = computed(() => typeof documentData.value.image_note === 'string' ? documentData.value.image_note : '')
-/** 图片备注沿用文档扩展JSON和已有保存接口，进入撤销历史，不增加数据库字段。 */
+const noteDraft = ref('')
+const noteEditing = ref(false)
+const noteSaving = ref(false)
+const notePersisted = ref('')
+const noteInput = ref<{ focus: () => void } | null>(null)
+/** 图片备注沿用文档扩展JSON和已有保存接口；详情态直接输入，新图和显式编辑态仍进入撤销历史。 */
 function updateImageNote(value: string | number) { commit({ ...documentData.value, image_note: String(value).slice(0, 500) }) }
 /** 参数浮层不阻挡画布；锚点一键进入编辑和点按添加状态。 */
 function openTool(panel: 'anchors' | 'adjust' | 'note', event: MouseEvent) {
@@ -71,8 +78,13 @@ const documentData = ref<EditorDocument>(createEditorDocument())
 const sourceCanvas = shallowRef<HTMLCanvasElement | null>(null)
 const previewCanvas = ref<HTMLCanvasElement | null>(null)
 const backdropCanvas = ref<HTMLCanvasElement | null>(null)
-const fullscreenImageURL = ref('')
 const stageBox = ref<HTMLElement | null>(null)
+const zoomLayer = ref<HTMLElement | null>(null)
+const zoomShell = ref<HTMLElement | null>(null)
+const zoomCanvas = ref<HTMLCanvasElement | null>(null)
+const zoomCloseButton = ref<HTMLButtonElement | null>(null)
+const zoomActive = ref(false)
+const zoomFullscreen = ref(false)
 const record = shallowRef<InspirationRecord | null>(null)
 const imageFile = shallowRef<File | null>(null)
 const imageMetadata = shallowRef<InspirationImageMetadata | null>(null)
@@ -96,6 +108,7 @@ const colorAnalysisError = ref('')
 const colorAnalysisSaving = ref(false)
 const anchorMode = ref(false)
 const cropMode = ref(false)
+const anchorSaving = ref(false)
 const transformDialog = ref<TransformAction | null>(null)
 const anchorDialog = ref(false)
 const anchorDraft = ref<AnchorDraft | null>(null)
@@ -115,11 +128,18 @@ let selectionStart: { x: number; y: number } | null = null
 let colorWritePromise: Promise<void> | null = null
 let tagWritePromise: Promise<void> | null = null
 let tagSearchTimer: number | undefined
+let noteSaveTimer: number | undefined
 let tagSearchVersion = 0
 let suppressAnchorClick = false
 let suppressPreviewClick = false
-let pinchStartDistance = 0
-let pinchTriggered = false
+let noteSavePromise: Promise<boolean> | null = null
+let detailWriteChain: Promise<unknown> = Promise.resolve()
+let detailLocalRevision = 0
+let zoomOrigin: ZoomRect | null = null
+let zoomStart: PinchPoints | null = null
+let zoomLastFrame: PinchFrame | null = null
+let zoomClosing = false
+let previousBodyOverflow = ''
 const detailTagLongPress = createLongPress(() => {
   const name = pressedDetailTag.value
   if (name) void removeDetailTag(name)
@@ -189,6 +209,7 @@ function formatMetadataValue(key: string, value: unknown): string {
 
 const canUndo = computed(() => { historyRevision.value; return history?.canUndo ?? false })
 const canRedo = computed(() => { historyRevision.value; return history?.canRedo ?? false })
+const noteDirty = computed(() => noteDraft.value !== notePersisted.value)
 const hasUnsavedChanges = computed(() => {
   if (editSnapshot.value === '') return false
   const documentChanged = JSON.stringify(documentData.value) !== editSnapshot.value
@@ -252,6 +273,12 @@ const visibleAnchors = computed(() => documentData.value.anchors.flatMap((anchor
     top: `${position.y * 100}%`,
   }]
 }))
+const draftAnchorPosition = computed(() => {
+  const draft = anchorDraft.value
+  if (!draft || draft.id) return null
+  const position = anchorToView(draft, documentData.value)
+  return position.visible ? { left: `${position.x * 100}%`, top: `${position.y * 100}%` } : null
+})
 const cropDragStyle = computed(() => {
   const selection = cropSelection.value
   if (!selection) return {}
@@ -298,6 +325,12 @@ function beginEditing(): void {
   status.value = ''
 }
 
+/** 详情默认保持沉浸阅读；只有用户从属性面板明确选择时才进入带保存按钮的完整编辑态。 */
+function startFullEditing(): void {
+  toolPanel.value = null
+  beginEditing()
+}
+
 /** 退出编辑前确认丢弃未保存修改，并将轻量文档和撤销历史恢复至进入时快照。 */
 async function cancelEditing(): Promise<void> {
   finishRgbChange()
@@ -328,6 +361,100 @@ async function cancelEditing(): Promise<void> {
   scheduleRender()
 }
 
+/** 详情自动保存统一从顶部反馈，避免底栏移除后错误停留在不可见位置。 */
+function showTopNotice(message: string, type: 'success' | 'error'): void {
+  ElMessage({
+    message,
+    type,
+    duration: type === 'success' ? 1600 : 2800,
+    grouping: true,
+    offset: 72,
+    customClass: 'editor-glass-message',
+  })
+}
+
+/** 文档自动保存按提交顺序串行执行，防止备注、锚点和颜色画像互相覆盖。 */
+function queueDetailWrite(nextData: Record<string, unknown>): Promise<InspirationRecord> {
+  const expectedId = itemId.value
+  const payload = JSON.parse(JSON.stringify(nextData)) as Record<string, unknown>
+  const operation = detailWriteChain.then(async () => {
+    const updated = await api.updateInspiration(expectedId, payload)
+    if (record.value?.business_id === updated.business_id) record.value = updated
+    return updated
+  })
+  detailWriteChain = operation.then(() => undefined, () => undefined)
+  return operation
+}
+
+/** 只有本地文档没有继续变化时才采用服务端响应，避免迟到保存覆盖正在输入的新内容。 */
+function mergePersistedDocument(updated: InspirationRecord, expectedRevision: number): void {
+  if (detailLocalRevision !== expectedRevision || record.value?.business_id !== updated.business_id) return
+  documentData.value = parseEditorDocument(updated.data)
+  history = new DocumentHistory(documentData.value)
+  historyRevision.value += 1
+  scheduleRender()
+}
+
+/** 输入暂停后自动提交整图备注；始终以最新草稿为准，保存期间的新输入会继续排队。 */
+async function flushImageNote(showSuccess = true): Promise<boolean> {
+  if (noteSaveTimer !== undefined) {
+    window.clearTimeout(noteSaveTimer)
+    noteSaveTimer = undefined
+  }
+  if (noteSavePromise) return noteSavePromise
+
+  noteSavePromise = (async () => {
+    let saved = false
+    while (noteDraft.value !== notePersisted.value) {
+      const expectedRevision = detailLocalRevision
+      const note = noteDraft.value
+      noteSaving.value = true
+      try {
+        const updated = await queueDetailWrite({ ...editorDataForSave(), image_note: note })
+        notePersisted.value = note
+        saved = true
+        mergePersistedDocument(updated, expectedRevision)
+      } catch (cause) {
+        showTopNotice(localError(cause, t('editor.noteSaveFailed')), 'error')
+        return false
+      } finally {
+        noteSaving.value = false
+      }
+    }
+    if (saved && showSuccess) showTopNotice(t('editor.noteAutosaved'), 'success')
+    return true
+  })()
+
+  try { return await noteSavePromise }
+  finally { noteSavePromise = null }
+}
+
+/** 备注停止输入约半秒后自动落库；失焦和离页会通过 flushImageNote 立即补交。 */
+function scheduleImageNoteSave(): void {
+  if (noteSaveTimer !== undefined) window.clearTimeout(noteSaveTimer)
+  noteSaveTimer = window.setTimeout(() => {
+    noteSaveTimer = undefined
+    void flushImageNote()
+  }, 650)
+}
+
+/** 点击详情说明空白区进入原地编辑，不打开底栏或额外编辑页。 */
+async function startImageNoteEditing(): Promise<void> {
+  if (isEditing.value) return
+  noteEditing.value = true
+  await nextTick()
+  noteInput.value?.focus()
+}
+
+/** 备注输入先更新本地文档，自动保存期间仍可从顶部通知看到最终成功或失败。 */
+function handleImageNoteInput(value: string | number): void {
+  const text = String(value).slice(0, 500)
+  noteDraft.value = text
+  documentData.value = { ...documentData.value, image_note: text }
+  detailLocalRevision += 1
+  scheduleImageNoteSave()
+}
+
 /** 自动画像只合并到已保存数据；独立写入进行时，编辑保存会等待它完成再提交完整文档。 */
 async function persistColorAnalysis(profile: ColorAnalysis, baseData: Record<string, unknown>): Promise<void> {
   if (!isExisting.value || !record.value) return
@@ -337,8 +464,7 @@ async function persistColorAnalysis(profile: ColorAnalysis, baseData: Record<str
   colorAnalysisError.value = ''
   const pending = (async () => {
     try {
-      const updated = await api.updateInspiration(itemId.value, { ...baseData, color_analysis: profile })
-      record.value = updated
+      await queueDetailWrite({ ...baseData, color_analysis: profile })
       colorAnalysisError.value = ''
     } catch (cause) {
       colorAnalysisError.value = localError(cause, t('editor.colorAnalysisSaveFailed'))
@@ -372,6 +498,7 @@ async function retryColorAnalysis(): Promise<void> {
 function commit(next: EditorDocument): void {
   history ??= new DocumentHistory(documentData.value)
   documentData.value = history.commit(next)
+  if (isExisting.value && !isEditing.value) detailLocalRevision += 1
   historyRevision.value += 1
   scheduleRender()
 }
@@ -473,6 +600,9 @@ async function loadExisting(): Promise<void> {
     imageMetadata.value = loaded.image_metadata ?? null
     filename.value = loaded.file_name || t('gallery.untitled')
     documentData.value = parseEditorDocument(loaded.data)
+    noteDraft.value = typeof documentData.value.image_note === 'string' ? documentData.value.image_note : ''
+    notePersisted.value = noteDraft.value
+    detailLocalRevision = 0
     history = new DocumentHistory(documentData.value)
     const workImage = await api.download(loaded.image_key)
     if (version !== decodeVersion) return
@@ -723,74 +853,225 @@ function endCropSelection(event: PointerEvent): void {
   selectionStart = null
 }
 
-/** 详情点击进入无锚点的全屏预览；编辑态继续在当前画布上添加备注锚点。 */
-function onStageClick(event: MouseEvent): void {
-  if (isExisting.value && !isEditing.value) {
-    if (suppressPreviewClick) {
-      suppressPreviewClick = false
-      return
-    }
-    void openFullscreenPreview()
-    return
-  }
-  if (!anchorMode.value || cropMode.value) return
+/** 把图片内点按换算成原图坐标；详情态和新图编辑态共用同一套锚点数据。 */
+function addAnchorAtClientPoint(clientX: number, clientY: number): void {
+  if (cropMode.value) return
   const bounds = previewCanvas.value?.getBoundingClientRect()
   if (!bounds) return
-  if (event.clientX < bounds.left || event.clientX > bounds.right || event.clientY < bounds.top || event.clientY > bounds.bottom) return
-  const point = { x: Math.max(0, Math.min(1, (event.clientX - bounds.left) / bounds.width)), y: Math.max(0, Math.min(1, (event.clientY - bounds.top) / bounds.height)) }
+  if (clientX < bounds.left || clientX > bounds.right || clientY < bounds.top || clientY > bounds.bottom) return
+  const point = { x: Math.max(0, Math.min(1, (clientX - bounds.left) / bounds.width)), y: Math.max(0, Math.min(1, (clientY - bounds.top) / bounds.height)) }
   const source = viewToSource(point, documentData.value)
   anchorDraft.value = { id: null, x: source.x, y: source.y, note: '' }
   toolPanel.value = null
   anchorDialog.value = true
 }
 
-/** 全屏预览使用当前编辑结果的真实像素快照，锚点属于页面叠层而不会进入图片。 */
-async function openFullscreenPreview(): Promise<void> {
-  const canvas = previewCanvas.value
-  if (!canvas || isEditing.value) return
-  const blob = await new Promise<Blob | null>(resolve => canvas.toBlob(resolve, 'image/jpeg', 0.94))
-  if (blob) {
-    closeFullscreenPreview()
-    fullscreenImageURL.value = URL.createObjectURL(blob)
+/** 详情单指点击只负责添加锚点；双指放大由独立查看层承接，避免单击同时触发全屏。 */
+function onStageClick(event: MouseEvent): void {
+  if (suppressPreviewClick) {
+    suppressPreviewClick = false
     return
   }
-  fullscreenImageURL.value = canvas.toDataURL('image/jpeg', 0.94)
+  if (isExisting.value && !isEditing.value) {
+    if (zoomActive.value) return
+    addAnchorAtClientPoint(event.clientX, event.clientY)
+    return
+  }
+  if (!anchorMode.value || cropMode.value) return
+  addAnchorAtClientPoint(event.clientX, event.clientY)
 }
 
-/** 关闭全屏预览时立即释放临时图片地址，避免连续打开积累大图内存。 */
-function closeFullscreenPreview(): void {
-  if (fullscreenImageURL.value.startsWith('blob:')) URL.revokeObjectURL(fullscreenImageURL.value)
-  fullscreenImageURL.value = ''
+/** 将当前详情画布像素同步复制到全屏层；快照只存在于页面内存，不转存或上传。 */
+function prepareZoomSnapshot(): ZoomRect | null {
+  const canvas = previewCanvas.value
+  const shell = zoomShell.value
+  const target = zoomCanvas.value
+  if (!canvas || !shell || !target || isEditing.value) return null
+  const snapshot = copyVisibleImage(canvas)
+  const bounds = canvas.getBoundingClientRect()
+  if (!snapshot || !bounds.width || !bounds.height) {
+    if (snapshot) releaseCanvas(snapshot)
+    return null
+  }
+  target.width = snapshot.width
+  target.height = snapshot.height
+  target.getContext('2d')?.drawImage(snapshot, 0, 0)
+  releaseCanvas(snapshot)
+  const origin = { left: bounds.left, top: bounds.top, width: bounds.width, height: bounds.height }
+  Object.assign(shell.style, {
+    left: `${origin.left}px`,
+    top: `${origin.top}px`,
+    width: `${origin.width}px`,
+    height: `${origin.height}px`,
+    transform: 'translate3d(0, 0, 0) scale(1)',
+  })
+  return origin
 }
 
-/** 双指放大达到阈值后打开全屏预览；单指仍可正常滚动正文。 */
-function beginPreviewPinch(event: TouchEvent): void {
-  if (isEditing.value || event.touches.length !== 2) return
-  pinchStartDistance = Math.hypot(
-    event.touches[0]!.clientX - event.touches[1]!.clientX,
-    event.touches[0]!.clientY - event.touches[1]!.clientY,
-  )
-  pinchTriggered = false
+/** 直接修改合成层变换，让手势移动期间不触发 Vue 重渲染和布局。 */
+function applyZoomFrame(frame: PinchFrame): void {
+  const shell = zoomShell.value
+  const layer = zoomLayer.value
+  if (!shell || !layer) return
+  shell.style.transform = `translate3d(${frame.x}px, ${frame.y}px, 0) scale(${frame.scale})`
+  layer.style.backgroundColor = `rgb(0 0 0 / ${Math.min(0.98, frame.progress * 0.98)})`
 }
 
-/** 只在双指确实放大时阻止浏览器页面缩放，非放大手势继续保留原生滚动。 */
-function movePreviewPinch(event: TouchEvent): void {
-  if (pinchTriggered || isEditing.value || event.touches.length !== 2 || pinchStartDistance < 1) return
-  const distance = Math.hypot(
-    event.touches[0]!.clientX - event.touches[1]!.clientX,
-    event.touches[0]!.clientY - event.touches[1]!.clientY,
-  )
-  if (distance / pinchStartDistance < 1.08) return
-  event.preventDefault()
-  pinchTriggered = true
+/** 全屏期间锁定页面滚动，关闭时恢复进入查看器前的原始值，避免覆盖其他弹层设置。 */
+function setZoomBodyLocked(locked: boolean): void {
+  const className = 'inspiration-zoom-open'
+  if (locked && !document.body.classList.contains(className)) {
+    previousBodyOverflow = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    document.body.classList.add(className)
+  } else if (!locked && document.body.classList.contains(className)) {
+    document.body.style.overflow = previousBodyOverflow
+    document.body.classList.remove(className)
+    previousBodyOverflow = ''
+  }
+}
+
+/** 清空全屏快照和合成层状态；临时画布显式归零，避免连续手势积累大图内存。 */
+function resetZoomViewer(): void {
+  const shell = zoomShell.value
+  const layer = zoomLayer.value
+  if (shell) gsap.killTweensOf(shell)
+  if (layer) gsap.killTweensOf(layer)
+  if (shell) shell.style.transform = ''
+  if (layer) layer.style.backgroundColor = 'transparent'
+  const canvas = zoomCanvas.value
+  if (canvas) {
+    canvas.width = 0
+    canvas.height = 0
+  }
+  zoomActive.value = false
+  zoomFullscreen.value = false
+  zoomClosing = false
+  zoomOrigin = null
+  zoomStart = null
+  zoomLastFrame = null
+  setZoomBodyLocked(false)
+}
+
+/** 放大未达到全屏时沿原轨迹收回；动画结束才释放快照。 */
+function restoreZoomViewer(): void {
+  const shell = zoomShell.value
+  const layer = zoomLayer.value
+  if (!shell || !layer) { resetZoomViewer(); return }
+  zoomClosing = true
+  const duration = window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 0.01 : 0.2
+  gsap.killTweensOf([shell, layer])
+  gsap.to(shell, { x: 0, y: 0, scale: 1, duration, ease: 'power2.out' })
+  gsap.to(layer, { backgroundColor: 'rgb(0 0 0 / 0)', duration, ease: 'power2.out', onComplete: resetZoomViewer })
+}
+
+/** 手指抬起时已达到全屏阈值就保留大图；否则完整倒放回详情画布原位置。 */
+function endPreviewPinch(): void {
+  if (!zoomStart || !zoomOrigin) return
+  const start = zoomStart
+  const frame = zoomLastFrame
+  zoomStart = null
+  zoomLastFrame = null
   suppressPreviewClick = true
   window.setTimeout(() => { suppressPreviewClick = false }, 400)
-  void openFullscreenPreview()
+  if (!frame || frame.progress < PINCH_FULLSCREEN_THRESHOLD) {
+    restoreZoomViewer()
+    return
+  }
+  const viewport = { width: window.innerWidth, height: window.innerHeight }
+  const settled = pinchZoomFrame(
+    zoomOrigin,
+    viewport,
+    start,
+    { distance: frame.targetScale * start.distance, x: viewport.width / 2, y: viewport.height / 2 },
+  )
+  const shell = zoomShell.value
+  const layer = zoomLayer.value
+  if (shell && layer) {
+    const duration = window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 0.01 : 0.12
+    gsap.to(shell, { x: settled.x, y: settled.y, scale: Math.max(frame.scale, settled.scale), duration, ease: 'power2.out', overwrite: true })
+    gsap.to(layer, { backgroundColor: 'rgb(0 0 0 / 98%)', duration, ease: 'power2.out', overwrite: true })
+  }
+  zoomFullscreen.value = true
+  setZoomBodyLocked(true)
+  void nextTick(() => zoomCloseButton.value?.focus())
+}
+
+/** 开始双指手势时同步复制真实画布像素，首帧就与用户手指位置对齐。 */
+function beginPreviewPinch(event: TouchEvent): void {
+  if (isEditing.value || zoomActive.value || event.touches.length !== 2) return
+  const origin = prepareZoomSnapshot()
+  if (!origin) return
+  event.preventDefault()
+  const first = { x: event.touches[0]!.clientX, y: event.touches[0]!.clientY }
+  const second = { x: event.touches[1]!.clientX, y: event.touches[1]!.clientY }
+  zoomOrigin = origin
+  zoomStart = {
+    distance: pointDistance(first, second),
+    x: (first.x + second.x) / 2,
+    y: (first.y + second.y) / 2,
+  }
+  zoomLastFrame = null
+  zoomClosing = false
+  zoomFullscreen.value = false
+  zoomActive.value = true
+  zoomLayer.value?.classList.add('is-active')
+  applyZoomFrame({ scale: 1, x: 0, y: 0, progress: 0, targetScale: 1 })
+}
+
+/** 手势每一帧都按当前双指距离更新缩放、位置和背景，不等待阈值再跳转全屏。 */
+function movePreviewPinch(event: TouchEvent): void {
+  if (!zoomOrigin || !zoomStart || event.touches.length !== 2) return
+  event.preventDefault()
+  const first = { x: event.touches[0]!.clientX, y: event.touches[0]!.clientY }
+  const second = { x: event.touches[1]!.clientX, y: event.touches[1]!.clientY }
+  const current = {
+    distance: pointDistance(first, second),
+    x: (first.x + second.x) / 2,
+    y: (first.y + second.y) / 2,
+  }
+  const frame = pinchZoomFrame(zoomOrigin, { width: window.innerWidth, height: window.innerHeight }, zoomStart, current)
+  zoomLastFrame = frame
+  applyZoomFrame(frame)
+}
+
+/** 属性面板的键盘/鼠标入口复用同一快照和 GSAP 轨迹，桌面端也能完整查看大图。 */
+function openFullscreenFromToolbar(): void {
+  toolPanel.value = null
+  const origin = prepareZoomSnapshot()
+  const shell = zoomShell.value
+  const layer = zoomLayer.value
+  if (!origin || !shell || !layer) return
+  const viewport = { width: window.innerWidth, height: window.innerHeight }
+  const targetScale = pinchTargetScale(origin, viewport)
+  const target = pinchZoomFrame(
+    origin,
+    viewport,
+    { distance: 1, x: origin.left + origin.width / 2, y: origin.top + origin.height / 2 },
+    { distance: targetScale, x: viewport.width / 2, y: viewport.height / 2 },
+  )
+  zoomOrigin = origin
+  zoomActive.value = true
+  zoomFullscreen.value = true
+  zoomClosing = false
+  zoomLayer.value?.classList.add('is-active')
+  setZoomBodyLocked(true)
+  const duration = window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 0.01 : 0.28
+  gsap.killTweensOf([shell, layer])
+  gsap.to(shell, { x: target.x, y: target.y, scale: target.scale, duration, ease: 'power2.out' })
+  gsap.to(layer, { backgroundColor: 'rgb(0 0 0 / 98%)', duration, ease: 'power2.out', onComplete: () => { void nextTick(() => zoomCloseButton.value?.focus()) } })
+}
+
+/** 关闭全屏时按同一来源矩形收回，随后释放临时快照和页面滚动锁。 */
+function closeInspirationViewer(): void {
+  if (!zoomFullscreen.value || zoomClosing) return
+  zoomFullscreen.value = false
+  restoreZoomViewer()
 }
 
 /** 键盘用户聚焦预览画布并按 Enter/Space 时，在画面中心添加备注锚点。 */
 function addAnchorAtCenter(): void {
-  if (!anchorMode.value || cropMode.value) return
+  if (cropMode.value || (isEditing.value && !anchorMode.value) || (!isEditing.value && !isExisting.value)) return
   const source = viewToSource({ x: 0.5, y: 0.5 }, documentData.value)
   anchorDraft.value = { id: null, x: source.x, y: source.y, note: '' }
   toolPanel.value = null
@@ -803,6 +1084,13 @@ function editAnchor(anchor: ImageAnchor): void {
   anchorDraft.value = { ...anchor }
   toolPanel.value = null
   anchorDialog.value = true
+}
+
+/** 关闭锚点对话框同时清除尚未提交的草稿点位，避免图片上残留临时标记。 */
+function closeAnchorDialog(): void {
+  anchorDialog.value = false
+  anchorDraft.value = null
+  error.value = ''
 }
 
 /** 在预览画布上拖动锚点时即时更新叠层位置，抬起指针后只提交一条可撤销历史。 */
@@ -886,17 +1174,36 @@ function moveAnchorByKeyboard(anchor: ImageAnchor, event: KeyboardEvent): void {
   commit({ ...documentData.value, anchors })
 }
 
-/** 从锚点列表或备注对话框删除指定锚点，操作写入历史以支持撤销恢复。 */
+/** 详情态的锚点修改立即写回现有文档接口；失败保留本地标记并从顶部提示用户重试。 */
+async function persistDetailAnchor(expectedRevision: number): Promise<boolean> {
+  if (!isExisting.value || isEditing.value) return true
+  anchorSaving.value = true
+  try {
+    const updated = await queueDetailWrite(editorDataForSave())
+    mergePersistedDocument(updated, expectedRevision)
+    showTopNotice(t('editor.anchorSaved'), 'success')
+    return true
+  } catch (cause) {
+    showTopNotice(localError(cause, t('editor.anchorSaveFailed')), 'error')
+    return false
+  } finally {
+    anchorSaving.value = false
+  }
+}
+
+/** 从锚点列表或备注对话框删除指定锚点，操作写入历史并在详情态自动保存。 */
 function deleteAnchorById(id: string): void {
   commit({ ...documentData.value, anchors: documentData.value.anchors.filter(anchor => anchor.id !== id) })
+  const expectedRevision = detailLocalRevision
   if (anchorDraft.value?.id === id) {
     anchorDialog.value = false
     anchorDraft.value = null
   }
+  void persistDetailAnchor(expectedRevision)
 }
 
-/** 新增、更新、删除备注都写入同一份可撤销的编辑文档历史。 */
-function saveAnchor(): void {
+/** 新增或更新锚点；详情态保存按钮只等待自动写回，不再依赖已取消的底栏。 */
+async function saveAnchor(): Promise<void> {
   if (!anchorDraft.value?.note.trim()) { error.value = t('editor.anchorRequired'); return }
   const draft = { ...anchorDraft.value, note: anchorDraft.value.note.trim() }
   const next = { ...documentData.value, anchors: [...documentData.value.anchors] }
@@ -904,10 +1211,11 @@ function saveAnchor(): void {
   if (existingId) next.anchors = next.anchors.map(anchor => anchor.id === existingId ? { ...draft, id: existingId } : anchor)
   else next.anchors.push({ ...draft, id: makeAnchorId() })
   commit(next)
+  const expectedRevision = detailLocalRevision
   anchorDialog.value = false
   anchorDraft.value = null
-  // 添加模式保持开启，保存备注后可继续点按图片添加下一个锚点。
   error.value = ''
+  await persistDetailAnchor(expectedRevision)
 }
 
 /** 删除当前备注锚点并写入编辑历史，用户可通过撤销恢复。 */
@@ -973,13 +1281,14 @@ async function save(): Promise<void> {
   saving.value = true
   try {
     if (isExisting.value) {
-      if (colorWritePromise) await colorWritePromise
       busyPhase.value = t('editor.saving')
-      const updated = await api.updateInspiration(itemId.value, editorDataForSave())
+      const updated = await queueDetailWrite(editorDataForSave())
       record.value = updated
       documentData.value = parseEditorDocument(updated.data)
       history = new DocumentHistory(documentData.value)
       historyRevision.value += 1
+      noteDraft.value = typeof documentData.value.image_note === 'string' ? documentData.value.image_note : ''
+      notePersisted.value = noteDraft.value
       editSnapshot.value = ''
       isEditing.value = false
       anchorMode.value = false
@@ -1038,6 +1347,19 @@ onBeforeRouteLeave(async to => {
   if (saving.value || (loading.value && to.path === '/spaces')) return false
   if (tagWritePromise) await tagWritePromise
   if (colorWritePromise) await colorWritePromise
+  if (noteDirty.value) await flushImageNote(false)
+  await detailWriteChain
+  // 自动保存失败时不能静默离页；用户明确放弃后才允许继续导航。
+  if (isExisting.value && !isEditing.value && noteDirty.value) {
+    try {
+      await ElMessageBox.confirm(t('editor.discardChangesText'), t('editor.discardChangesTitle'), {
+        confirmButtonText: t('editor.discardChangesConfirm'),
+        cancelButtonText: t('common.cancel'),
+        type: 'warning',
+        customClass: 'editor-glass-dialog',
+      })
+    } catch { return false }
+  }
   if (to.path === '/spaces') {
     if (!isExisting.value && imageReady.value) return false
     if (isExisting.value && isEditing.value && hasUnsavedChanges.value) {
@@ -1060,10 +1382,11 @@ onBeforeRouteLeave(async to => {
 onBeforeUnmount(() => {
   // 先交出真实渲染像素，再释放原画布；退出动画不依赖已经卸载的编辑组件。
   captureDetailImage(previewCanvas.value)
-  closeFullscreenPreview()
+  resetZoomViewer()
   decodeVersion += 1
   tagSearchVersion += 1
   if (tagSearchTimer !== undefined) window.clearTimeout(tagSearchTimer)
+  if (noteSaveTimer !== undefined) window.clearTimeout(noteSaveTimer)
   if (frameRequest) cancelAnimationFrame(frameRequest)
   resizeObserver?.disconnect()
   releaseCanvas(sourceCanvas.value)
@@ -1101,6 +1424,8 @@ onBeforeUnmount(() => {
             @click="onStageClick"
             @touchstart="beginPreviewPinch"
             @touchmove="movePreviewPinch"
+            @touchend="endPreviewPinch"
+            @touchcancel="endPreviewPinch"
           >
             <canvas v-if="!isEditing" ref="backdropCanvas" class="canvas-backdrop" aria-hidden="true"></canvas>
             <div v-if="imageReady" class="editor-canvas-wrap" :style="{ width: `${displayDimensions.width}px`, height: `${displayDimensions.height}px` }">
@@ -1109,9 +1434,9 @@ onBeforeUnmount(() => {
                 class="editor-canvas"
                 :role="isExisting && !isEditing ? 'button' : 'img'"
                 :tabindex="0"
-                :aria-label="anchorMode ? t('editor.anchorModeOn') : isExisting && !isEditing ? t('editor.openFullscreenPreview') : t('editor.previewLabel')"
-                @keydown.enter.prevent="isEditing ? addAnchorAtCenter() : openFullscreenPreview()"
-                @keydown.space.prevent="isEditing ? addAnchorAtCenter() : openFullscreenPreview()"
+                :aria-label="anchorMode ? t('editor.anchorModeOn') : isExisting && !isEditing ? t('editor.anchorAtImage') : t('editor.previewLabel')"
+                @keydown.enter.prevent="addAnchorAtCenter"
+                @keydown.space.prevent="addAnchorAtCenter"
                 @pointerdown="beginCropSelection"
                 @pointermove="moveCropSelection"
                 @pointerup="endCropSelection"
@@ -1137,11 +1462,14 @@ onBeforeUnmount(() => {
                 @keydown.right.prevent="isEditing && moveAnchorByKeyboard(anchor, $event)"
                 @keydown.up.prevent="isEditing && moveAnchorByKeyboard(anchor, $event)"
                 @keydown.down.prevent="isEditing && moveAnchorByKeyboard(anchor, $event)"
-                @click="isEditing && handleAnchorClick(anchor)"
+                @click.stop="(isEditing || (isExisting && !isEditing)) && handleAnchorClick(anchor)"
               >
                 <span class="image-anchor-label">{{ anchor.note }}</span>
                 <span class="image-anchor-dot" aria-hidden="true"><span></span></span>
               </component>
+              <span v-if="draftAnchorPosition" class="image-anchor is-draft anchor-right" :style="draftAnchorPosition" aria-hidden="true">
+                <span class="image-anchor-dot"><span></span></span>
+              </span>
             </div>
             <div v-else class="loading-inline" role="status"><span class="loading-dot"></span>{{ t('common.loading') }}</div>
           </div>
@@ -1155,7 +1483,24 @@ onBeforeUnmount(() => {
       </div>
 
       <section v-if="isExisting && !isEditing && record" class="detail-caption" :aria-label="t('editor.detailCaption')">
-        <p v-if="noteText" class="detail-note">{{ noteText }}</p>
+        <div class="detail-note-editor" :class="{ 'is-editing': noteEditing }" :aria-busy="noteSaving">
+          <el-input
+            v-if="noteEditing"
+            ref="noteInput"
+            :model-value="noteDraft"
+            type="textarea"
+            :autosize="{ minRows: 1, maxRows: 8 }"
+            maxlength="500"
+            resize="none"
+            :aria-label="t('editor.imageNote')"
+            :placeholder="t('editor.notePlaceholder')"
+            @update:model-value="handleImageNoteInput"
+            @blur="flushImageNote()"
+          />
+          <button v-else type="button" class="detail-note-trigger" :aria-label="t('editor.noteEditLabel')" @click="startImageNoteEditing">
+            <span :class="{ 'is-placeholder': !noteText }">{{ noteText || t('editor.notePlaceholder') }}</span>
+          </button>
+        </div>
         <div class="detail-tag-row" role="group" :aria-label="t('editor.tags')">
           <button
             v-for="name in record.tag_names ?? []"
@@ -1183,7 +1528,7 @@ onBeforeUnmount(() => {
 
       <div v-if="error && !imageReady" class="editor-load-error" role="alert"><p>{{ error }}</p><RouterLink class="secondary-button" to="/inspirations">{{ t('common.back') }}</RouterLink></div>
     </main></ContentZoom>
-    <div v-if="imageReady" class="image-edit-dock" :class="{ 'is-editing': isEditing }" role="region" :aria-label="t('editor.tools')">
+    <div v-if="imageReady && (!isExisting || isEditing)" class="image-edit-dock" :class="{ 'is-editing': isEditing }" role="region" :aria-label="t('editor.tools')">
       <div class="image-dock-tools" role="toolbar" :aria-label="t('editor.tools')">
         <button type="button" :class="{ active: anchorMode || toolPanel === 'anchors' }" @click="openTool('anchors', $event)"><el-icon aria-hidden="true"><Aim /></el-icon><span>{{ t('editor.toolbarAnchors') }}</span></button>
         <button type="button" :disabled="saving || cropMode" :class="{ active: toolPanel === 'adjust' }" @click="openTool('adjust', $event)"><el-icon aria-hidden="true"><Operation /></el-icon><span>{{ t('editor.adjust') }}</span></button>
@@ -1204,6 +1549,10 @@ onBeforeUnmount(() => {
     </div>
     <EditorToolSurface v-if="toolPanel" :panel="toolPanel" :title="toolTitle" :anchor="toolAnchor" :ambient="detailAmbientStyle['--detail-ambient']" @close="panel => { if (toolPanel === panel) toolPanel = null }">
         <div class="image-tool-panel">
+          <div v-if="toolPanel === 'properties' && isExisting && !isEditing" class="detail-tool-actions">
+            <el-button @click="openFullscreenFromToolbar"><el-icon aria-hidden="true"><FullScreen /></el-icon>{{ t('editor.fullscreenImage') }}</el-button>
+            <el-button type="primary" @click="startFullEditing"><el-icon aria-hidden="true"><Operation /></el-icon>{{ t('editor.editImage') }}</el-button>
+          </div>
           <el-input v-if="toolPanel === 'note'" :model-value="noteText" type="textarea" :rows="3" maxlength="500" show-word-limit :aria-label="t('editor.imageNote')" :placeholder="t('editor.imageNotePlaceholder')" @update:model-value="updateImageNote" />
           <dl v-if="toolPanel === 'properties' && sourceCanvas" class="image-metadata-list basic-image-properties">
             <div><dt>{{ t('editor.metadataWidth') }}</dt><dd>{{ new Intl.NumberFormat(locale).format(sourceCanvas.width) }}</dd></div>
@@ -1310,15 +1659,15 @@ onBeforeUnmount(() => {
       </template>
     </el-dialog>
 
-    <el-dialog :model-value="anchorDialog && !!anchorDraft" class="editor-glass-dialog" :title="anchorDraft?.id ? t('editor.anchorEdit') : t('editor.anchorMode')" width="min(500px, calc(100vw - 32px))" @close="anchorDialog = false">
+    <el-dialog :model-value="anchorDialog && !!anchorDraft" class="editor-glass-dialog" :title="anchorDraft?.id ? t('editor.anchorEdit') : t('editor.anchorMode')" width="min(500px, calc(100vw - 32px))" @close="closeAnchorDialog">
       <el-input v-if="anchorDraft" v-model="anchorDraft.note" type="textarea" :rows="4" maxlength="500" :placeholder="t('editor.anchorPlaceholder')" />
       <p v-if="error" class="form-error" role="alert">{{ error }}</p>
       <template #footer>
         <div class="dialog-actions">
-          <el-button v-if="anchorDraft?.id" type="danger" text @click="deleteAnchor">{{ t('editor.anchorDelete') }}</el-button>
+          <el-button v-if="anchorDraft?.id" type="danger" text :disabled="anchorSaving" @click="deleteAnchor">{{ t('editor.anchorDelete') }}</el-button>
           <span class="dialog-spacer"></span>
-          <el-button text @click="anchorDialog = false">{{ t('common.cancel') }}</el-button>
-          <el-button type="primary" @click="saveAnchor">{{ t('editor.anchorSave') }}</el-button>
+          <el-button text :disabled="anchorSaving" @click="closeAnchorDialog">{{ t('common.cancel') }}</el-button>
+          <el-button type="primary" :loading="anchorSaving" @click="saveAnchor">{{ t('editor.anchorSave') }}</el-button>
         </div>
       </template>
     </el-dialog>
@@ -1373,25 +1722,37 @@ onBeforeUnmount(() => {
       </Transition>
     </Teleport>
 
-    <el-image-viewer
-      v-if="fullscreenImageURL"
-      class="inspiration-image-viewer"
-      :url-list="[fullscreenImageURL]"
-      :initial-index="0"
-      :min-scale="1"
-      :max-scale="4"
-      :zoom-rate="1.25"
-      :hide-on-click-modal="true"
-      :close-on-press-escape="true"
-      teleported
-      @close="closeFullscreenPreview"
-    />
+    <Teleport to="body">
+      <div
+        ref="zoomLayer"
+        class="inspiration-zoom-layer"
+        :class="{ 'is-active': zoomActive, 'is-fullscreen': zoomFullscreen }"
+        :aria-hidden="!zoomActive"
+        :aria-modal="zoomFullscreen ? 'true' : 'false'"
+        role="dialog"
+        @click.self="closeInspirationViewer"
+        @keydown.esc.prevent="closeInspirationViewer"
+      >
+        <div ref="zoomShell" class="inspiration-zoom-image">
+          <canvas ref="zoomCanvas" role="img" :aria-label="t('editor.fullscreenImage')"></canvas>
+        </div>
+        <button
+          v-if="zoomFullscreen"
+          ref="zoomCloseButton"
+          type="button"
+          class="inspiration-zoom-close"
+          :aria-label="t('common.close')"
+          @click="closeInspirationViewer"
+        ><el-icon aria-hidden="true"><Close /></el-icon></button>
+      </div>
+    </Teleport>
   </div>
 </template>
 
 <style scoped>
 /* 图片占据主要工作区；桌面使用悬浮工具 Dock，手机沿底部安全区铺满。 */
 .editor-main { padding-top: 12px; padding-bottom: 156px; }
+.editor-page.is-detail .editor-main { padding-bottom: 28px; }
 .image-detail-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
 .detail-back { display: grid; place-items: center; width: 44px; height: 44px; border: 1px solid var(--line); border-radius: 50%; color: var(--ink); background: var(--surface); }
 .detail-back:hover { background: var(--accent-soft); color: var(--accent); }
@@ -1405,6 +1766,14 @@ onBeforeUnmount(() => {
 .image-edit-dock { position: fixed; z-index: 45; bottom: 20px; left: calc(50% + 112px); transform: translateX(-50%); display: flex; flex-wrap: wrap; align-items: center; gap: 12px; max-width: calc(100% - 290px); padding: 8px; border: 1px solid color-mix(in srgb, var(--ink) 10%, transparent); border-radius: 24px; background: radial-gradient(150% 180% at 8% 0%, color-mix(in srgb, var(--detail-ambient, var(--accent)) 20%, transparent), transparent 58%), linear-gradient(180deg, rgb(255 255 255 / 24%), rgb(255 255 255 / 5%)), color-mix(in srgb, var(--ink) 7%, transparent); box-shadow: inset 0 1px 0 rgb(255 255 255 / 50%), inset 0 -1px 0 rgb(0 0 0 / 8%), 0 12px 34px rgb(0 0 0 / 15%); backdrop-filter: blur(30px) saturate(190%); -webkit-backdrop-filter: blur(30px) saturate(190%); }
 .detail-caption { display: grid; gap: 8px; max-width: 760px; margin: 16px auto 0; padding: 0 8px; color: var(--ink); }
 .detail-caption p { margin: 0; color: var(--ink-soft); font-size: 14px; line-height: 1.6; white-space: pre-wrap; overflow-wrap: anywhere; }
+.detail-note-editor { min-height: 44px; }
+.detail-note-trigger { display: flex; width: 100%; min-height: 44px; align-items: flex-start; padding: 4px 0; border: 0; background: transparent; color: var(--ink); cursor: text; font: inherit; font-size: 14px; line-height: 1.72; text-align: left; white-space: pre-wrap; overflow-wrap: anywhere; touch-action: manipulation; }
+.detail-note-trigger span { width: 100%; }
+.detail-note-trigger span.is-placeholder { color: var(--muted); }
+.detail-note-trigger:hover { color: var(--ink); }
+.detail-note-trigger:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 12px; }
+.detail-note-editor :deep(.el-textarea__inner) { min-height: 32px !important; padding: 4px 0; border: 0; border-radius: 0; background: transparent; box-shadow: none; color: var(--ink); font: inherit; font-size: 14px; line-height: 1.72; }
+.detail-note-editor :deep(.el-textarea__inner:focus) { box-shadow: none; }
 .detail-tag-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .detail-tag-pill, .detail-tag-more { position: relative; display: inline-flex; min-height: 34px; align-items: center; justify-content: center; gap: 4px; overflow: hidden; padding: 6px 12px; border: 1px solid color-mix(in srgb, var(--line) 78%, transparent); border-radius: 999px; background: color-mix(in srgb, var(--surface) 74%, transparent); color: var(--ink-soft); cursor: pointer; font: inherit; font-size: 12px; line-height: 1; white-space: nowrap; touch-action: manipulation; user-select: none; -webkit-touch-callout: none; }
 .detail-tag-pill:hover, .detail-tag-more:hover { border-color: color-mix(in srgb, var(--ink) 18%, transparent); color: var(--ink); }
@@ -1444,6 +1813,8 @@ onBeforeUnmount(() => {
 .image-dock-status { flex-basis: 100%; margin: 0; padding: 0 12px 6px; font-size: 12px; }
 .image-tool-panel .control-section { padding: 16px 0; }
 .image-tool-panel .control-section:first-child { padding-top: 0; }
+.detail-tool-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; padding-bottom: 16px; border-bottom: 1px solid color-mix(in srgb, var(--ink) 8%, transparent); }
+.detail-tool-actions .el-button { margin: 0; min-height: 40px; }
 .image-tool-panel :deep(.el-select__tags-text) { color: var(--ink); }
 .basic-image-properties { margin: 0; padding-bottom: 16px; }
 .image-tool-panel .metadata-scroll { height: auto; max-height: 45dvh; }
@@ -1453,7 +1824,7 @@ onBeforeUnmount(() => {
 @media (max-width: 768px) {
   .editor-page { padding-bottom: 0 !important; }
   .editor-main { position: relative; width: 100%; margin: 0; padding: 0 0 150px !important; }
-  .editor-page.is-detail .editor-main { padding-bottom: calc(132px + env(safe-area-inset-bottom)) !important; }
+  .editor-page.is-detail .editor-main { padding-bottom: calc(24px + env(safe-area-inset-bottom)) !important; }
   .image-detail-header { position: absolute; inset: max(12px, env(safe-area-inset-top)) 12px auto; z-index: 4; margin: 0; pointer-events: none; }
   .image-detail-header > * { pointer-events: auto; }
   .detail-back, .detail-more { width: 48px; height: 48px; border: 1px solid rgb(255 255 255 / 28%); background: linear-gradient(145deg, rgb(255 255 255 / 12%), rgb(255 255 255 / 3%)), rgb(16 16 18 / 7%); color: #fff; text-shadow: 0 1px 3px rgb(0 0 0 / 38%); backdrop-filter: blur(26px) saturate(180%); -webkit-backdrop-filter: blur(26px) saturate(180%); box-shadow: inset 0 1px 0 rgb(255 255 255 / 34%), 0 8px 26px rgb(0 0 0 / 11%); transition: transform 160ms ease, background-color 160ms ease; }
@@ -1464,10 +1835,11 @@ onBeforeUnmount(() => {
   .editor-page.is-detail .canvas-stage::after { position: absolute; z-index: 0; inset: 0; background: linear-gradient(180deg, rgb(0 0 0 / 9%), transparent 18%, transparent 82%, rgb(0 0 0 / 6%)); content: ''; pointer-events: none; }
   .editor-page.is-detail .editor-canvas-wrap { z-index: 1; box-shadow: none; }
   .editor-page.is-detail .canvas-backdrop { inset: -44px; width: calc(100% + 88px); height: calc(100% + 88px); filter: blur(34px) saturate(1.18); opacity: .58; transform: scale(1.04); }
-  .preview-ready .editor-canvas { cursor: zoom-in; -webkit-touch-callout: none; }
+  .preview-ready .editor-canvas { cursor: crosshair; -webkit-touch-callout: none; }
   .editor-page.is-editing .canvas-stage { height: calc(100dvh - 280px); }
   .detail-caption { gap: 12px; margin: 0; padding: 18px 18px 28px; }
-  .detail-caption .detail-note { color: var(--ink); font-size: 16px; letter-spacing: -.012em; line-height: 1.72; }
+  .detail-note-trigger { min-height: 48px; padding: 2px 0 6px; font-size: 16px; letter-spacing: -.012em; line-height: 1.72; }
+  .detail-note-editor :deep(.el-textarea__inner) { min-height: 34px !important; padding: 2px 0 6px; font-size: 16px; letter-spacing: -.012em; line-height: 1.72; }
   .detail-tag-row { flex-wrap: nowrap; gap: 8px; overflow-x: auto; padding: 1px 0 4px; scrollbar-width: none; overscroll-behavior-inline: contain; }
   .detail-tag-row::-webkit-scrollbar { display: none; }
   .detail-tag-pill, .detail-tag-more { min-height: 38px; flex: 0 0 auto; padding: 8px 14px; font-size: 13px; }
@@ -1482,9 +1854,16 @@ onBeforeUnmount(() => {
   .image-dock-save .el-button:last-child { margin-left: auto; }
 }
 
-:global(.inspiration-image-viewer .el-image-viewer__mask) { background: #000; opacity: .97; }
-:global(.inspiration-image-viewer .el-image-viewer__close) { top: max(12px, env(safe-area-inset-top)); right: max(12px, env(safe-area-inset-right)); width: 48px; height: 48px; border: 1px solid rgb(255 255 255 / 30%); background: rgb(255 255 255 / 12%); color: #fff; backdrop-filter: blur(24px) saturate(180%); -webkit-backdrop-filter: blur(24px) saturate(180%); box-shadow: inset 0 1px 0 rgb(255 255 255 / 34%), 0 8px 26px rgb(0 0 0 / 28%); }
-:global(.inspiration-image-viewer .el-image-viewer__actions) { bottom: calc(18px + env(safe-area-inset-bottom)); border: 1px solid rgb(255 255 255 / 26%); border-radius: 999px; background: rgb(255 255 255 / 12%); backdrop-filter: blur(24px) saturate(180%); -webkit-backdrop-filter: blur(24px) saturate(180%); box-shadow: inset 0 1px 0 rgb(255 255 255 / 30%), 0 8px 26px rgb(0 0 0 / 24%); }
+.image-anchor.is-draft { pointer-events: none; opacity: .76; }
+.inspiration-zoom-layer { position: fixed; z-index: 2400; inset: 0; overflow: hidden; background: transparent; opacity: 0; visibility: hidden; pointer-events: none; touch-action: none; isolation: isolate; }
+.inspiration-zoom-layer.is-active { opacity: 1; visibility: visible; }
+.inspiration-zoom-layer.is-fullscreen { pointer-events: auto; }
+.inspiration-zoom-image { position: absolute; transform-origin: center; will-change: transform; }
+.inspiration-zoom-image canvas { display: block; width: 100%; height: 100%; }
+.inspiration-zoom-close { position: absolute; z-index: 2; top: max(12px, env(safe-area-inset-top)); right: max(12px, env(safe-area-inset-right)); display: grid; width: 48px; height: 48px; place-items: center; border: 1px solid rgb(255 255 255 / 30%); border-radius: 50%; background: rgb(255 255 255 / 12%); color: #fff; cursor: pointer; font-size: 22px; backdrop-filter: blur(24px) saturate(180%); -webkit-backdrop-filter: blur(24px) saturate(180%); box-shadow: inset 0 1px 0 rgb(255 255 255 / 34%), 0 8px 26px rgb(0 0 0 / 28%); }
+.inspiration-zoom-close:active { transform: scale(.94); }
+.inspiration-zoom-close:focus-visible { outline: 2px solid #fff; outline-offset: 3px; }
+:global(body.inspiration-zoom-open) { overflow: hidden !important; overscroll-behavior: none; }
 :global(body.image-detail-route .el-popper.is-dark) { border: 1px solid rgb(255 255 255 / 24%); border-radius: 12px; background: linear-gradient(180deg, rgb(255 255 255 / 18%), rgb(255 255 255 / 4%)), rgb(16 16 18 / 46%); color: #fff; backdrop-filter: blur(22px) saturate(180%); -webkit-backdrop-filter: blur(22px) saturate(180%); box-shadow: inset 0 1px 0 rgb(255 255 255 / 30%), 0 10px 28px rgb(0 0 0 / 18%); }
 :global(body.image-detail-route .el-popper.is-dark .el-popper__arrow::before) { border-color: rgb(255 255 255 / 18%); background: rgb(48 48 52 / 64%); }
 :global(.editor-glass-dialog.el-dialog), :global(.editor-glass-dialog.el-message-box) { overflow: hidden; border: 1px solid color-mix(in srgb, var(--ink) 12%, transparent); background: radial-gradient(140% 180% at 8% 0%, color-mix(in srgb, var(--detail-ambient, var(--accent)) 18%, transparent), transparent 62%), linear-gradient(180deg, rgb(255 255 255 / 20%), rgb(255 255 255 / 3%)), color-mix(in srgb, var(--ink) 8%, transparent); box-shadow: inset 0 1px 0 rgb(255 255 255 / 58%), 0 24px 70px rgb(0 0 0 / 24%); backdrop-filter: blur(34px) saturate(190%); -webkit-backdrop-filter: blur(34px) saturate(190%); }
