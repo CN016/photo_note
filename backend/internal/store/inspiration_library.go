@@ -80,11 +80,25 @@ func applyInspirationFilters(q *gorm.DB, ctx context.Context, userID uuid.UUID) 
 			q = q.Where("analysis_status = 'succeeded' AND people_count::text = ?", f.People)
 		}
 	}
+	switch f.PeopleMode {
+	case "present":
+		q = q.Where("analysis_status = 'succeeded' AND people_count > 0")
+	case "absent":
+		q = q.Where("analysis_status = 'succeeded' AND people_count = 0")
+	case "exact":
+		q = q.Where("analysis_status = 'succeeded' AND people_count = ?::integer", f.PeopleMin)
+	case "range":
+		q = q.Where("analysis_status = 'succeeded' AND people_count BETWEEN ?::integer AND ?::integer", f.PeopleMin, f.PeopleMax)
+	}
 	if f.EmptyShot != "" {
 		q = q.Where("analysis_status = 'succeeded' AND is_empty_shot = ?", f.EmptyShot == "true")
 	}
 	if f.Color != "" {
-		q = q.Where("color_bucket = ? AND analysis_status = 'succeeded'", f.Color)
+		if strings.HasPrefix(f.Color, "#") {
+			q = q.Where("analysis_status = 'succeeded' AND jsonb_typeof(color_palette->'palette') = 'array'")
+		} else {
+			q = q.Where("color_bucket = ? AND analysis_status = 'succeeded'", f.Color)
+		}
 	}
 	if f.Status != "" {
 		q = q.Where("analysis_status = ?", f.Status)

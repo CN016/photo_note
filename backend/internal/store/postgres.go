@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"errors"
+	"fmt"
 	"reflect"
 	"strings"
 	"time"
@@ -165,6 +166,10 @@ func (store *PostgresStore) UpdateStatisticsChartMode(ctx context.Context, userI
 
 // ListTags 按当前用户隔离地分页查询标签，并单独统计匹配总数用于稳定分页响应。
 func (store *PostgresStore) ListTags(ctx context.Context, userID uuid.UUID, search string, offset, limit int) ([]model.Tag, int64, error) {
+	scope, err := tenant.Require(ctx)
+	if err != nil {
+		return nil, 0, err
+	}
 	query := store.db.WithContext(ctx).Model(&model.Tag{}).Where("user_id = ?", userID)
 	if search != "" {
 		pattern := "%" + strings.NewReplacer("\\", "\\\\", "%", "\\%", "_", "\\_").Replace(search) + "%"
@@ -174,9 +179,57 @@ func (store *PostgresStore) ListTags(ctx context.Context, userID uuid.UUID, sear
 	if err := query.Count(&total).Error; err != nil {
 		return nil, 0, persistenceError(err)
 	}
-	items := make([]model.Tag, 0)
-	if err := query.Order("created_at DESC, business_id DESC").Offset(offset).Limit(limit).Find(&items).Error; err != nil {
+	type tagUsageRow struct {
+		ID         int       `gorm:"column:id"`
+		OrgID      int64     `gorm:"column:orgid"`
+		BusinessID uuid.UUID `gorm:"column:business_id"`
+		CreatedAt  time.Time `gorm:"column:created_at"`
+		UpdatedAt  time.Time `gorm:"column:updated_at"`
+		UserID     uuid.UUID `gorm:"column:user_id"`
+		Content    string    `gorm:"column:content"`
+		Source     string    `gorm:"column:source"`
+	}
+	rows := make([]tagUsageRow, 0)
+	searchSQL, args := "", []any{scope.OrgID, userID}
+	if search != "" {
+		searchSQL = " AND t.content ILIKE ? ESCAPE E'\\\\'"
+		args = append(args, search)
+	}
+	args = append(args, offset, limit)
+	// 自动标签记录与 tag_ids 分离保存，因此可按标签内容推导 AI、人工和混合来源，不新增标签来源列。
+	if err := store.db.WithContext(ctx).Raw(`
+		SELECT t.id,t.orgid,t.business_id,t.created_at,t.updated_at,t.user_id,t.content,
+		       CASE
+		         WHEN usage.has_ai AND usage.has_manual THEN 'mixed'
+		         WHEN usage.has_ai THEN 'ai'
+		         WHEN usage.has_manual THEN 'manual'
+		         ELSE 'unused'
+		       END AS source
+		FROM tags t
+		LEFT JOIN LATERAL (
+		    SELECT bool_or(assignment.auto_assigned) AS has_ai,
+		           bool_or(NOT assignment.auto_assigned) AS has_manual
+		    FROM inspirations i
+		    CROSS JOIN LATERAL (
+		        SELECT EXISTS(
+		            SELECT 1
+		            FROM jsonb_array_elements(COALESCE(i.auto_tags->'items','[]'::jsonb)) auto_tag
+		            WHERE auto_tag->>'name' = t.content
+		        ) AS auto_assigned
+		    ) assignment
+		    WHERE i.orgid = t.orgid AND i.user_id = t.user_id AND t.business_id = ANY(i.tag_ids)
+		) usage ON TRUE
+		WHERE t.orgid = ? AND t.user_id = ?`+searchSQL+`
+		ORDER BY t.created_at DESC,t.business_id DESC
+		OFFSET ? LIMIT ?`, args...).Scan(&rows).Error; err != nil {
 		return nil, 0, persistenceError(err)
+	}
+	items := make([]model.Tag, 0, len(rows))
+	for _, row := range rows {
+		items = append(items, model.Tag{
+			BaseModel: model.BaseModel{ID: row.ID, OrgID: row.OrgID, BusinessID: row.BusinessID, CreatedAt: row.CreatedAt, UpdatedAt: row.UpdatedAt},
+			UserID:    row.UserID, Content: row.Content, Source: row.Source,
+		})
 	}
 	return items, total, nil
 }
@@ -282,6 +335,7 @@ func (store *PostgresStore) CreateInspiration(ctx context.Context, inspiration *
 func (store *PostgresStore) ListInspirations(ctx context.Context, userID uuid.UUID, tagIDs []uuid.UUID, match, search, sort string, offset, limit int) ([]model.Inspiration, int64, error) {
 	query := store.db.WithContext(ctx).Model(&model.Inspiration{}).Where("user_id = ?", userID)
 	query = applyInspirationFilters(query, ctx, userID)
+	filters := model.InspirationFiltersFromContext(ctx)
 	if search != "" {
 		pattern := "%" + strings.NewReplacer("\\", "\\\\", "%", "\\%", "_", "\\_").Replace(search) + "%"
 		query = query.Where("file_name ILIKE ? ESCAPE E'\\\\'", pattern)
@@ -296,23 +350,125 @@ func (store *PostgresStore) ListInspirations(ctx context.Context, userID uuid.UU
 		} else {
 			query = query.Where("tag_ids && ?::uuid[]", values)
 		}
+		if filters.TagSource != "" {
+			query = applyInspirationTagSource(query, ctx, userID, values, match, filters.TagSource)
+		}
 	}
 	var total int64
 	if err := query.Count(&total).Error; err != nil {
 		return nil, 0, persistenceError(err)
 	}
 	items := make([]model.Inspiration, 0)
+	if sort == "color_match" {
+		if expression, ok := inspirationColorDistance(filters.Color); ok {
+			query = query.Order(expression).Order("created_at DESC, business_id DESC")
+		} else {
+			query = query.Order("created_at DESC, business_id DESC")
+		}
+	}
 	order := map[string]string{"created_desc": "created_at DESC, business_id DESC", "created_asc": "created_at ASC, business_id ASC", "updated_desc": "updated_at DESC, business_id DESC"}[sort]
 	if order == "" {
-		order = "created_at DESC, business_id DESC"
+		if sort != "color_match" {
+			order = "created_at DESC, business_id DESC"
+		}
 	}
-	if err := query.Order(order).Offset(offset).Limit(limit).Find(&items).Error; err != nil {
+	if order != "" {
+		query = query.Order(order)
+	}
+	if err := query.Offset(offset).Limit(limit).Find(&items).Error; err != nil {
 		return nil, 0, persistenceError(err)
 	}
 	if err := populateInspirationTagNames(ctx, store.db, userID, items); err != nil {
 		return nil, 0, err
 	}
 	return items, total, nil
+}
+
+// applyInspirationTagSource 只比较当前图片已绑定的所选标签；自动标签按 auto_tags 名称匹配。
+func applyInspirationTagSource(query *gorm.DB, ctx context.Context, userID uuid.UUID, tagIDs pq.StringArray, match, source string) *gorm.DB {
+	scope, err := tenant.Require(ctx)
+	if err != nil {
+		query.AddError(err)
+		return query
+	}
+	autoMatch := `EXISTS (
+		SELECT 1
+		FROM jsonb_array_elements(COALESCE(inspirations.auto_tags->'items','[]'::jsonb)) auto_tag
+		WHERE auto_tag->>'name' = tag.content
+	)`
+	condition := autoMatch
+	if source == "manual" {
+		condition = "NOT " + autoMatch
+	}
+	if match == "all" {
+		return query.Where(`NOT EXISTS (
+			SELECT 1
+			FROM unnest(?::uuid[]) selected_tag(id)
+			LEFT JOIN tags tag ON tag.business_id = selected_tag.id AND tag.orgid = ? AND tag.user_id = ?
+			WHERE tag.business_id IS NULL
+			   OR NOT (tag.business_id = ANY(inspirations.tag_ids) AND `+condition+`)
+		)`, tagIDs, scope.OrgID, userID)
+	}
+	return query.Where(`EXISTS (
+		SELECT 1
+		FROM tags tag
+		WHERE tag.orgid = ? AND tag.user_id = ? AND tag.business_id = ANY(?::uuid[])
+		  AND tag.business_id = ANY(inspirations.tag_ids)
+		  AND `+condition+`
+	)`, scope.OrgID, userID, tagIDs)
+}
+
+// inspirationColorDistance 生成前三种代表色的加权 RGB 距离排序表达式；色值在服务层已验证。
+func inspirationColorDistance(value string) (string, bool) {
+	if len(value) != 7 || value[0] != '#' {
+		return "", false
+	}
+	red, ok := parseHexByte(value[1:3])
+	if !ok {
+		return "", false
+	}
+	green, ok := parseHexByte(value[3:5])
+	if !ok {
+		return "", false
+	}
+	blue, ok := parseHexByte(value[5:7])
+	if !ok {
+		return "", false
+	}
+	return fmt.Sprintf(`CASE
+		WHEN jsonb_typeof(color_palette->'palette') = 'array' THEN COALESCE((
+			SELECT MIN(
+				2 * POWER((('x'||substr(color_item->>'hex',2,2))::bit(8)::integer - %d),2) +
+				4 * POWER((('x'||substr(color_item->>'hex',4,2))::bit(8)::integer - %d),2) +
+				3 * POWER((('x'||substr(color_item->>'hex',6,2))::bit(8)::integer - %d),2)
+			)
+			FROM jsonb_array_elements(color_palette->'palette') WITH ORDINALITY palette(color_item,position)
+			WHERE position <= 3 AND color_item->>'hex' ~ '^#[0-9a-fA-F]{6}$'
+		),1000000000)
+		ELSE 1000000000
+	END`, red, green, blue), true
+}
+
+// parseHexByte 只解析两位十六进制字节，调用方已完成长度和字符检查。
+func parseHexByte(value string) (int, bool) {
+	if len(value) != 2 {
+		return 0, false
+	}
+	number := 0
+	for _, char := range value {
+		number *= 16
+		switch {
+		case char >= '0' && char <= '9':
+			number += int(char - '0')
+		case char >= 'a' && char <= 'f':
+			number += int(char-'a') + 10
+		case char >= 'A' && char <= 'F':
+			number += int(char-'A') + 10
+		default:
+			return 0, false
+		}
+	}
+	return number, true
 }
 
 // GetInspirationStatistics 在 PostgreSQL 内按用户聚合拍摄属性，只返回分组名称和数量。

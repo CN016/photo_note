@@ -3,7 +3,7 @@ import { computed, nextTick, onMounted, onBeforeUnmount, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { ElNotification } from 'element-plus'
-import { Calendar, ChatDotRound, Clock, Files, House, List, Picture, PictureFilled, Setting, User, Menu, Close, Grid } from '@element-plus/icons-vue'
+import { Calendar, ChatDotRound, Clock, Files, House, List, Picture, PictureFilled, Setting, User, Expand, Close, Grid } from '@element-plus/icons-vue'
 import { useAuthStore } from '../stores/auth'
 import { useAppShellStore } from '../stores/appShell'
 import LanguageSwitcher from './LanguageSwitcher.vue'
@@ -22,6 +22,7 @@ const avatarSrc = computed(() => {
   const user = auth.user
   return user && appShell.avatarBusinessID === user.business_id && appShell.avatarStoreKey === user.avatar_key ? appShell.avatarSrc : ''
 })
+const unreadCount = computed(() => appShell.unreadCount)
 const drawerPanel = ref<HTMLElement>()
 const isDrawer = computed(() => navigationDrawer.progress > 0)
 const drawerWidth = () => Math.min(320, window.innerWidth * 0.86)
@@ -181,9 +182,13 @@ function ariaMobileCurrent(path: string): 'page' | 'location' | undefined {
 </script>
 
 <template>
-  <button v-if="route.name === 'delivery'" class="standalone-menu-trigger" type="button" :aria-label="t('common.openNavigation')" @click="setNavigationDrawer(true)"><el-icon><Menu /></el-icon></button>
-  <div v-if="isDrawer" class="navigation-backdrop" :style="{ opacity: navigationDrawer.progress }" aria-hidden="true" @click="setNavigationDrawer(false)" />
-  <aside ref="drawerPanel" class="app-navigation" :class="{ 'drawer-visible': isDrawer, 'drawer-dragging': navigationDrawer.dragging, 'standalone-navigation': route.meta.standalone }" :style="{ '--drawer-progress': navigationDrawer.progress }" :role="isDrawer ? 'dialog' : undefined" :aria-modal="isDrawer ? true : undefined" :aria-label="t('common.navigation')">
+  <button v-if="drawerListRoutes.has(String(route.name)) && !route.meta.standalone" class="mobile-list-menu-trigger" type="button" :aria-label="t('common.openNavigation')" aria-controls="app-navigation-drawer" :aria-expanded="isDrawer" @click="setNavigationDrawer(true)">
+    <el-icon aria-hidden="true"><Expand /></el-icon>
+    <span v-if="unreadCount" class="mobile-list-menu-unread-dot" aria-hidden="true" />
+  </button>
+  <button v-if="route.name === 'delivery'" class="standalone-menu-trigger" type="button" :aria-label="t('common.openNavigation')" @click="setNavigationDrawer(true)"><el-icon><Expand /></el-icon></button>
+  <div class="navigation-backdrop" :class="{ 'drawer-visible': isDrawer, 'drawer-dragging': navigationDrawer.dragging }" :style="{ '--drawer-progress': navigationDrawer.progress }" aria-hidden="true" @click="setNavigationDrawer(false)" />
+  <aside id="app-navigation-drawer" ref="drawerPanel" class="app-navigation" :class="{ 'drawer-visible': isDrawer, 'drawer-dragging': navigationDrawer.dragging, 'standalone-navigation': route.meta.standalone }" :style="{ '--drawer-progress': navigationDrawer.progress }" :role="isDrawer ? 'dialog' : undefined" :aria-modal="isDrawer ? true : undefined" :aria-label="t('common.navigation')">
     <div class="drawer-account-heading"><RouterLink to="/profile" class="drawer-profile"><el-avatar :size="44" :src="avatarSrc || undefined" @error="fallbackAvatar">{{ auth.user?.nickname.slice(0, 1) }}</el-avatar><strong>{{ auth.user?.nickname }}</strong></RouterLink><button class="drawer-close" type="button" :aria-label="t('common.closeNavigation')" @click="setNavigationDrawer(false)"><el-icon><Close /></el-icon></button></div>
     <InspirationGoalReminder />
 
@@ -235,7 +240,10 @@ function ariaMobileCurrent(path: string): 'page' | 'location' | undefined {
 
 <style scoped>
 .mobile-navigation-bar { display: none; }
-.navigation-backdrop { position: fixed; inset: 0; z-index: 2000; background: rgb(0 0 0 / 35%); }
+.mobile-list-menu-trigger { display: none; }
+.navigation-backdrop { position: fixed; inset: 0; z-index: 2000; visibility: hidden; opacity: 0; background: rgb(0 0 0 / 35%); pointer-events: none; transition: opacity 220ms var(--ease-spring), visibility 0s linear 220ms; }
+.navigation-backdrop.drawer-visible { visibility: visible; opacity: var(--drawer-progress); pointer-events: auto; transition: opacity 220ms var(--ease-spring); }
+.navigation-backdrop.drawer-dragging { transition: none; }
 .app-navigation { padding: 18px 12px max(12px, env(safe-area-inset-bottom)); }
 .drawer-account-heading { display: flex; flex: 0 0 auto; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 4px 18px; }
 .drawer-profile { display: flex; min-width: 0; align-items: center; gap: 12px; color: var(--ink); text-decoration: none; }
@@ -247,7 +255,7 @@ function ariaMobileCurrent(path: string): 'page' | 'location' | undefined {
 .drawer-preferences { display: grid; flex: 0 0 auto; gap: 7px; }
 .drawer-preferences-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .drawer-preferences :deep(.language-switcher) { width: 120px; }
-.app-navigation.drawer-visible { z-index: 2001; inset: 0 auto 0 0; width: min(320px, 86vw); height: 100dvh; background: var(--surface); transform: translateX(calc((var(--drawer-progress) - 1) * 100%)); transition: transform 220ms ease; }
+.app-navigation.drawer-visible { z-index: 2001; inset: 0 auto 0 0; width: min(320px, 86vw); height: 100dvh; background: var(--surface); transform: translateX(calc((var(--drawer-progress) - 1) * 100%)); transition: transform 220ms var(--ease-spring); }
 .drawer-visible .desktop-nav, .drawer-visible .navigation-account { display: grid; }
 .drawer-visible .drawer-close { display: grid; }
 .drawer-dragging { transition: none !important; }
@@ -255,10 +263,17 @@ function ariaMobileCurrent(path: string): 'page' | 'location' | undefined {
 .standalone-navigation.drawer-visible { visibility: visible; }
 .standalone-menu-trigger { position: fixed; z-index: 41; top: 14px; left: 12px; width: 44px; height: 44px; display: grid; place-items: center; background: var(--surface); color: var(--ink); border: 1px solid var(--line); border-radius: 12px; font-size: 22px; }
 @media (max-width: 768px) {
+  .mobile-list-menu-trigger { position: fixed; z-index: 41; top: env(safe-area-inset-top); left: 8px; display: grid; width: 44px; height: 44px; place-items: center; padding: 0; border: 0; background: transparent; color: var(--ink-soft); cursor: pointer; font-size: 20px; }
+  .mobile-list-menu-trigger::before { position: absolute; inset: 4px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); box-shadow: var(--soft-shadow); content: ""; transition: transform var(--duration-fast) var(--ease-spring); }
+  .mobile-list-menu-trigger > :deep(.el-icon) { position: relative; z-index: 1; }
+  .mobile-list-menu-trigger:active::before { transform: scale(.94); }
+  .mobile-list-menu-trigger:focus-visible { outline: 0; }
+  .mobile-list-menu-trigger:focus-visible::before { outline: 2px solid var(--focus); outline-offset: 2px; }
+  .mobile-list-menu-unread-dot { position: absolute; z-index: 1; top: 7px; right: 7px; width: 7px; height: 7px; border: 2px solid var(--surface); border-radius: 50%; background: var(--danger); }
   .mobile-navigation-bar { display: block; position: fixed; z-index: 40; inset: auto 0 0; padding: 0 8px env(safe-area-inset-bottom); border-top: 1px solid var(--line); background: var(--surface); }
   :global(.project-editor-route) .mobile-navigation-bar { display: none; }
-  .app-navigation { inset: 0 auto 0 0; width: min(320px, 86vw); height: 100dvh; border-top: 0; border-right: 1px solid var(--line); background: var(--surface); transform: translateX(-100%); visibility: hidden; }
-  .app-navigation.drawer-visible { visibility: visible; }
+  .app-navigation { inset: 0 auto 0 0; width: min(320px, 86vw); height: 100dvh; border-top: 0; border-right: 1px solid var(--line); background: var(--surface); transform: translateX(-100%); visibility: hidden; transition: transform 220ms var(--ease-spring), visibility 0s linear 220ms; }
+  .app-navigation.drawer-visible { visibility: visible; transition: transform 220ms var(--ease-spring); }
   .app-navigation .desktop-nav { display: grid; }
   .app-navigation .navigation-account { display: grid; }
 }

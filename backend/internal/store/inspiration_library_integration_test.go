@@ -213,6 +213,80 @@ func TestInspirationLibraryPostgres(t *testing.T) {
 	if analyzed.AutoTagging == nil || len(analyzed.TagIDs) != 4 {
 		t.Fatal("自动标签未写入画像或覆盖手工标签")
 	}
+	// 额外插入红、蓝色图片，验证任意色值只使用前三种代表色排序，以及人数范围查询。
+	seedSearchable := func(people int, colorHex, bucket, paletteJSON, tagName string) model.Inspiration {
+		t.Helper()
+		tag := model.Tag{BaseModel: model.BaseModel{BusinessID: uuid.New()}, UserID: uid, Content: tagName}
+		must(db.WithContext(ctx).Create(&tag).Error)
+		row := model.Inspiration{BaseModel: model.BaseModel{BusinessID: uuid.New()}, UserID: uid, ImageKey: "unsupported:search", FileName: tagName, Data: model.JSONB(`{}`), TagIDs: pq.StringArray{tag.BusinessID.String()}}
+		must(r.CreateInspiration(ctx, &row))
+		palette := model.JSONB(paletteJSON)
+		autoTags := model.JSONB(`{"version":"search-test-v1","items":[{"name":"` + tagName + `","score":1,"source":"model"}]}`)
+		notEmpty := people > 0
+		hue := 0.0
+		must(db.WithContext(ctx).Model(&model.Inspiration{}).Where("user_id=? AND business_id=?", uid, row.BusinessID).Updates(map[string]any{
+			"people_count": people, "is_empty_shot": !notEmpty, "dominant_color": colorHex, "dominant_hue": hue,
+			"color_bucket": bucket, "color_palette": palette, "analysis_status": "succeeded",
+			"analysis_version": row.AsyncVersion, "analysis_algorithm": "search-test-v1", "analyzed_at": time.Now().UTC(),
+			"auto_tags": autoTags,
+		}).Error)
+		return row
+	}
+	blue := seedSearchable(4, "#2255ee", "h08", `{"version":1,"palette":[{"hex":"#2255ee","percentage":75},{"hex":"#a9c8ff","percentage":20},{"hex":"#071b46","percentage":5}],"other_percentage":0}`, "AI蓝色场景")
+	_ = seedSearchable(7, "#e53935", "h00", `{"version":1,"palette":[{"hex":"#e53935","percentage":80},{"hex":"#ffb4a8","percentage":15},{"hex":"#4d0905","percentage":5}],"other_percentage":0}`, "AI红色场景")
+	colorFiltered := model.WithInspirationFilters(ctx, model.InspirationFilters{Color: "#2266f0"})
+	colorMatches, colorTotal, e := r.ListInspirations(colorFiltered, uid, nil, "any", "", "color_match", 0, 20)
+	must(e)
+	if colorTotal < 3 || len(colorMatches) == 0 || colorMatches[0].BusinessID != blue.BusinessID {
+		t.Fatalf("任意色值未按前三代表色排序: total=%d items=%+v", colorTotal, colorMatches)
+	}
+	rangeFiltered := model.WithInspirationFilters(ctx, model.InspirationFilters{PeopleMode: "range", PeopleMin: "3", PeopleMax: "5"})
+	rangeMatches, rangeTotal, e := r.ListInspirations(rangeFiltered, uid, nil, "any", "", "created_desc", 0, 20)
+	must(e)
+	if rangeTotal != 1 || len(rangeMatches) != 1 || rangeMatches[0].BusinessID != blue.BusinessID {
+		t.Fatalf("人数范围筛选错误: total=%d items=%+v", rangeTotal, rangeMatches)
+	}
+	listedTags, _, e := r.ListTags(ctx, uid, "", 0, 100)
+	must(e)
+	tagSources := make(map[string]string, len(listedTags))
+	for _, tag := range listedTags {
+		tagSources[tag.Content] = tag.Source
+	}
+	if tagSources["手工标签"] != "manual" || tagSources["AI蓝色场景"] != "ai" {
+		t.Fatalf("标签来源推导错误: %+v", tagSources)
+	}
+	autoTagID := uuid.Nil
+	whiteTagID := uuid.Nil
+	manualTagID := uuid.Nil
+	for _, tag := range listedTags {
+		if tag.Content == "空镜" {
+			autoTagID = tag.BusinessID
+		}
+		if tag.Content == "白色" {
+			whiteTagID = tag.BusinessID
+		}
+		if tag.Content == "手工标签" {
+			manualTagID = tag.BusinessID
+		}
+	}
+	aiTagFiltered := model.WithInspirationFilters(ctx, model.InspirationFilters{TagSource: "ai"})
+	aiTagMatches, aiTagTotal, e := r.ListInspirations(aiTagFiltered, uid, []uuid.UUID{autoTagID}, "any", "", "created_desc", 0, 20)
+	must(e)
+	if aiTagTotal != 1 || len(aiTagMatches) != 1 || aiTagMatches[0].BusinessID != item.BusinessID {
+		t.Fatalf("AI 标签来源筛选错误: total=%d items=%+v", aiTagTotal, aiTagMatches)
+	}
+	aiAllFiltered := model.WithInspirationFilters(ctx, model.InspirationFilters{TagSource: "ai"})
+	aiAllMatches, aiAllTotal, e := r.ListInspirations(aiAllFiltered, uid, []uuid.UUID{autoTagID, whiteTagID}, "all", "", "created_desc", 0, 20)
+	must(e)
+	if aiAllTotal != 1 || len(aiAllMatches) != 1 || aiAllMatches[0].BusinessID != item.BusinessID {
+		t.Fatalf("AI 标签全部匹配筛选错误: total=%d items=%+v", aiAllTotal, aiAllMatches)
+	}
+	manualFiltered := model.WithInspirationFilters(ctx, model.InspirationFilters{TagSource: "manual"})
+	manualMatches, manualTotal, e := r.ListInspirations(manualFiltered, uid, []uuid.UUID{manualTagID}, "any", "", "created_desc", 0, 20)
+	must(e)
+	if manualTotal != 1 || len(manualMatches) != 1 || manualMatches[0].BusinessID != item.BusinessID {
+		t.Fatalf("人工标签来源筛选错误: total=%d items=%+v", manualTotal, manualMatches)
+	}
 	_, scanned, e := r.ScanInspirationProcessingPage(tenant.System(context.Background()), 0, "force-new-algorithm")
 	must(e)
 	if scanned != 0 {
@@ -227,7 +301,7 @@ func TestInspirationLibraryPostgres(t *testing.T) {
 	must(r.DeleteInspiration(ctx, uid, item.BusinessID))
 	rows, err = r.ListInspirationActivities(ctx, uid, day, day)
 	must(err)
-	if rows[0].SavedCount != 1 || *rows[0].Target != 4 {
+	if rows[0].SavedCount != 3 || *rows[0].Target != 4 {
 		t.Fatal("删除回减历史计数或修改目标丢失快照")
 	}
 }

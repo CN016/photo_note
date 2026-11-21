@@ -14,20 +14,20 @@ import { createLongPress } from '../context-menu/longPress'
 import { gallerySnapshot, saveGallerySnapshot, clearGallerySnapshot } from '../context-menu/galleryNavigation'
 import type { InspirationProjectSummary } from '../api/types'
 import { useI18n } from 'vue-i18n'
-import { ArrowDown, Filter, PictureFilled, Search, User } from '@element-plus/icons-vue'
+import { ArrowDown, PictureFilled, Search, Sort } from '@element-plus/icons-vue'
 import CreateFab from '../components/CreateFab.vue'
 import InspirationThumbnail from '../components/InspirationThumbnail.vue'
 import InspirationLibraryTools from '../components/InspirationLibraryTools.vue'
+import GallerySearchPanel from '../components/GallerySearchPanel.vue'
 import { useAuthStore } from '../stores/auth'
 import type { InspirationLibraryFilters } from '../api/types'
 import { api } from '../api/client'
 import { ApiError, type InspirationRecord, type TagRecord } from '../api/types'
-import { useCompactViewport } from '../useCompactViewport'
+import { createGallerySearchState, gallerySearchHasValue, inspirationRequestOptions, type GallerySort, type GallerySearchState } from '../gallerySearch'
 
 const { t, locale } = useI18n()
 const router = useRouter()
 const route = useRoute()
-const showPeople = ref(false)
 const active = ref(true)
 let savedScroll = 0
 let openedImageID = ''
@@ -59,8 +59,6 @@ const galleryRoot = ref<HTMLElement>()
 useGallerySectionSwipe(galleryRoot, 'list')
 const libraryTools = ref<InstanceType<typeof InspirationLibraryTools>>()
 const contentZoom = ref<InstanceType<typeof ContentZoom>>()
-const compact = useCompactViewport()
-const moreFiltersOpen = ref(false)
 const scopeKey = () => `${auth.sessionID}:${auth.orgid}:${auth.sessionVersion}:${auth.user?.business_id ?? ''}`
 let restoring = false
 let alive = true
@@ -110,6 +108,8 @@ function openRelated(projectID: string, x: number, y: number) {
   history.replaceState({ ...history.state, galleryReturnKey: key }, '')
   saveGallerySnapshot({ scope: scopeKey(), key, position: history.state.position, x, y,
     search: searchQuery.value, tags: [...selectedTagIDs.value], match: tagMatch.value, sort: sort.value,
+    searchKind: gallerySearch.value.kind, searchColor: gallerySearch.value.color, tagSource: gallerySearch.value.tagSource,
+    peopleMode: gallerySearch.value.peopleMode, peopleMin: gallerySearch.value.peopleMin, peopleMax: gallerySearch.value.peopleMax,
     filters: JSON.parse(JSON.stringify(libraryFilters.value)), items: [...items.value], page: page.value, total: total.value,
     scroll: window.scrollY, imageID: activeImage, menuPage, menuScroll: menuState.value?.scroll ?? 0,
     toolsScroll: document.querySelector('.activity-scroll')?.scrollLeft ?? 0,
@@ -156,21 +156,25 @@ async function openDetail(event: MouseEvent, item: InspirationRecord) {
 }
 const items = ref<InspirationRecord[]>([])
 const tags = ref<TagRecord[]>([])
-const searchQuery = ref('')
-const selectedTagIDs = ref<string[]>([])
-const tagMatch = ref<'any' | 'all'>('any')
-const sort = ref<'created_desc' | 'created_asc' | 'updated_desc'>('created_desc')
+const gallerySearch = ref<GallerySearchState>(createGallerySearchState())
+const searchQuery = computed({ get: () => gallerySearch.value.query, set: value => { gallerySearch.value = { ...gallerySearch.value, query: value } } })
+const selectedTagIDs = computed({ get: () => gallerySearch.value.tagIds, set: value => { gallerySearch.value = { ...gallerySearch.value, tagIds: value } } })
+const tagMatch = computed({ get: () => gallerySearch.value.tagMatch, set: value => { gallerySearch.value = { ...gallerySearch.value, tagMatch: value } } })
+const sort = ref<Exclude<GallerySort, 'color_match'>>('created_desc')
 const page = ref(1)
 const total = ref(0)
 const pageSize = 20
 const loading = ref(false)
+const tagsLoading = ref(false)
 const error = ref('')
 const auth = useAuthStore()
 const libraryFilters = ref<InspirationLibraryFilters>({})
 const libraryRevision = ref(0)
 const hasMore = computed(() => items.value.length < total.value)
-const filtersActive = computed(() => Boolean(searchQuery.value.trim() || selectedTagIDs.value.length || Object.values(libraryFilters.value).some(Boolean)))
-const advancedFilterCount = computed(() => selectedTagIDs.value.length + Object.values(libraryFilters.value).filter(Boolean).length + (sort.value === 'created_desc' ? 0 : 1))
+const filtersActive = computed(() => gallerySearchHasValue(gallerySearch.value) || Object.values(libraryFilters.value).some(Boolean))
+const sortLabel = computed(() => gallerySearch.value.kind === 'color'
+  ? t('gallery.sortColorMatch')
+  : t(sort.value === 'created_desc' ? 'gallery.sortNewest' : sort.value === 'created_asc' ? 'gallery.sortOldest' : 'gallery.sortEdited'))
 let requestVersion = 0
 let searchTimer: number | undefined
 let tagsVersion = 0
@@ -193,13 +197,7 @@ async function loadPage(nextPage = 1) {
   loading.value = true
   error.value = ''
   try {
-    const result = await api.inspirations(nextPage, pageSize, {
-      q: searchQuery.value,
-      tagIds: selectedTagIDs.value,
-      tagMatch: tagMatch.value,
-      sort: sort.value,
-      ...libraryFilters.value,
-    })
+    const result = await api.inspirations(nextPage, pageSize, inspirationRequestOptions(gallerySearch.value, sort.value, libraryFilters.value))
     if (version !== requestVersion) return
     items.value = nextPage === 1 ? result.items : [...items.value, ...result.items]
     page.value = result.page
@@ -211,30 +209,45 @@ async function loadPage(nextPage = 1) {
 /** 标签获取失败不影响图库浏览；筛选请求始终由后端分页执行。 */
 async function loadTags() {
   const version = ++tagsVersion
-  try { const result = await api.tags(); if(version === tagsVersion) tags.value = result.items }
+  tagsLoading.value = true
+  try {
+    const collected: TagRecord[] = []
+    let nextPage = 1
+    while (version === tagsVersion) {
+      const result = await api.tags(nextPage, 100)
+      collected.push(...result.items)
+      if (!result.items.length || collected.length >= result.total) break
+      nextPage += 1
+    }
+    if (version === tagsVersion) tags.value = Array.from(new Map(collected.map(tag => [tag.business_id, tag])).values())
+  }
   catch { if(version === tagsVersion) tags.value = [] }
+  finally { if(version === tagsVersion) tagsLoading.value = false }
 }
 
 /** 筛选条件变化后短暂合并连续输入，并从第一页重新查询。 */
-watch([searchQuery, selectedTagIDs, tagMatch, sort, libraryFilters], () => {
+watch([gallerySearch, sort, libraryFilters], () => {
   if (restoring || !active.value) return
   if (searchTimer !== undefined) window.clearTimeout(searchTimer)
   searchTimer = window.setTimeout(() => { void loadPage(1) }, 220)
-})
+}, { deep: true })
 
 /** 清空检索条件后恢复默认的收藏时间倒序。 */
 function resetFilters() {
   libraryFilters.value = {}
-  searchQuery.value = ''
-  selectedTagIDs.value = []
-  tagMatch.value = 'any'
+  gallerySearch.value = createGallerySearchState()
   sort.value = 'created_desc'
+}
+
+/** 色系搜索固定按距离排序，其余条件允许用户选择收藏或编辑时间。 */
+function setSort(value: string) {
+  if (value === 'created_desc' || value === 'created_asc' || value === 'updated_desc') sort.value = value
 }
 
 /** 重试只提交当前图片任务，等待后端确认后刷新列表，防止重复点击。 */
 
 watch(() => [auth.orgid, auth.user?.business_id, auth.sessionVersion], () => {
-  openVersion += 1; openingID.value = ''; clearGallerySnapshot(); associationVersion += 1; requestVersion += 1; items.value = []; total.value = 0; libraryFilters.value = {}; selectedTagIDs.value = []; tags.value = []
+  openVersion += 1; openingID.value = ''; clearGallerySnapshot(); associationVersion += 1; requestVersion += 1; items.value = []; total.value = 0; libraryFilters.value = {}; gallerySearch.value = createGallerySearchState(); tags.value = []
   if (active.value && route.name === 'gallery') { void loadPage(); void loadTags() }
 })
 
@@ -252,8 +265,21 @@ onMounted(async () => {
   const saved = gallerySnapshot(scopeKey(), history.state.galleryReturnKey)
   if (!saved || saved.key !== history.state.galleryReturnKey || saved.position !== history.state.position) { void loadPage(); return }
   restoring = true
-  searchQuery.value = saved.search; selectedTagIDs.value = saved.tags; tagMatch.value = saved.match
-  sort.value = saved.sort; libraryFilters.value = saved.filters; items.value = saved.items; page.value = saved.page; total.value = saved.total
+  gallerySearch.value = {
+    ...createGallerySearchState(saved.searchKind || 'text'),
+    query: saved.search || '',
+    tagIds: [...saved.tags],
+    tagMatch: saved.match,
+    color: saved.searchColor || '',
+    tagSource: saved.tagSource || 'all',
+    peopleMode: saved.peopleMode || 'present',
+    peopleMin: saved.peopleMin ?? 1,
+    peopleMax: saved.peopleMax ?? 3,
+  }
+  const { color: _legacyColor, people: _legacyPeople, people_mode: _legacyPeopleMode, people_min: _legacyPeopleMin, people_max: _legacyPeopleMax, ...persistentFilters } = saved.filters
+  void _legacyColor; void _legacyPeople; void _legacyPeopleMode; void _legacyPeopleMin; void _legacyPeopleMax
+  sort.value = saved.sort === 'color_match' ? 'created_desc' : saved.sort
+  libraryFilters.value = persistentFilters; items.value = saved.items; page.value = saved.page; total.value = saved.total
   await libraryTools.value?.restore(saved.tools)
   if (!alive) return
   await nextTick(); restoring = false
@@ -282,33 +308,25 @@ onBeforeUnmount(() => { alive = false; inspirationDetails.clear(); openVersion +
         <RouterLink class="gallery-subnav-link" to="/inspirations/statistics">{{ t('gallery.statisticsSection') }}</RouterLink>
       </nav>
 
-      <section class="gallery-tools" :aria-label="t('gallery.filters')">
-        <el-input v-model="searchQuery" class="gallery-search" :aria-label="t('gallery.searchPlaceholder')" :placeholder="t('gallery.searchPlaceholder')" clearable>
-          <template #prefix><el-icon aria-hidden="true"><Search /></el-icon></template>
-        </el-input>
-        <button v-if="compact" type="button" class="gallery-filter-toggle" :aria-expanded="moreFiltersOpen" aria-controls="gallery-advanced-filters" @click="moreFiltersOpen = !moreFiltersOpen">
-          <el-icon aria-hidden="true"><Filter /></el-icon>
-          <span>{{ moreFiltersOpen ? t('gallery.hideFilters') : t('gallery.moreFilters') }}</span>
-          <b v-if="advancedFilterCount">{{ advancedFilterCount }}</b>
-          <el-icon class="filter-chevron" :class="{ expanded: moreFiltersOpen }" aria-hidden="true"><ArrowDown /></el-icon>
-        </button>
-        <div v-if="!compact || moreFiltersOpen" id="gallery-advanced-filters" class="gallery-advanced-filters">
-          <el-select v-model="selectedTagIDs" class="gallery-tag-select" multiple filterable collapse-tags collapse-tags-tooltip :placeholder="t('gallery.filterTags')" :aria-label="t('gallery.filterTags')" :max-collapse-tags="2">
-            <el-option v-for="tag in tags" :key="tag.business_id" :label="tag.content" :value="tag.business_id" />
-          </el-select>
-          <el-select v-if="selectedTagIDs.length" v-model="tagMatch" class="gallery-match-select" :aria-label="t('gallery.tagMatch')">
-            <el-option :label="t('gallery.matchAny')" value="any" />
-            <el-option :label="t('gallery.matchAll')" value="all" />
-          </el-select>
-          <el-select v-model="sort" class="gallery-sort-select" :aria-label="t('gallery.sort')">
-            <el-option :label="t('gallery.sortNewest')" value="created_desc" />
-            <el-option :label="t('gallery.sortOldest')" value="created_asc" />
-            <el-option :label="t('gallery.sortEdited')" value="updated_desc" />
-          </el-select>
-        </div>
-      </section>
+      <GallerySearchPanel v-model="gallerySearch" :tags="tags" :tags-loading="tagsLoading" />
 
-      <div v-if="items.length" class="gallery-meta"><span>{{ t('gallery.count', { count: total }) }}</span><button type="button" class="gallery-people-toggle" :class="{ 'is-active': showPeople }" :aria-pressed="showPeople" :aria-label="t('gallery.togglePeople')" :title="t('gallery.togglePeople')" @click="showPeople = !showPeople"><el-icon aria-hidden="true"><User /></el-icon></button></div>
+      <div v-if="items.length" class="gallery-meta">
+        <span>{{ t('gallery.count', { count: total }) }}</span>
+        <el-dropdown trigger="click" :disabled="gallerySearch.kind === 'color'" @command="setSort">
+          <button type="button" class="gallery-sort-button" :disabled="gallerySearch.kind === 'color'" :aria-label="t('gallery.sort')">
+            <el-icon aria-hidden="true"><Sort /></el-icon>
+            <span>{{ sortLabel }}</span>
+            <el-icon class="sort-chevron" aria-hidden="true"><ArrowDown /></el-icon>
+          </button>
+          <template #dropdown>
+            <el-dropdown-menu>
+              <el-dropdown-item command="created_desc">{{ t('gallery.sortNewest') }}</el-dropdown-item>
+              <el-dropdown-item command="created_asc">{{ t('gallery.sortOldest') }}</el-dropdown-item>
+              <el-dropdown-item command="updated_desc">{{ t('gallery.sortEdited') }}</el-dropdown-item>
+            </el-dropdown-menu>
+          </template>
+        </el-dropdown>
+      </div>
 
       <div v-if="error" class="inline-error" role="alert"><span>{{ error }}</span><el-button text :disabled="loading" @click="loadPage(page)">{{ t('gallery.retry') }}</el-button></div>
 
@@ -318,10 +336,6 @@ onBeforeUnmount(() => { alive = false; inspirationDetails.clear(); openVersion +
             <div class="gallery-image-frame"><InspirationThumbnail :record="item" show-anchors /></div>
             <p v-if="imageNote(item.data)" class="gallery-image-note" :title="imageNote(item.data)">{{ imageNote(item.data) }}</p>
           </RouterLink>
-          <div v-if="showPeople && item.analysis_status" class="gallery-analysis">
-            <span v-if="item.analysis_status === 'succeeded'">{{ item.people_count === 0 ? t('gallery.library.emptyOnly') : t('gallery.library.personCount', { count: item.people_count }) }}<i v-if="item.dominant_color" :style="{ background: item.dominant_color }" :title="item.color_bucket ? t(`gallery.library.colorNames.${item.color_bucket}`) : ''" /></span>
-            <span v-else role="status">{{ t(`gallery.library.states.${item.analysis_status}`) }}</span>
-          </div>
         </article>
       </section>
 
@@ -339,62 +353,41 @@ onBeforeUnmount(() => { alive = false; inspirationDetails.clear(); openVersion +
       <div v-if="loading && !items.length" class="gallery-loading" role="status"><span class="loading-dot"></span>{{ t('common.loading') }}</div>
       <div v-if="hasMore" class="load-more-wrap"><el-button :disabled="loading" @click="loadPage(page + 1)">{{ loading ? t('common.loading') : t('gallery.loadMore') }}</el-button></div>
 
-      <InspirationLibraryTools ref="libraryTools" v-model:filters="libraryFilters" :revision="libraryRevision" :selected-tags="selectedTagIDs" @tag="id => selectedTagIDs = selectedTagIDs.includes(id) ? selectedTagIDs.filter(tag => tag !== id) : [...selectedTagIDs, id]" />
+      <InspirationLibraryTools ref="libraryTools" v-model:filters="libraryFilters" :revision="libraryRevision" />
     </main></ContentZoom>
     <CreateFab :label="t('gallery.newImage')" to="/inspirations/new" />
     <footer class="workspace-footer"><span>{{ t('common.brand') }}</span><span>{{ t('common.footer') }}</span></footer>
   </div>
 </template>
 <style scoped>
-.gallery-analysis{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:0 12px 12px;color:var(--muted);font-size:12px}.gallery-analysis>span{display:flex;align-items:center;gap:8px}.gallery-analysis i{width:12px;height:12px;border-radius:50%;border:1px solid var(--line)}
-</style>
-
-<style scoped>
-.inspiration-card { -webkit-touch-callout: none; }
-.inspiration-card img { -webkit-user-drag: none; }
-</style>
-
-<style scoped>
-/* 双列优先呈现图片，元信息保留在详情；人数是可选的图上角标，不改变卡片高度。 */
-.gallery-main { padding-top: 20px; }
+/* 手机优先露出搜索与图片；桌面按可用区域增加列数，卡片本身不增加外框。 */
+.gallery-main { padding-top: 14px; }
 .gallery-subnav { margin-top: 0; }
-.gallery-tools { display: grid; grid-template-columns: minmax(220px, .9fr) minmax(0, 1.35fr); align-items: center; gap: 10px; margin-top: 12px; padding: 10px; }
-.gallery-search { width: 100%; min-width: 0; max-width: none; }
-.gallery-advanced-filters { display: grid; min-width: 0; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 8px; }
-.gallery-meta { justify-content: space-between; margin: 8px 0; }
-.gallery-people-toggle { display: grid; place-items: center; width: 36px; height: 36px; border: 1px solid var(--line); border-radius: var(--radius-control); background: var(--surface); color: var(--muted); cursor: pointer; }
-.gallery-people-toggle.is-active { color: var(--accent); background: var(--accent-soft); border-color: var(--accent); }
-.gallery-people-toggle:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.gallery-meta { justify-content: space-between; margin: 10px 0 12px; }
+.gallery-sort-button { display: inline-flex; min-height: 38px; align-items: center; gap: 6px; padding: 0 8px; border: 0; border-radius: 999px; background: transparent; color: var(--muted); font: inherit; font-size: 12px; cursor: pointer; }
+.gallery-sort-button:hover:not(:disabled), .gallery-sort-button:focus-visible { background: var(--surface-soft); color: var(--ink); outline: none; }
+.gallery-sort-button:disabled { cursor: default; opacity: .72; }
+.sort-chevron { font-size: 11px; }
 .inspiration-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
-.inspiration-card { position: relative; border-radius: var(--radius-card); }
+.inspiration-card { position: relative; border-radius: var(--radius-card); -webkit-touch-callout: none; }
+.inspiration-card img { -webkit-user-drag: none; }
 .inspiration-card:focus-visible { outline: none; }
-.inspiration-card:focus-visible .thumbnail-frame { outline: 3px solid var(--focus); outline-offset: 3px; }
-.gallery-analysis { position: absolute; left: 8px; bottom: 8px; max-width: calc(100% - 16px); padding: 5px 8px; border-radius: 999px; background: var(--surface); color: var(--ink); pointer-events: none; }
+.inspiration-card :deep(.thumbnail-frame) { border: 0 !important; background: transparent !important; box-shadow: none !important; }
+.inspiration-card:hover :deep(.thumbnail-frame), .inspiration-card:focus-within :deep(.thumbnail-frame) { border: 0 !important; box-shadow: none !important; }
+.inspiration-card:focus-visible :deep(.thumbnail-frame) { outline: 3px solid var(--focus); outline-offset: 3px; }
+.gallery-image-frame { position: relative; border: 0 !important; border-radius: var(--radius-card); background: transparent !important; box-shadow: none !important; }
+.inspiration-card:hover .gallery-image-frame, .inspiration-card:focus-within .gallery-image-frame { box-shadow: none !important; }
+.gallery-image-note { overflow: hidden; margin: 0; padding: 7px 2px 2px; color: var(--ink); font-size: 13px; line-height: 1.5; white-space: nowrap; text-overflow: ellipsis; }
 @media (max-width: 768px) {
-  .gallery-main { width: calc(100% - 20px); padding-top: 0; }
+  .gallery-main { width: calc(100% - 20px); padding-top: 8px !important; }
   .gallery-subnav { gap: 24px; padding-inline: 4px; }
-  .gallery-tools { grid-template-columns: minmax(0, 1fr) 44px; padding: 0; }
-  .gallery-search { max-width: none; }
-  .gallery-filter-toggle { min-height: 38px; height: 38px; width: 40px; }
-  .gallery-tools :deep(.el-input__wrapper) { min-height: 36px; }
-  .gallery-advanced-filters { grid-column: 1 / -1; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .gallery-meta { margin: 8px 0 10px; }
+  .gallery-sort-button { min-height: 44px; padding-inline: 5px; }
   .inspiration-grid { gap: 8px; }
   .inspiration-card :deep(.thumbnail-frame) { border-radius: 14px; }
 }
-</style>
-
-<style scoped>
-/* 手机双列；桌面按可用区域自动增加列数，保持卡片至少约 210px 宽。 */
-@media (min-width: 769px) { .inspiration-grid { grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 16px; } }
+@media (min-width: 769px) {
+  .inspiration-grid { grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 16px; }
+}
 @media (min-width: 1600px) { .gallery-main { max-width: none; } }
-</style>
-
-<style scoped>
-.gallery-image-note { overflow: hidden; margin: 0; padding: 7px 2px 2px; color: var(--ink); font-size: 13px; line-height: 1.5; white-space: nowrap; text-overflow: ellipsis; }
-.gallery-analysis { top: 8px; bottom: auto; }
-</style>
-
-<style scoped>
-.gallery-image-frame { position: relative; }
-
 </style>

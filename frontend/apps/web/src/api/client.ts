@@ -338,13 +338,13 @@ export const api = {
     return request<void>('/feedback', { method: 'POST', body }, Boolean(accessToken))
   },
   /** 使用服务端分页契约加载灵感图，并把文件名、标签和排序条件交给数据库组合筛选。 */
-  inspirations(page: number, pageSize = 20, options: InspirationLibraryFilters & { q?: string; tagIds?: string[]; tagMatch?: 'any' | 'all'; sort?: 'created_desc' | 'created_asc' | 'updated_desc' } = {}) {
+  inspirations(page: number, pageSize = 20, options: InspirationLibraryFilters & { q?: string; tagIds?: string[]; tagMatch?: 'any' | 'all'; sort?: 'created_desc' | 'created_asc' | 'updated_desc' | 'color_match' } = {}) {
     const params = new URLSearchParams({ page: String(page), page_size: String(pageSize) })
     if (options.q?.trim()) params.set('q', options.q.trim())
     options.tagIds?.forEach(id => params.append('tag_ids', id))
     if (options.tagMatch) params.set('tag_match', options.tagMatch)
     if (options.sort) params.set('sort', options.sort)
-    for (const key of ['date_from','date_to','project','people','empty_shot','color','status'] as const) { if (options[key]) params.set(key, options[key]!) }
+    for (const key of ['date_from','date_to','project','people','people_mode','people_min','people_max','empty_shot','color','status','tag_source'] as const) { if (options[key] !== undefined && options[key] !== '') params.set(key, String(options[key])) }
     return request<PageResult<InspirationRecord>>(`/inspirations?${params.toString()}`)
   },
   /** 查询当前账号的拍摄参数分布；后台仅返回分类计数，不传输图片记录明细。 */

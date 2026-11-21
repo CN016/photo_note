@@ -1204,7 +1204,7 @@ html.native-content-zoom { touch-action: pan-x pan-y; }
 .card-size { font-family: ui-monospace, SFMono-Regular, Consolas, monospace; }
 .statistics-summary-card strong, .color-metrics dd { font-variant-numeric: tabular-nums; }
 
-/* 移动端隐藏顶部品牌栏及重复标题，保留底栏与右划菜单抽屉。 */
+/* 移动端隐藏顶部品牌栏及重复标题，保留底栏、左上角悬浮入口与右划菜单抽屉。 */
 @media (max-width: 768px) {
   .global-message-bar,
   .gallery-intro,
@@ -1251,6 +1251,12 @@ html.native-content-zoom { touch-action: pan-x pan-y; }
   .editor-main,
   .upload-main {
     padding-top: max(18px, env(safe-area-inset-top)) !important;
+  }
+}
+/* 列表菜单使用独立悬浮层；只预留按钮高度，避免形成整行顶栏并遮挡首个筛选项。 */
+@media (max-width: 768px) {
+  #app:has(.mobile-list-menu-trigger) main {
+    padding-top: max(44px, calc(env(safe-area-inset-top) + 44px)) !important;
   }
 }
 /* 装饰拼贴只承担摄影题材示意，不与表单、标题争夺强调色。 */
