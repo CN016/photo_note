@@ -1,4 +1,4 @@
-取景台官网第三方说明
+LightNote 官网第三方说明
 
 @element-plus/icons-vue 2.3.2
 来源：https://github.com/element-plus/element-plus-icons

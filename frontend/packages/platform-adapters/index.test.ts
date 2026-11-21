@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const nativeExport = vi.fn()
-import { MAX_NATIVE_EXPORT_BYTES, platformAdapter } from './index'
+import { MAX_NATIVE_EXPORT_BYTES, notifyNativePageReady, platformAdapter } from './index'
 const labels = { title: 'Export', save: 'Save', share: 'Share', cancel: 'Cancel' }
 
 describe('平台文件导出边界', () => {
@@ -42,5 +42,16 @@ describe('平台文件导出边界', () => {
     vi.stubGlobal('FileReader', class { onerror?: () => void; readAsDataURL() { this.onerror?.() } })
     await expect(platformAdapter.exportFile(new Blob(['x']), 'file.txt', labels)).rejects.toThrow('export_read_failed')
     expect(nativeExport).not.toHaveBeenCalled()
+  })
+
+  it('Android 首帧完成后只向同源窗口发送就绪事件', () => {
+    const postMessage = vi.fn()
+    vi.stubGlobal('window', { postMessage })
+    vi.stubGlobal('location', { origin: 'http://127.0.0.1:4000' })
+    notifyNativePageReady()
+    expect(postMessage).toHaveBeenCalledWith(
+      { channel: 'photo-nini-native-event', type: 'pageReady' },
+      'http://127.0.0.1:4000',
+    )
   })
 })

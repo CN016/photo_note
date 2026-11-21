@@ -3,9 +3,9 @@
     "sharp": "0.35.5"
   },
   "name": "@photo-nini/android",
-  "version": "1.4.0",
+  "version": "1.4.1",
   "private": true,
-  "description": "取景台 Android 9+ 内置 GeckoView 平台壳",
+  "description": "LightNote Android 9+ 内置 GeckoView 平台壳",
   "scripts": {
     "build": "node scripts/build.mjs",
     "icons": "node scripts/icons.mjs",
@@ -15,6 +15,6 @@
     "node": ">=22",
     "npm": ">=10"
   },
-  "androidVersionCode": 11,
+  "androidVersionCode": 12,
   "webMinShellCode": 11
 }

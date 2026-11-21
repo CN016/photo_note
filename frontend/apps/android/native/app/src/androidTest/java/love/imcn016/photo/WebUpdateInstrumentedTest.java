@@ -20,6 +20,7 @@ import java.security.*;
 import java.security.cert.X509Certificate;
 import java.util.*;
 import java.util.concurrent.*;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.zip.*;
 
 /** 仅在隔离模拟器上用即时测试密钥和本机TLS服务器验收，不访问真实用户文件或生产发布源。 */
@@ -42,6 +43,7 @@ public class WebUpdateInstrumentedTest {
     private volatile String lastApiBody = "";
     private volatile String lastApiAuthorization = "";
     private volatile String lastApiCookie = "";
+    private final AtomicInteger feedRequests = new AtomicInteger();
     private final ExecutorService server = Executors.newCachedThreadPool();
     @Before public void prepare() throws Exception {
         Context app = InstrumentationRegistry.getInstrumentation().getTargetContext();
@@ -111,6 +113,7 @@ public class WebUpdateInstrumentedTest {
                 lastApiPath = request; lastApiBody = body.toString();
                 lastApiAuthorization = requestHeaders.getOrDefault("authorization",""); lastApiCookie = requestHeaders.getOrDefault("cookie","");
             }
+            if (request.contains("/latest.json ")) feedRequests.incrementAndGet();
             boolean auth = request.contains("/api/v1/auth/");
             byte[] bytes = auth && authResponse != null ? authResponse : request.contains("/latest.json ") ? feed : request.contains("/bundle.zip ") ? archive : "{\"ok\":true}".getBytes(java.nio.charset.StandardCharsets.UTF_8);
             OutputStream output = socket.getOutputStream();
@@ -169,6 +172,33 @@ public class WebUpdateInstrumentedTest {
         feed = new JSONObject().put("payload",Base64.encodeToString(payload,Base64.NO_WRAP)).put("signature",Base64.encodeToString(signature.sign(),Base64.NO_WRAP)).toString().getBytes(java.nio.charset.StandardCharsets.UTF_8);
     }
     private String page(WebBundleUpdater updater) throws Exception { try (InputStream input = updater.open("index.html")) { return new String(BundleIO.read(input),java.nio.charset.StandardCharsets.UTF_8); } }
+    /** 本地启动只读取已安装包，不能等待网络。 */
+    @Test public void localPreparationDoesNotFetchRemoteFeed() throws Exception {
+        int before = feedRequests.get();
+        WebBundleUpdater updater = new WebBundleUpdater(isolated,config());
+        updater.prepareLocal();
+        assertEquals(before,feedRequests.get());
+        updater.confirm();
+    }
+
+    /** 后台下载版本不能打断当前页面，下次本地启动才无网络切换。 */
+    @Test public void downloadedBundleAppliesOnNextLocalStart() throws Exception {
+        WebBundleUpdater updater = new WebBundleUpdater(isolated,config());
+        updater.prepare((phase, percent) -> {});
+        updater.confirm();
+        assertTrue(page(updater).contains("fixture-2"));
+
+        release(3,false,false);
+        updater.refreshRemote();
+        assertTrue("后台下载后当前页面保持稳定版本",page(updater).contains("fixture-2"));
+
+        updater = new WebBundleUpdater(isolated,config());
+        updater.prepareLocal();
+        assertTrue("下次本地启动提升 ready 包",page(updater).contains("fixture-3"));
+        assertTrue(updater.hasCandidate());
+        updater.confirm();
+    }
+
     @Test public void signedInstallTamperRestartAndRollback() throws Exception {
         WebBundleUpdater updater = new WebBundleUpdater(isolated,config());
         List<String> phases = new ArrayList<>(); updater.prepare((phase, percent) -> phases.add(phase));

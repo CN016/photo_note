@@ -18,7 +18,7 @@ export function syncWeb(apiUrl) {
   // 固定内置扩展负责来源受限的桥接；业务资源从签名包提供，外部网页不获得原生权限。
   const manifest = {
     manifest_version: 2,
-    name: '取景台', version,
+    name: 'LightNote', version,
     browser_specific_settings: { gecko: { id: 'photo-nini@imcn016.love' } },
     permissions: ['nativeMessaging', 'nativeMessagingFromContent', 'geckoViewAddons', `${api.origin}/*`, 'http://127.0.0.1/*'],
     content_scripts: [{ matches: ['http://127.0.0.1/*'], js: ['content-bridge.js'], run_at: 'document_start', all_frames: false }],

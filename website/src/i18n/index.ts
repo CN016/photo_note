@@ -6,10 +6,13 @@ import homeEn from "./home.en-US.json";
 import downloadZh from "./download.zh-CN.json";
 import downloadEn from "./download.en-US.json";
 
-// 官网语言偏好独立保存；隐私模式拒绝存储时仍可正常浏览与切换。
+// 官网语言偏好独立保存；读取旧键以保留升级前用户选择。
 let locale = "zh-CN";
 try {
-  if (localStorage.getItem("qujingtai.website.locale") === "en-US")
+  const saved =
+    localStorage.getItem("lightnote.website.locale") ||
+    localStorage.getItem("qujingtai.website.locale");
+  if (saved === "en-US")
     locale = "en-US";
 } catch {
   /* 存储不可用时使用中文。 */

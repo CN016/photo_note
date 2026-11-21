@@ -1,9 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">取景台</string>
-    <string name="title_activity_main">取景台</string>
+    <string name="app_name">LightNote</string>
+    <string name="title_activity_main">LightNote</string>
     <string name="engine_loading">Starting the creative engine…</string>
-    <string name="engine_failed">Could not start the creative engine. Close and reopen 取景台.</string>
+    <string name="engine_failed">Could not start the creative engine. Close and reopen LightNote.</string>
     <string name="update_checking">Checking for page updates…</string>
     <string name="update_downloading">Downloading page update: %1$d%%</string>
     <string name="update_verifying">Verifying and installing the update…</string>
@@ -11,7 +11,7 @@
     <string name="update_retry">Check again</string>
     <string name="update_version">Page version: %1$s</string>
     <string name="apk_update_title">Update available</string>
-    <string name="apk_update_message">Qujingtai %1$s is available. Open the official website to download the new version?</string>
+    <string name="apk_update_message">LightNote %1$s is available. Open the official website to download the new version?</string>
     <string name="apk_update_later">Later</string>
     <string name="apk_update_open">Open download page</string>
     <string name="apk_update_no_browser">Could not open a browser. Check that a browser is installed.</string>

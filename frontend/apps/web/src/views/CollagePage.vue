@@ -210,7 +210,7 @@ async function exportImage() {
     await renderScene()
     const dataUrl = stage.toDataURL({ pixelRatio: 3, mimeType: format.value === 'png' ? 'image/png' : 'image/jpeg', quality: 0.94 })
     const blob = await (await fetch(dataUrl)).blob()
-    await exportFile(blob, `photo-nini-collage.${format.value}`)
+    await exportFile(blob, `lightnote-collage.${format.value}`)
     ElMessage.success(t('collage.saved'))
   } catch (error) { if (!(error instanceof FileExportError)) ElMessage.error(t('collage.saveFailed')) }
   finally { exporting.value = false }

@@ -46,10 +46,12 @@ public class MainActivity extends AppCompatActivity {
     private final java.util.concurrent.ExecutorService updateIO = java.util.concurrent.Executors.newSingleThreadExecutor();
     private GeckoSession.PromptDelegate.FilePrompt filePrompt;
     private GeckoResult<GeckoSession.PromptDelegate.PromptResponse> fileResult;
+    private boolean pageReady;
     private ActivityResultLauncher<Intent> fileLauncher;
     private ApkUpdateChecker apkUpdates;
     private androidx.appcompat.app.AlertDialog apkDialog;
     private boolean apkEntryCheckPending;
+    private boolean remoteRefreshStarted;
     private final android.os.Handler apkHandler = new android.os.Handler(android.os.Looper.getMainLooper());
     private final java.util.concurrent.ExecutorService apkIO = java.util.concurrent.Executors.newSingleThreadExecutor();
     private final Runnable apkListener = () -> runOnUiThread(this::showApkUpdate);
@@ -165,13 +167,14 @@ public class MainActivity extends AppCompatActivity {
         updateIO.execute(() -> {
             try {
                 updater = new WebBundleUpdater(getApplicationContext());
-                updater.prepare((phase, percent) -> runOnUiThread(() -> {
-                    if (isDestroyed()) return;
-                    int label = switch (phase) { case "checking" -> R.string.update_checking; case "downloading" -> R.string.update_downloading; case "verifying" -> R.string.update_verifying; default -> R.string.update_fallback; };
-                    status.setText(getString(label, percent));
-                    updateVersion.setText(getString(R.string.update_version, updater.displayVersion));
-                    updateProgress.setIndeterminate(!phase.equals("downloading")); updateProgress.setProgress(percent);
-                }));
+                // 先使用已安装或上次完整下载的本地包启动，更新清单与下载不能阻塞首屏。
+                runOnUiThread(() -> {
+                    if (!isDestroyed()) {
+                        status.setText(R.string.update_fallback);
+                        updateProgress.setIndeterminate(true);
+                    }
+                });
+                updater.prepareLocal();
                 if (Thread.currentThread().isInterrupted()) return;
                 localWeb = new LocalWebServer(getApplicationContext(), updater);
                 runOnUiThread(() -> {
@@ -245,14 +248,20 @@ public class MainActivity extends AppCompatActivity {
                 @Override public void onConnect(WebExtension.Port port) {
                     if (!trusted(port.sender)) { port.disconnect(); return; }
                     pagePort = port;
-                    updateHandler.removeCallbacksAndMessages(null);
-                    updatePage.setVisibility(View.GONE);
-                    showApkUpdate();
-                    localWeb.finishMigration();
-                    getSharedPreferences("web-local-origin", 0).edit().putBoolean("migrated", true).apply();
-                    updateIO.execute(() -> updater.confirm());
                     port.setDelegate(new WebExtension.PortDelegate() {
-                        @Override public void onDisconnect(WebExtension.Port disconnected) { if (pagePort == disconnected) pagePort = null; }
+                        @Override public void onPortMessage(Object message, WebExtension.Port sender) {
+                            if (sender != pagePort || !(message instanceof JSONObject)) return;
+                            if ("pageReady".equals(((JSONObject) message).optString("type"))) showReadyPage(sender);
+                        }
+                        @Override public void onDisconnect(WebExtension.Port disconnected) {
+                            if (pagePort != disconnected) return;
+                            pagePort = null;
+                            pageReady = false;
+                            if (!isFinishing() && !isDestroyed()) {
+                                status.setText(R.string.engine_loading);
+                                updatePage.setVisibility(View.VISIBLE);
+                            }
+                        }
                     });
                 }
             };
@@ -262,8 +271,31 @@ public class MainActivity extends AppCompatActivity {
                 session.loadUri(extensionBase + "migrate.html");
                 updateHandler.postDelayed(() -> { if (pagePort == null) loadLocalPage(); }, 5000);
             } else loadLocalPage();
-            updateHandler.postDelayed(() -> { if (pagePort == null && !rollbackUpdate()) showEngineFailure(); }, 45000);
+            updateHandler.postDelayed(() -> { if (!pageReady && !rollbackUpdate()) showEngineFailure(); }, 45000);
         }, error -> showEngineFailure());
+    }
+
+    /** 共享 Web 提交首帧后才撤掉原生启动页，并确认本轮资源包已成功挂载。 */
+    private void showReadyPage(WebExtension.Port port) {
+        if (port != pagePort || pageReady || isDestroyed()) return;
+        pageReady = true;
+        updateHandler.removeCallbacksAndMessages(null);
+        updatePage.setVisibility(View.GONE);
+        showApkUpdate();
+        localWeb.finishMigration();
+        getSharedPreferences("web-local-origin", 0).edit().putBoolean("migrated", true).apply();
+        updateIO.execute(() -> updater.confirm());
+        refreshWebBundleInBackground();
+    }
+
+    /** 页面已可用后才检查远端更新；下载包留给下一次冷启动，不打断当前编辑。 */
+    private void refreshWebBundleInBackground() {
+        if (remoteRefreshStarted || updater == null || pagePort == null) return;
+        remoteRefreshStarted = true;
+        updateIO.execute(() -> {
+            try { updater.refreshRemote(); }
+            catch (Exception ignored) { /* 后台更新失败保留当前本地版本。 */ }
+        });
     }
 
     /** 仅清理本选择器一天前的随机缓存目录，避免图片长期滞留；不触碰其他缓存。 */
@@ -358,13 +390,31 @@ public class MainActivity extends AppCompatActivity {
         apkDialog.setOnDismissListener(dialog -> apkDialog = null);
         apkDialog.show(); apkUpdates.prompted(release, System.currentTimeMillis());
     }
-    @Override protected void onStart() { super.onStart(); apkEntryCheckPending = true; if (session != null) session.setActive(true); ApkUpdateChecker.subscribe(apkListener); }
+    @Override protected void onStart() {
+        super.onStart(); apkEntryCheckPending = true;
+        if (session != null) {
+            session.setActive(true);
+            if (browserView != null) browserView.postInvalidateOnAnimation();
+            if (pageReady) updatePage.setVisibility(View.GONE);
+            refreshWebBundleInBackground();
+        }
+        ApkUpdateChecker.subscribe(apkListener);
+    }
     @Override protected void onNewIntent(Intent intent) {
         super.onNewIntent(intent); setIntent(intent);
         if (shell != null) shell.notificationIntent(intent);
         if (pagePort != null) try { pagePort.postMessage(new JSONObject().put("type", "notificationOpen")); } catch (Exception ignored) { }
     }
     @Override protected void onResume() { super.onResume(); getWindow().getDecorView().post(() -> { if (shell != null) shell.resumeNotifications(); }); apkHandler.removeCallbacks(apkTick); apkHandler.post(apkTick); showApkUpdate(); }
+    @Override protected void onPostResume() {
+        super.onPostResume();
+        // 后台停留后恢复时主动刷新 Gecko 绘制，避免原生容器已回到前台但页面首帧仍为空。
+        if (session != null) {
+            session.setActive(true);
+            if (browserView != null) browserView.postInvalidateOnAnimation();
+            if (pageReady) updatePage.setVisibility(View.GONE);
+        }
+    }
     @Override protected void onPause() { apkHandler.removeCallbacks(apkTick); super.onPause(); }
     @Override protected void onStop() { ApkUpdateChecker.unsubscribe(apkListener); if (session != null) session.setActive(false); super.onStop(); }
     @Override protected void onDestroy() {

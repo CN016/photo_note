@@ -1,5 +1,5 @@
 {
-  "brand": "取景台",
+  "brand": "LightNote",
   "spaces": "Switch space",
   "organizations": "Organizations",
   "organizationConsole": "Organization gallery",
@@ -59,7 +59,7 @@
   "openMessageCenter": "Open the message center",
   "footer": "Collect inspiration. Organize your day.",
   "logoutFailed": "You are signed out on this device, but the service couldn't confirm session revocation. Sign in again after the connection returns to close the old session.",
-  "copyright": "© 2026 取景台 · Collect inspiration. Organize your day.",
+  "copyright": "© 2026 LightNote · Collect inspiration. Organize your day.",
   "errors": {
     "requestFailed": "Something went wrong. Please try again.",
     "network": "The service is unreachable. Check your connection and try again.",

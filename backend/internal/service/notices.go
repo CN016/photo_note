@@ -531,7 +531,7 @@ func (service *NoticeService) DeleteNoticeConfig(ctx context.Context, userID, co
 // TestNoticeConfig 只持久化测试 outbox 并立即返回，网络请求交由后台 worker 执行。
 func (service *NoticeService) TestNoticeConfig(ctx context.Context, userID, configID uuid.UUID) (NoticeDeliveryView, error) {
 	payload, _ := json.Marshal(map[string]string{
-		"title": "取景台通知渠道测试", "message": "这是一条测试消息，用于确认此通知渠道可以正常接收取景台通知。",
+		"title": "LightNote 通知渠道测试", "message": "这是一条测试消息，用于确认此通知渠道可以正常接收 LightNote 通知。",
 	})
 	delivery, err := service.repository.CreateNoticeTestDelivery(ctx, userID, configID, model.JSONB(payload))
 	if err != nil {
@@ -845,10 +845,10 @@ func noticeMessage(delivery model.NoticeDelivery) (string, string) {
 		if title == "" {
 			title = "交付任务状态已更新"
 		}
-		return title, "请打开取景台交付模块查看处理结果。"
+		return title, "请打开 LightNote 交付模块查看处理结果。"
 	}
 	if delivery.EventType == "notice.webhook_test" {
-		return "取景台通知渠道测试", "这是一条测试消息，用于确认此通知渠道可以正常接收取景台通知。"
+		return "LightNote 通知渠道测试", "这是一条测试消息，用于确认此通知渠道可以正常接收 LightNote 通知。"
 	}
 	var payload struct {
 		Message  string `json:"message"`
@@ -870,7 +870,7 @@ func noticeMessage(delivery model.NoticeDelivery) (string, string) {
 			return "灵感库处理通知", payload.Message
 		}
 	}
-	return "取景台通知", "你有一条新的业务通知，请打开取景台消息中心查看。"
+	return "LightNote 通知", "你有一条新的业务通知，请打开 LightNote 消息中心查看。"
 }
 
 // providerRejected 只识别平台统一错误字段，不保留或回传响应正文。

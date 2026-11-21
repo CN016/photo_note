@@ -38,7 +38,7 @@ try {
   const type = release ? 'release' : 'debug'
   for (const abi of ['arm64-v8a', 'armeabi-v7a', 'x86_64']) {
     const apk = join(root, `native/app/build/outputs/apk/${type}/app-${abi}-${type}.apk`)
-    const output = join(root, 'artifacts', `photo-nini-${shellPackage.version}-${abi}-${type}.apk`)
+    const output = join(root, 'artifacts', `lightnote-${shellPackage.version}-${abi}-${type}.apk`)
     mkdirSync(dirname(output), { recursive: true })
     copyFileSync(apk, output)
     const sha = createHash('sha256').update(readFileSync(output)).digest('hex')

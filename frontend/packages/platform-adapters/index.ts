@@ -57,6 +57,11 @@ export function subscribeNativeNotificationOpen(callback: () => void): void {
   runtime()?.connectNative('photo_nini').onMessage.addListener(message => { if (message.type === 'notificationOpen') callback() })
 }
 export const minimizeApp = () => invoke<void>('minimizeApp', {})
+/** 只在 Web 首帧已提交后通知原生隐藏启动页，避免端口早连造成空白窗口。 */
+export function notifyNativePageReady(): void {
+  if (!isAndroid()) return
+  window.postMessage({ channel: 'photo-nini-native-event', type: 'pageReady' }, location.origin)
+}
 /** 长连接只传系统返回事件，业务载荷用带明确响应的一次性消息。 */
 export function subscribeNativeBack(callback: () => void): void {
   const port = runtime()?.connectNative('photo_nini')

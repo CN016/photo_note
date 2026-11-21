@@ -2,14 +2,23 @@
 (() => {
   if (window !== window.top || location.hostname !== '127.0.0.1') return;
   let port;
+  function connect() {
+    if (!port) {
+      port = browser.runtime.connectNative('photo_nini');
+      port.onMessage.addListener(message => window.postMessage({ channel: 'photo-nini-native-response', event: message }, location.origin));
+    }
+    return port;
+  }
   window.addEventListener('message', async event => {
     if (event.source !== window || event.origin !== location.origin) return;
     const data = event.data;
     if (data?.channel === 'photo-nini-native-connect') {
-      if (!port) {
-        port = browser.runtime.connectNative('photo_nini');
-        port.onMessage.addListener(message => window.postMessage({ channel: 'photo-nini-native-response', event: message }, location.origin));
-      }
+      connect();
+      return;
+    }
+    if (data?.channel === 'photo-nini-native-event') {
+      if (data.type !== 'pageReady') return;
+      connect().postMessage({ type: 'pageReady' });
       return;
     }
     if (data?.channel !== 'photo-nini-native-request' || !Number.isSafeInteger(data.id)) return;

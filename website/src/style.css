@@ -83,20 +83,20 @@ html {
 }
 .brand {
   display: inline-flex;
-  gap: 8px;
+  gap: 10px;
   align-items: center;
   font-size: 24px;
   font-weight: 600;
   letter-spacing: 0;
   white-space: nowrap;
 }
-.brand-dot {
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: var(--blue);
-  align-self: flex-end;
-  margin-bottom: 12px;
+.brand-icon {
+  display: block;
+  flex: 0 0 auto;
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+  object-fit: contain;
 }
 nav {
   display: flex;

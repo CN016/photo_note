@@ -39,26 +39,68 @@ public final class WebBundleUpdater {
             return new JSONObject(new String(BundleIO.read(input), java.nio.charset.StandardCharsets.UTF_8));
         }
     }
-    /** 崩溃/强制退出前尚未确认的版本加入拒绝列表，下一次启动退回稳定版本。 */
+    /**
+     * 本地优先启动：只校验已安装稳定包并提升上次完整下载的 ready 包，不访问网络。
+     * Activity 被系统回收后再次进入时，页面不必等待更新清单或整包下载即可启动。
+     */
     @android.annotation.SuppressLint("ApplySharedPref") // 后台线程需要持久化完成后才允许启动候选，避免崩溃窗口。
-    public synchronized void prepare(Progress progress) {
+    public synchronized void prepareLocal() {
         displayVersion = config.optString("version");
         selected = state.getString("stable", null);
         String interrupted = state.getString("pending", null);
         if (interrupted != null) state.edit().putString("rejected", interrupted).remove("pending").commit();
         try {
             if (selected != null && Long.parseLong(selected) <= config.getLong("release")) { selected = null; state.edit().remove("stable").commit(); }
-            if (selected != null) verifyLocal(selected);
+            if (selected != null) displayVersion = verifyLocal(selected);
         } catch (Exception invalid) { selected = null; state.edit().remove("stable").commit(); }
+        // 上次前台运行完整下载并校验过的包只在下一次冷启动提升，下载期间不打断当前页面。
+        String stable = selected;
+        String ready = state.getString("ready", null);
+        if (ready != null) {
+            try {
+                if (Long.parseLong(ready) <= config.getLong("release") || ready.equals(state.getString("rejected", null))) throw new SecurityException("ready");
+                String readyVersion = verifyLocal(ready);
+                candidate = ready;
+                selected = ready;
+                displayVersion = readyVersion;
+                if (!state.edit().putString("pending", ready).remove("ready").commit()) throw new IOException("state");
+            } catch (Exception invalid) {
+                remove(new File(root, ready.matches("[0-9]{1,16}") ? ready : "invalid-ready"));
+                state.edit().remove("ready").commit();
+                candidate = null;
+                selected = stable;
+                if (selected != null) try { displayVersion = verifyLocal(selected); } catch (Exception ignored) { selected = null; }
+            }
+        }
+    }
+
+    /** 兼容需要同次启动立即测试新版本的调用；生产 Activity 只使用 prepareLocal。 */
+    public synchronized void prepare(Progress progress) {
+        prepareLocal();
+        refreshRemote(progress, true);
+    }
+
+    /** 前台已可用后后台检查更新；成功时只写入 ready，下一次冷启动再切换。 */
+    public synchronized void refreshRemote() {
+        refreshRemote(null, false);
+    }
+
+    /**
+     * 下载、验签并解包更新。applyNow 仅供兼容入口和自动化测试立即切换候选；
+     * 正常生产流程写入 ready，避免用户正在编辑时自动刷新或阻塞首屏。
+     */
+    private void refreshRemote(Progress progress, boolean applyNow) {
         if (!config.optBoolean("enabled")) return;
         try {
-            progress.show("checking", 0);
+            if (progress != null) progress.show("checking", 0);
             byte[] envelope = download(new URL(config.getString("url")), 1024 * 1024, null);
             JSONObject release = verifyEnvelope(envelope);
             String id = Long.toString(release.getLong("release"));
             long baseline = config.getLong("release");
             long stable = selected == null ? baseline : Math.max(baseline, Long.parseLong(selected));
-            if (release.getLong("release") <= stable || id.equals(state.getString("rejected", null))) return;
+            String readyID = state.getString("ready", null);
+            long ready = readyID == null ? 0 : Long.parseLong(readyID);
+            if (release.getLong("release") <= Math.max(stable, ready) || id.equals(state.getString("rejected", null))) return;
             if (release.getInt("minShellCode") > config.getInt("shellCode") || release.getInt("bridgeVersion") != 1) return;
             if (!config.getString("apiOrigin").equals(release.getString("apiOrigin"))) throw new SecurityException("api_origin");
             URL url = new URL(release.getString("url"));
@@ -67,12 +109,14 @@ public final class WebBundleUpdater {
             long bytes = release.getLong("bytes");
             if (bytes <= 0 || bytes > 128L * 1024 * 1024) throw new IOException("size");
             displayVersion = release.optString("version");
-            progress.show("downloading", 0);
+            if (progress != null) progress.show("downloading", 0);
             File archive = downloadArchive(url, bytes, release.getString("sha256"), progress);
-            progress.show("verifying", 100);
+            if (progress != null) progress.show("verifying", 100);
             File directory = new File(root, id);
+            File staging = new File(root, ".staging-" + id);
+            remove(staging);
             remove(directory);
-            if (!directory.mkdir()) throw new IOException("directory");
+            if (!staging.mkdir()) throw new IOException("directory");
             try {
                 JSONObject files = release.getJSONObject("files");
                 if (files.length() > 4096 || !files.has("index.html")) throw new SecurityException("files");
@@ -85,8 +129,8 @@ public final class WebBundleUpdater {
                         String name = entry.getName();
                         if (entry.isDirectory()) continue;
                         if (!safePath(name) || !files.has(name) || !extracted.add(name)) throw new SecurityException("path");
-                        File output = new File(directory, name);
-                        if (!output.getCanonicalPath().startsWith(directory.getCanonicalPath() + File.separator)) throw new SecurityException("path");
+                        File output = new File(staging, name);
+                        if (!output.getCanonicalPath().startsWith(staging.getCanonicalPath() + File.separator)) throw new SecurityException("path");
                         File parent = output.getParentFile();
                         if (!parent.exists() && !parent.mkdirs()) throw new IOException("directory");
                         MessageDigest hash = MessageDigest.getInstance("SHA-256");
@@ -102,20 +146,31 @@ public final class WebBundleUpdater {
                     }
                 }
                 if (extracted.size() != files.length()) throw new SecurityException("missing_file");
-                Files.write(new File(directory, ".release.json").toPath(), envelope);
-                candidate = id; selected = id;
-                if (!state.edit().putString("pending", id).commit()) throw new IOException("state");
-            } catch (Exception error) { remove(directory); throw error; }
+                Files.write(new File(staging, ".release.json").toPath(), envelope);
+                if (!staging.renameTo(directory)) throw new IOException("directory");
+                if (applyNow) {
+                    candidate = id;
+                    selected = id;
+                    verifyLocal(id);
+                    if (!state.edit().putString("pending", id).remove("ready").commit()) throw new IOException("state");
+                } else if (!state.edit().putString("ready", id).commit()) {
+                    remove(directory);
+                    throw new IOException("state");
+                }
+            } catch (Exception error) { remove(staging); remove(directory); throw error; }
             finally { archive.delete(); }
         } catch (Exception error) {
             // 网络、签名或资源错误只影响此次更新，不把远端正文/地址写入日志。
-            candidate = null; selected = state.getString("stable", null);
-            progress.show("fallback", 0);
+            if (applyNow) {
+                candidate = null;
+                selected = state.getString("stable", null);
+                if (progress != null) progress.show("fallback", 0);
+            }
         }
-        try { if (selected != null) verifyLocal(selected); } catch (Exception error) { selected = null; }
+        if (applyNow) try { if (selected != null) displayVersion = verifyLocal(selected); } catch (Exception error) { selected = null; }
     }
     /** 重新校验持久化副本，损坏文件不得因曾被下载过而获得信任。 */
-    private void verifyLocal(String id) throws Exception {
+    private String verifyLocal(String id) throws Exception {
         if (!id.matches("[0-9]{1,16}")) throw new SecurityException("id");
         File directory = new File(root, id);
         JSONObject release = verifyEnvelope(Files.readAllBytes(new File(directory, ".release.json").toPath()));
@@ -133,6 +188,7 @@ public final class WebBundleUpdater {
             }
             allowed.add(name);
         }
+        return release.optString("version", id);
     }
     /** 只有实际共享应用完成挂载并建立返回键连接后才提交稳定版本。 */
     public synchronized void confirm() {
@@ -140,8 +196,9 @@ public final class WebBundleUpdater {
             if (state.edit().putString("stable", candidate).remove("pending").commit()) candidate = null;
         }
         // 保留稳定版和本次候选；清理过期包避免长时间更新耗尽存储。
+        String ready = state.getString("ready", null);
         File[] entries = root.listFiles();
-        if (entries != null) for (File entry : entries) if (!entry.getName().equals(selected)) remove(entry);
+        if (entries != null) for (File entry : entries) if (!entry.getName().equals(selected) && !entry.getName().equals(ready)) remove(entry);
     }
     public synchronized boolean hasCandidate() { return candidate != null; }
     @android.annotation.SuppressLint("ApplySharedPref") // 后台线程先持久化拒绝状态，再切换显示资源。
@@ -149,7 +206,7 @@ public final class WebBundleUpdater {
         if (candidate == null) return false;
         state.edit().putString("rejected", candidate).remove("pending").commit();
         candidate = null; selected = state.getString("stable", null);
-        try { if (selected != null) verifyLocal(selected); } catch (Exception error) { selected = null; }
+        try { if (selected != null) displayVersion = verifyLocal(selected); } catch (Exception error) { selected = null; }
         return true;
     }
     /** 仅从签名清单内读取文件；找不到时由资源服务器判断是否SPA导航。 */
@@ -189,7 +246,7 @@ public final class WebBundleUpdater {
                     count += n; if (count > expected || Thread.currentThread().isInterrupted()) throw new IOException("size");
                     output.write(buffer, 0, n); hash.update(buffer, 0, n);
                     int percent = (int)(100L * count / expected);
-                    if (percent != last) { progress.show("downloading", percent); last = percent; }
+                    if (progress != null && percent != last) { progress.show("downloading", percent); last = percent; }
                 }
             }
             if (count != expected || !hex(hash.digest()).equals(digest)) throw new SecurityException("digest");

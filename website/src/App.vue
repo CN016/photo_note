@@ -45,7 +45,7 @@ const year = new Intl.DateTimeFormat("en", { year: "numeric" }).format(
 function toggleLanguage() {
   locale.value = locale.value === "zh-CN" ? "en-US" : "zh-CN";
   try {
-    localStorage.setItem("qujingtai.website.locale", locale.value);
+    localStorage.setItem("lightnote.website.locale", locale.value);
   } catch {
     /* 不阻断语言切换。 */
   }
@@ -78,9 +78,14 @@ if (siteConfig.siteUrl) {
   <header id="top" class="header">
     <div class="nav-wrap">
       <a class="brand" :href="homeLink"
-        >{{ t("common.brand")
-        }}<span class="brand-dot" aria-hidden="true"></span
-      ></a>
+        ><img
+          class="brand-icon"
+          src="/lightnote-icon.svg"
+          alt=""
+          width="30"
+          height="30"
+        />{{ t("common.brand") }}</a
+      >
       <button
         class="menu-toggle icon-button"
         :aria-label="t('common.menu')"
@@ -367,9 +372,14 @@ if (siteConfig.siteUrl) {
   <footer class="footer section">
     <div>
       <a class="brand" href="/"
-        >{{ t("common.brand")
-        }}<span class="brand-dot" aria-hidden="true"></span
-      ></a>
+        ><img
+          class="brand-icon"
+          src="/lightnote-icon.svg"
+          alt=""
+          width="30"
+          height="30"
+        />{{ t("common.brand") }}</a
+      >
       <p>{{ t("common.note") }}</p>
     </div>
     <div class="footer-links">

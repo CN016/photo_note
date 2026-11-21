@@ -1,6 +1,6 @@
-# 取景台 Android：随包内置 GeckoView
+# LightNote Android：随包内置 GeckoView
 
-应用名称：取景台；应用 ID：`love.imcn016.photo`；最低 Android 9 / API 28；目标 SDK 36；编译 SDK 37.2。
+应用名称：LightNote；应用 ID：`love.imcn016.photo`（保持不变以支持覆盖升级）；最低 Android 9 / API 28；目标 SDK 36；编译 SDK 37.2。
 
 原计划的 `love.016imcn.photo` 因包名段以数字开头未通过校验，首次建包时改为上述有效标识。用户要求消除旧系统 WebView 的运行依赖后，最终采用 APK 内置 GeckoView，不使用 Capacitor 或系统 WebView 作为运行内核。
 
@@ -18,7 +18,7 @@ npm ci
 npm run build
 ```
 
-流程：检查工具链 → 构建共享 Web → 同步为内置扩展资源 → `assembleDebug` 和 `lintDebug` → 输出 `artifacts/photo-nini-<version>-<abi>-debug.apk` 与 `.sha256`。任一步失败即停止。`npm run icons` 重新生成图标；Android Studio 可直接打开 `native/` 工程。
+流程：检查工具链 → 构建共享 Web → 同步为内置扩展资源 → `assembleDebug` 和 `lintDebug` → 输出 `artifacts/lightnote-<version>-<abi>-debug.apk` 与 `.sha256`。任一步失败即停止。`npm run icons` 重新生成图标；Android Studio 可直接打开 `native/` 工程。
 
 API 地址读取现有 Web 的 `.env` / `.env.production` 配置或 `VITE_API_BASE_URL` 环境变量，必须使用 HTTPS。本地配置、SDK 路径、安装包、日志、密钥及缓存不提交。从1.1.0开始支持签名Web资源更新；首次启用及内核/原生桥接升级仍需构建APK，Gecko内核始终随APK交付。动态更新详见 [发布与更新说明](../../../docs/android-web-updates.md)。
 

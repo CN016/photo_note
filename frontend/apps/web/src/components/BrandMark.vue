@@ -1,12 +1,16 @@
 <script setup lang="ts">
-import { Camera } from '@element-plus/icons-vue'
-
-/** 用组件库线性相机图标表达取景入口，与 Apple 系统图标的轻量线条保持一致。 */
+/** 品牌入口使用同一份 LightNote 矢量图标，避免各平台出现不同标识。 */
 defineProps<{ size?: 'small' | 'default' }>()
 </script>
 
 <template>
-  <el-icon class="brand-mark" :class="{ 'brand-mark-small': size === 'small' }" aria-hidden="true">
-    <Camera />
-  </el-icon>
+  <img
+    class="brand-mark"
+    :class="{ 'brand-mark-small': size === 'small' }"
+    src="/lightnote-icon.svg"
+    alt=""
+    width="40"
+    height="40"
+    draggable="false"
+  />
 </template>

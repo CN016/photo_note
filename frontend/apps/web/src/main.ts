@@ -16,6 +16,7 @@ import { initializeTheme } from './theme'
 import { installBackendHealthMonitor } from './backendHealth'
 import { initializePlatform } from './platform'
 import { installNavigationMotion } from './motion/navigationMotion'
+import { notifyNativePageReady } from '../../../packages/platform-adapters'
 
 /** SPA 启动时同步根节点语言状态，再挂载共享 Web 应用。 */
 document.documentElement.lang = i18n.global.locale.value
@@ -30,3 +31,5 @@ installBackendHealthMonitor(router)
 installNavigationMotion(router)
 app.mount('#app')
 initializePlatform(router)
+// 两次动画帧确保 Vue 已提交首帧，原生启动页再退场。
+requestAnimationFrame(() => requestAnimationFrame(notifyNativePageReady))

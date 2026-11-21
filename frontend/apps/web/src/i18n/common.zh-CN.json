@@ -1,5 +1,5 @@
 {
-  "brand": "取景台",
+  "brand": "LightNote",
   "spaces": "切换空间",
   "organizations": "组织管理",
   "organizationConsole": "组织图库管理",
@@ -59,7 +59,7 @@
   "openMessageCenter": "点击查看消息中心",
   "footer": "收藏灵感，整理日常",
   "logoutFailed": "本机已退出登录，但服务端未确认会话撤销；网络恢复后请重新登录以关闭旧会话。",
-  "copyright": "© 2026 取景台 · 收藏灵感，整理日常",
+  "copyright": "© 2026 LightNote · 收藏灵感，整理日常",
   "errors": {
     "requestFailed": "操作失败，请稍后重试。",
     "network": "暂时无法连接服务，请检查网络后重试。",

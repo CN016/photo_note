@@ -1,4 +1,4 @@
-# 取景台官网
+# LightNote 官网
 
 独立的 Vue 3 + TypeScript + Vite 静态多页工程：首页 `/`，下载页 `/download/`。不需要后端、数据库或登录。
 
