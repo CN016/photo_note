@@ -31,6 +31,7 @@ const queue=ref<{file:File;status:string;kind:'proof'|'final';group:string}[]>([
 const viewer=ref<DeliveryPhoto>();const matchOpen=ref(false);const matches=ref<ReturnType<typeof matchOriginals>>([])
 const form=ref<DeliverySettings>(defaults())
 let draftKey='';let generation=0;let timer:ReturnType<typeof setTimeout>|undefined;let disposed=false
+let planningCreateHandled=false
 
 function defaults():DeliverySettings{return {title:'',customer:'',description:'',internal_note:'',limit_mode:'max',selection_limit:20,deadline:null,expires_at:null,allow_original:false,allow_download:true,access_code:'',clear_access_code:false}}
 async function adoptServerSelection(){try{await ElMessageBox.confirm(tr('discardDraft'),tr('confirm'),{confirmButtonText:tr('confirm'),cancelButtonText:tr('cancel')});await load(false);selected.value=[...(round.value?.selected_ids||[])];notes.value={...(round.value?.notes||{})};dirty.value=false;saveError.value=false;if(draftKey)sessionStorage.removeItem(draftKey)}catch{/* 取消保留草稿。 */}}
@@ -67,7 +68,7 @@ async function load(reset=true){
  }catch{if(stamp===generation)error.value=tr(props.public?'accessError':'loadError')}
  finally{if(stamp===generation)loading.value=false}
 }
-watch(()=>route.fullPath,()=>{generation++;detail.value=undefined;search.value='';group.value='';queue.value=[];link.value='';qr.value='';shareOpen.value=false;unlocked.value=false;void load()}, {immediate:true})
+watch(()=>route.fullPath,()=>{generation++;detail.value=undefined;search.value='';group.value='';queue.value=[];link.value='';qr.value='';shareOpen.value=false;unlocked.value=false;planningCreateHandled=false;openPlanningCreate();void load()}, {immediate:true})
 function beforeUnload(event:BeforeUnloadEvent){if(dirty.value||uploading.value){event.preventDefault();event.returnValue=''}}
 window.addEventListener('beforeunload',beforeUnload)
 onBeforeUnmount(()=>{window.removeEventListener('beforeunload',beforeUnload);disposed=true;generation++;if(timer)clearTimeout(timer);cancelled.value=true})
@@ -86,7 +87,18 @@ async function action(name:string,value?:string,extra:Record<string,unknown>={})
  }catch{fail();await load(false)}finally{busy.value=false}
 }
 async function confirmAction(name:string,value?:string){try{await ElMessageBox.confirm(tr(`confirm_${name}`),tr('confirm'),{confirmButtonText:tr('confirm'),cancelButtonText:tr('cancel')});await action(name,value)}catch{/* 取消不改变任务。 */}}
-function openSettings(create=false){createMode.value=create;form.value=create?defaults():{...defaults(),...task.value,access_code:'',clear_access_code:false};settingsOpen.value=true}
+function openSettings(create=false,preset:Partial<DeliverySettings>={}){createMode.value=create;form.value=create?{...defaults(),...preset}:{...defaults(),...task.value,access_code:'',clear_access_code:false};settingsOpen.value=true}
+/** 策划入口只传递安全摘要；选片任务仍由当前登录用户显式保存后创建。 */
+function openPlanningCreate(){
+ if(props.public||id.value||planningCreateHandled||route.query.create!=='1')return
+ planningCreateHandled=true
+ const read=(value:unknown)=>typeof value==='string'?value.slice(0,4000):''
+ openSettings(true,{
+  title:read(route.query.title).slice(0,120),
+  customer:read(route.query.customer).slice(0,120),
+  description:read(route.query.description),
+ })
+}
 async function saveSettings(){
  if(!form.value.title.trim()){fail('titleRequired');return};busy.value=true
  try{if(createMode.value){const result=await api.deliveryCreate(form.value);settingsOpen.value=false;await router.push(`/delivery/tasks/${result.business_id}`)}else if(task.value){await api.deliveryAction(id.value,{version:task.value.version,action:'settings',settings:form.value});settingsOpen.value=false;await load(false)}}catch{fail()}finally{busy.value=false}

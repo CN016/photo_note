@@ -17,6 +17,7 @@ import { addUploadPlaceholders, hasUploadPlaceholder, removeUploadPlaceholder, r
 import { ApiError, type InspirationRecord, type ProjectRecord, type ProjectSaveInput, type ProjectShooting } from '../api/types'
 import { createProjectInspiration } from '../projects/createProjectInspiration'
 import { fallbackProjectUploadLimit, projectUploadLimit } from '../projects/projectUploadLimit'
+import { shootingTimeLabel } from '../projects/workflowPresentation'
 
 const auth = useAuthStore()
 const route = useRoute()
@@ -31,6 +32,16 @@ const shooting = ref<ProjectShooting>({ start_at: null, end_at: null, location: 
 const workflowBusy = ref(false)
 const shootingError = ref('')
 const workflowInputFocused = ref(false)
+const projectHeaderMeta = computed(() => {
+  const source = project.value?.shooting
+  if (!source) return ''
+  return [
+    shootingTimeLabel(source, locale.value),
+    source.location.trim(),
+    source.person.trim(),
+    source.kind ? t(`projects.shooting.${source.kind}`) : '',
+  ].filter(Boolean).join(' · ')
+})
 /** 手机端编辑拍摄字段或复盘时隐藏正文格式工具栏，避免将格式命令作用于另一个编辑区域。 */
 function trackEditorFocus(event: FocusEvent) {
   workflowInputFocused.value = event.target instanceof HTMLElement && !event.target.closest('.project-document-editor')
@@ -325,7 +336,7 @@ onBeforeRouteLeave(async () => {
         <el-button class="project-back" text :icon="ArrowLeft" @click="goBack">{{ t(route.query.from === 'gallery' ? 'projects.backToGallery' : 'projects.back') }}</el-button>
         <div class="project-title-area">
           <ProjectCoverImage :storekey="coverImageKey" :emoji="coverEmoji" :label="title" />
-          <el-input v-model="title" :disabled="documentIncompatible || readOnly" class="project-title-input" maxlength="120" :placeholder="t('projects.editorTitlePlaceholder')" />
+          <div class="project-title-copy"><el-input v-model="title" :disabled="documentIncompatible || readOnly" class="project-title-input" maxlength="120" :placeholder="t('projects.editorTitlePlaceholder')" /><small v-if="projectHeaderMeta">{{ projectHeaderMeta }}</small></div>
         </div>
         <el-button :disabled="documentIncompatible || uploadingAttachments > 0 || uploadJobs.size > 0" @click="switchMode">{{ readOnly ? t('projects.switchToEdit') : t('projects.switchToRead') }}</el-button>
         <span class="project-save-status" :class="`is-${savingState}`" role="status">{{ saveLabel }}</span>
@@ -345,7 +356,7 @@ onBeforeRouteLeave(async () => {
         @upload-media="mediaInput?.click()"
         @paste-files="importFiles"
       />
-      <ProjectWorkflowPanel :source="project" v-model:summary="manualSummary" v-model:analysis="aiAnalysis" :read-only="readOnly || documentIncompatible" :saving="savingState !== 'saved'" :flush="flushPendingSaves" @busy="workflowBusy = $event" />
+      <ProjectWorkflowPanel :source="project" v-model:summary="manualSummary" v-model:analysis="aiAnalysis" :read-only="readOnly || documentIncompatible" :saving="savingState !== 'saved'" :flush="flushPendingSaves" @busy="workflowBusy = $event" @open-inspiration="pickerOpen = true" @open-media="mediaInput?.click()" />
       <input ref="mediaInput" class="hidden-file-input" type="file" multiple accept="image/*,video/*" @change="uploadFiles" />
       <input ref="attachmentInput" class="hidden-file-input" type="file" multiple accept=".pdf,.doc,.docx,.xls,.xlsx" @change="uploadFiles" />
     </template>
@@ -360,6 +371,8 @@ onBeforeRouteLeave(async () => {
 .project-editor-header { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 16px; }
 .project-back { flex: 0 0 auto; padding-left: 0; color: var(--muted); }
 .project-title-area { display: flex; min-width: 0; flex: 1; align-items: center; gap: 12px; }
+.project-title-copy { display: grid; min-width: 0; flex: 1; gap: 1px; }
+.project-title-copy > small { overflow: hidden; color: var(--muted); font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
 .project-title-area :deep(.project-cover-image) { width: 48px; height: 48px; flex-basis: 48px; font-size: 26px; }
 .project-title-input :deep(.el-input__wrapper) { padding: 0; background: transparent; box-shadow: none; }
 .project-title-input :deep(input) { height: 44px; color: var(--ink); font-size: clamp(20px, 3vw, 28px); font-weight: 600; }

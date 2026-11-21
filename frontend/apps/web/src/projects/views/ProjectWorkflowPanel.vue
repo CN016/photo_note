@@ -2,9 +2,10 @@
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Calendar, Document, Picture, Refresh } from '@element-plus/icons-vue'
+import { Calendar, Camera, Collection, Document, Picture, Refresh } from '@element-plus/icons-vue'
 import { api } from '../../api/client'
 import { ApiError, type PortfolioRecord, type ProjectRecord, type ProjectReview, type ProjectScheduleLink, type ScheduleOccurrence } from '../../api/types'
+import { deliveryPrefill, hasCompleteShooting, projectNextActionKey, shootingTimeLabel } from '../workflowPresentation'
 
 const props = defineProps<{
   source: ProjectRecord
@@ -18,6 +19,8 @@ const emit = defineEmits<{
   'update:summary': [value: string]
   'update:analysis': [value: string]
   busy: [value: boolean]
+  'open-inspiration': []
+  'open-media': []
 }>()
 const { t, locale } = useI18n()
 const link = ref<ProjectScheduleLink>({ schedule_id: props.source.schedule_id, owned: props.source.schedule_owned })
@@ -44,6 +47,21 @@ let attemptedShooting = ''
 let autoTimer: ReturnType<typeof setTimeout> | undefined
 let generationController: AbortController | undefined
 const busy = computed(() => scheduleBusy.value || reviewBusy.value || portfolioBusy.value)
+const nextAction = computed(() => t(projectNextActionKey(props.source.status)))
+const shootMeta = computed(() => [
+  shootingTimeLabel(props.source.shooting, locale.value),
+  props.source.shooting?.location?.trim(),
+  props.source.shooting?.person?.trim(),
+  props.source.shooting?.kind ? t(`projects.shooting.${props.source.shooting.kind}`) : '',
+].filter(Boolean).join(' · '))
+const reviewReady = computed(() => Boolean(review.value))
+const deliveryLink = computed(() => {
+  const prefill = deliveryPrefill(props.source.title, props.source.shooting, locale.value)
+  return {
+    path: '/delivery',
+    query: { create: '1', title: prefill.title, customer: prefill.customer, description: prefill.description },
+  }
+})
 watch(busy, value => emit('busy', value), { flush: 'sync' })
 watch(() => props.source.revision, () => {
   if (!scheduleBusy.value) link.value = { schedule_id: props.source.schedule_id, owned: props.source.schedule_owned }
@@ -61,10 +79,7 @@ async function loadRelations() {
 }
 
 /** 完整的已保存拍摄信息才允许同步；失败后同一份信息不反复后台重试。 */
-const shootingComplete = computed(() => {
-  const s = props.source.shooting
-  return Boolean(s?.start_at && s.end_at && s.location.trim() && s.person.trim() && s.kind)
-})
+const shootingComplete = computed(() => hasCompleteShooting(props.source.shooting))
 watch(() => [props.source.shooting, props.saving, props.readOnly, busy.value] as const, () => {
   if (autoTimer) clearTimeout(autoTimer)
   if (props.readOnly || props.saving || busy.value || !shootingComplete.value || link.value.schedule_id && !link.value.owned) return
@@ -182,10 +197,32 @@ onBeforeUnmount(() => { active = false; if (autoTimer) clearTimeout(autoTimer); 
 
 <template>
   <div class="workflow-panel">
+    <section class="workflow-overview" :class="`status-${source.status}`" :aria-label="t('projects.workflow.overview')">
+      <div class="overview-copy">
+        <span class="overview-status"><span class="status-dot" aria-hidden="true" />{{ t(`projects.status.${source.status}`) }}</span>
+        <div><h2>{{ t('projects.workflow.nextStep') }}</h2><p>{{ nextAction }}</p></div>
+      </div>
+      <ol class="workflow-track" :aria-label="t('projects.workflow.progress')">
+        <li :class="{ 'is-done': source.status !== 'unfinished' }"><span>1</span>{{ t('projects.workflow.stepPlan') }}</li>
+        <li :class="{ 'is-done': source.status !== 'unfinished' }"><span>2</span>{{ t('projects.workflow.stepExecute') }}</li>
+        <li :class="{ 'is-done': source.status === 'completed' }"><span>3</span>{{ t('projects.workflow.stepReview') }}</li>
+      </ol>
+    </section>
+
+    <section class="workflow-section material-section" :aria-label="t('projects.workflow.materials')">
+      <div class="section-heading"><h2><el-icon><Collection /></el-icon>{{ t('projects.workflow.materials') }}</h2></div>
+      <div class="workflow-shortcuts">
+        <button type="button" :disabled="readOnly" @click="emit('open-inspiration')"><el-icon><Collection /></el-icon><span><strong>{{ t('projects.workflow.fromInspiration') }}</strong><small>{{ t('projects.workflow.fromInspirationHint') }}</small></span></button>
+        <button type="button" :disabled="readOnly" @click="emit('open-media')"><el-icon><Camera /></el-icon><span><strong>{{ t('projects.workflow.fromGallery') }}</strong><small>{{ t('projects.workflow.fromGalleryHint') }}</small></span></button>
+        <RouterLink :to="deliveryLink"><el-icon><Picture /></el-icon><span><strong>{{ t('projects.workflow.openDelivery') }}</strong><small>{{ t('projects.workflow.openDeliveryHint') }}</small></span></RouterLink>
+      </div>
+    </section>
+
     <section class="workflow-section schedule-section" :aria-label="t('projects.workflow.schedule')">
       <div class="section-heading"><h2><el-icon><Calendar /></el-icon>{{ t('projects.workflow.schedule') }}</h2><RouterLink to="/schedule">{{ t('projects.workflow.openSchedule') }}</RouterLink></div>
+      <p v-if="shootMeta" class="relation-summary">{{ shootMeta }}</p>
       <div class="section-actions">
-        <span v-if="link.schedule_id" class="relation-label">{{ t('projects.workflow.linked') }}</span>
+        <span v-if="link.schedule_id" class="relation-label">{{ t(link.owned ? 'projects.workflow.autoLinked' : 'projects.workflow.linked') }}</span>
         <el-button v-if="!readOnly && shootingComplete && (!link.schedule_id || link.owned)" :loading="scheduleBusy" :disabled="busy && !scheduleBusy" @click="syncSchedule()">{{ t(link.schedule_id ? 'projects.workflow.syncSchedule' : 'projects.workflow.linkSchedule') }}</el-button>
         <el-button v-if="!readOnly && link.schedule_id" text :disabled="busy" @click="detachSchedule">{{ t('projects.workflow.detach') }}</el-button>
       </div>
@@ -196,6 +233,7 @@ onBeforeUnmount(() => { active = false; if (autoTimer) clearTimeout(autoTimer); 
       <div class="section-heading"><h2><el-icon><Document /></el-icon>{{ t('projects.manualSummary') }}</h2><RouterLink to="/project-reviews">{{ t('projects.workflow.allReviews') }}</RouterLink></div>
       <el-input :model-value="summary" type="textarea" :rows="6" maxlength="100000" :disabled="readOnly" :aria-label="t('projects.manualSummary')" @update:model-value="emit('update:summary', $event)" />
       <div class="section-actions">
+        <span v-if="reviewReady" class="relation-label">{{ t('projects.workflow.reviewArchived') }}</span>
         <RouterLink v-if="review" class="el-button" :to="`/project-reviews/${review.business_id}`">{{ t('projects.workflow.openReview') }}</RouterLink>
         <el-button v-else-if="!readOnly" :loading="reviewBusy" :disabled="!summary.trim() || busy && !reviewBusy" @click="completeReview">{{ t('projects.workflow.completeReview') }}</el-button>
       </div>
@@ -227,6 +265,22 @@ onBeforeUnmount(() => { active = false; if (autoTimer) clearTimeout(autoTimer); 
 
 <style scoped>
 .workflow-panel { margin-top: 32px; }
+.workflow-overview { display: flex; align-items: center; justify-content: space-between; gap: 24px; padding: 20px 24px; border: 1px solid var(--line); border-left: 4px solid var(--muted); border-radius: 12px; background: var(--surface); }
+.workflow-overview.status-executed { border-left-color: var(--danger); }
+.workflow-overview.status-completed { border-left-color: var(--success); }
+.overview-copy { display: flex; min-width: 0; align-items: center; gap: 16px; }
+.overview-copy h2 { margin: 0 0 4px; color: var(--ink); font-size: 16px; }
+.overview-copy p { margin: 0; color: var(--muted); font-size: 14px; }
+.overview-status { display: inline-flex; flex: 0 0 auto; align-items: center; gap: 7px; color: var(--muted); font-size: 13px; }
+.workflow-overview.status-executed .overview-status { color: var(--danger); }
+.workflow-overview.status-completed .overview-status { color: var(--success); }
+.status-dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
+.workflow-track { display: flex; flex: 0 0 auto; align-items: center; gap: 8px; margin: 0; padding: 0; list-style: none; color: var(--muted); font-size: 12px; }
+.workflow-track li { display: inline-flex; align-items: center; gap: 5px; }
+.workflow-track li:not(:last-child)::after { content: ''; width: 20px; height: 1px; margin-left: 3px; background: var(--line); }
+.workflow-track span { display: grid; width: 22px; height: 22px; place-items: center; border: 1px solid var(--line); border-radius: 50%; background: var(--surface-muted); font-variant-numeric: tabular-nums; }
+.workflow-track li.is-done { color: var(--success); }
+.workflow-track li.is-done span { border-color: currentColor; }
 .workflow-section { padding: 24px 0; border-top: 1px solid var(--line); }
 .section-heading { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; margin-bottom: 16px; }
 h2 { display: flex; align-items: center; gap: 8px; margin: 0; font-size: 18px; font-weight: 500; }
@@ -235,15 +289,26 @@ h3 { margin: 0 0 12px; font-size: 15px; font-weight: 500; }
 .section-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
 .section-actions :deep(.el-button) { margin-left: 0; }
 .relation-label { font-size: 14px; color: var(--muted); }
+.relation-summary { margin: -4px 0 0; color: var(--muted); font-size: 14px; overflow-wrap: anywhere; }
 .operation-error { color: var(--danger); font-size: 14px; margin-bottom: 0; }
 .analysis-preview { padding: 20px; margin-top: 16px; background: var(--surface-muted); border: 1px solid var(--line); border-radius: 12px; }
 .preview-text { white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.7; max-height: 480px; overflow-y: auto; }
 .portfolio-links { display: flex; flex-wrap: wrap; gap: 8px 20px; }
 .portfolio-links a { padding: 12px 0; }
+.workflow-shortcuts { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+.workflow-shortcuts button, .workflow-shortcuts a { display: flex; min-width: 0; min-height: 72px; align-items: center; gap: 12px; padding: 14px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); color: var(--ink); font: inherit; text-align: left; text-decoration: none; cursor: pointer; transition: border-color .18s, background-color .18s; }
+.workflow-shortcuts button:hover, .workflow-shortcuts a:hover { border-color: var(--accent); background: var(--surface-muted); }
+.workflow-shortcuts button:focus-visible, .workflow-shortcuts a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.workflow-shortcuts button:disabled { cursor: not-allowed; opacity: .55; }
+.workflow-shortcuts .el-icon { flex: 0 0 auto; color: var(--accent); font-size: 22px; }
+.workflow-shortcuts span { display: grid; min-width: 0; gap: 3px; }
+.workflow-shortcuts strong { font-size: 14px; font-weight: 500; }
+.workflow-shortcuts small { overflow: hidden; color: var(--muted); font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
 .schedule-candidates { display: flex; align-items: stretch; flex-direction: column; gap: 8px; width: 100%; max-height: 50vh; overflow-y: auto; }
 .schedule-candidates :deep(.el-radio) { height: auto; min-height: 64px; margin: 0; padding: 12px; border: 1px solid var(--line); border-radius: 8px; }
 .candidate-copy { display: flex; flex-direction: column; gap: 4px; white-space: normal; overflow-wrap: anywhere; }
 .candidate-copy strong { font-weight: 500; }
 .candidate-copy small { color: var(--muted); font-size: 13px; white-space: pre-wrap; }
-@media (max-width: 768px) { .workflow-section { padding: 24px 0; } .workflow-panel :deep(.el-button) { min-height: 44px; } .workflow-panel :deep(textarea) { font-size: 16px; } }
+@media (max-width: 900px) { .workflow-overview { align-items: flex-start; flex-direction: column; } .workflow-track { width: 100%; } .workflow-shortcuts { grid-template-columns: 1fr; } }
+@media (max-width: 768px) { .workflow-overview { padding: 16px; } .overview-copy { align-items: flex-start; flex-direction: column; gap: 10px; } .workflow-track { gap: 4px; overflow-x: auto; padding-bottom: 2px; } .workflow-track li:not(:last-child)::after { width: 10px; } .workflow-section { padding: 24px 0; } .workflow-panel :deep(.el-button), .workflow-shortcuts button, .workflow-shortcuts a { min-height: 44px; } .workflow-panel :deep(textarea) { font-size: 16px; } }
 </style>

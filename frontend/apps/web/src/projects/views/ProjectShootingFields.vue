@@ -3,7 +3,7 @@ import { useI18n } from 'vue-i18n'
 import type { ProjectShooting } from '../../api/types'
 import { chinaDateTimeInput, toChinaTimestamp } from '../../schedule/scheduleUtils'
 
-const props = defineProps<{ modelValue: ProjectShooting; readOnly: boolean; error?: string }>()
+const props = defineProps<{ modelValue: ProjectShooting; readOnly: boolean; error?: string; compact?: boolean }>()
 const emit = defineEmits<{ 'update:modelValue': [value: ProjectShooting] }>()
 const { t } = useI18n()
 /** 字段更新生成小对象快照，交给策划现有修订保存管线；不直接写接口或更改资源归属。 */
@@ -17,7 +17,7 @@ function timeInput(key: 'start_at' | 'end_at', event: Event) {
 </script>
 
 <template>
-  <section class="shooting-details" :aria-label="t('projects.shooting.title')">
+  <section class="shooting-details" :class="{ 'is-compact': compact }" :aria-label="t('projects.shooting.title')">
     <h2>{{ t('projects.shooting.title') }}</h2>
     <div class="shooting-fields">
       <label for="shoot-start">{{ t('projects.shooting.start') }}<input id="shoot-start" type="datetime-local" :value="modelValue.start_at ? chinaDateTimeInput(modelValue.start_at) : ''" :disabled="readOnly" @change="timeInput('start_at', $event)" /></label>
@@ -33,6 +33,7 @@ function timeInput(key: 'start_at' | 'end_at', event: Event) {
 
 <style scoped>
 .shooting-details { margin: 0 0 24px; padding: 20px 24px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); }
+.shooting-details.is-compact { margin: 0; padding: 0; border: 0; background: transparent; }
 h2 { font-size: 16px; font-weight: 500; margin: 0 0 16px; }
 .shooting-fields { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 16px 24px; }
 label, .shoot-kind { display: flex; min-width: 0; flex-direction: column; gap: 8px; font-size: 13px; color: var(--muted); }

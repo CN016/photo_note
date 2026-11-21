@@ -33,11 +33,11 @@ onBeforeUnmount(() => { generation++; if (searchTimer) clearTimeout(searchTimer)
 
 <template>
   <ContentZoom><main id="main-content" class="reviews-main gallery-main">
-    <header><h1>{{ t('reviews.title') }}</h1><RouterLink class="el-button" to="/projects">{{ t('reviews.plans') }}</RouterLink></header>
+    <header><div><h1>{{ t('reviews.title') }}</h1><p class="review-count"><strong>{{ new Intl.NumberFormat(locale).format(total) }}</strong>{{ t('reviews.archivedCount') }}</p></div><RouterLink class="el-button" to="/projects">{{ t('reviews.plans') }}</RouterLink></header>
     <el-input v-model="query" class="review-search" clearable :prefix-icon="Search" :placeholder="t('reviews.search')" :aria-label="t('reviews.search')" />
     <p v-if="loading" class="review-state" role="status">{{ t('common.loading') }}</p>
     <div v-else-if="failed" class="review-state" role="alert"><p>{{ t('reviews.error') }}</p><el-button @click="load">{{ t('common.retry') }}</el-button></div>
-    <div v-else-if="records.length" class="reviews-list"><RouterLink v-for="item in records" :key="item.business_id" :data-shared-transition="item.business_id" :to="`/project-reviews/${item.business_id}`" class="review-row"><el-icon><Document /></el-icon><div><h2>{{ item.title }}</h2><time :datetime="item.updated_at">{{ new Intl.DateTimeFormat(locale, { dateStyle: 'medium', timeZone: 'Asia/Shanghai' }).format(new Date(item.updated_at)) }}</time></div><el-icon><ArrowRight /></el-icon></RouterLink></div>
+    <div v-else-if="records.length" class="reviews-list"><RouterLink v-for="item in records" :key="item.business_id" :data-shared-transition="item.business_id" :to="`/project-reviews/${item.business_id}`" class="review-row"><el-icon><Document /></el-icon><div><h2>{{ item.title }}</h2><time :datetime="item.updated_at">{{ new Intl.DateTimeFormat(locale, { dateStyle: 'medium', timeZone: 'Asia/Shanghai' }).format(new Date(item.updated_at)) }}</time></div><span class="review-open">{{ t('reviews.open') }}<el-icon><ArrowRight /></el-icon></span></RouterLink></div>
     <p v-else class="review-state">{{ t(query ? 'reviews.noResults' : 'reviews.empty') }}</p>
     <nav v-if="total > 20" class="review-pagination" :aria-label="t('reviews.pages')"><el-button :icon="ArrowLeft" :aria-label="t('reviews.previous')" :disabled="loading || page <= 1" @click="page--" /><span>{{ new Intl.NumberFormat(locale).format(page) }} / {{ new Intl.NumberFormat(locale).format(Math.ceil(total / 20)) }}</span><el-button :icon="ArrowRight" :aria-label="t('reviews.next')" :disabled="loading || page >= Math.ceil(total / 20)" @click="page++" /></nav>
   </main></ContentZoom>
@@ -47,6 +47,8 @@ onBeforeUnmount(() => { generation++; if (searchTimer) clearTimeout(searchTimer)
 .reviews-main { padding-top: 48px; padding-bottom: 104px; min-height: 100svh; }
 header { display: flex; justify-content: space-between; align-items: center; gap: 16px; flex-wrap: wrap; margin-bottom: 24px; }
 h1 { font-weight: 500; margin: 0; font-size: clamp(28px, 4vw, 40px); }
+.review-count { margin: 6px 0 0; color: var(--muted); font-size: 13px; }
+.review-count strong { margin-right: 4px; color: var(--ink); font-size: 15px; font-weight: 500; font-variant-numeric: tabular-nums; }
 .review-search { max-width: 520px; margin-bottom: 24px; }
 .reviews-list { border-top: 1px solid var(--line); }
 .review-row { display: flex; align-items: center; gap: 16px; padding: 20px 8px; color: var(--ink); border-bottom: 1px solid var(--line); text-decoration: none; transition: background-color .18s; }
@@ -54,6 +56,7 @@ h1 { font-weight: 500; margin: 0; font-size: clamp(28px, 4vw, 40px); }
 .review-row > div { flex: 1; min-width: 0; }
 h2 { overflow-wrap: anywhere; margin: 0 0 8px; font-size: 17px; font-weight: 500; }
 time { color: var(--muted); font-size: 13px; }
+.review-open { display: inline-flex; flex: 0 0 auto; align-items: center; gap: 2px; color: var(--accent); font-size: 13px; }
 .review-state { display: grid; place-items: center; min-height: 240px; color: var(--muted); text-align: center; }
 .review-pagination { display: flex; justify-content: center; align-items: center; gap: 16px; margin-top: 24px; font-variant-numeric: tabular-nums; }
 .reviews-main :deep(.el-button) { min-height: 44px; }
