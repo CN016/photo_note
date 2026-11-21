@@ -1,15 +1,15 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { ArrowDown, ArrowLeft, ArrowRight, Calendar, CollectionTag, Folder, Histogram, Picture, Setting, User } from '@element-plus/icons-vue'
+import { ArrowDown, ArrowLeft, ArrowRight, Calendar, Folder, Setting } from '@element-plus/icons-vue'
 import { api } from '../api/client'
 import type { InspirationDay, InspirationFacet, InspirationGoalStatus, InspirationLibraryFilters } from '../api/types'
 import { useAuthStore } from '../stores/auth'
 import { useCompactViewport } from '../useCompactViewport'
 import InspirationThumbnail from './InspirationThumbnail.vue'
 
-const props = defineProps<{ filters: InspirationLibraryFilters; revision?: number; selectedTags?: string[] }>()
-const emit = defineEmits<{ 'update:filters': [value: InspirationLibraryFilters]; tag: [id:string] }>()
+const props = defineProps<{ filters: InspirationLibraryFilters; revision?: number }>()
+const emit = defineEmits<{ 'update:filters': [value: InspirationLibraryFilters] }>()
 const { t, locale } = useI18n()
 const auth = useAuthStore()
 const compact = useCompactViewport(700)
@@ -24,7 +24,7 @@ const today = ref(chinaDay())
 const year = ref(Number(today.value.slice(0, 4)))
 const month = ref(today.value.slice(0, 7))
 const view = ref('calendar')
-const views = [ ['calendar',Calendar], ['tags',CollectionTag], ['projects',Folder], ['people',User], ['empty',Picture], ['colors',Histogram] ] as const
+const views = [ ['calendar',Calendar], ['projects',Folder] ] as const
 const activity = ref<InspirationGoalStatus | null>(null)
 const summary = ref<Record<string, InspirationFacet[]>>({})
 const error = ref('')
@@ -60,13 +60,8 @@ const calendar = computed(() => {
 const weekdays = computed(() => Array.from({ length: 7 }, (_, i) => new Intl.DateTimeFormat(locale.value, { weekday: 'short', timeZone: 'UTC' }).format(new Date(Date.UTC(2026, 0, 5 + i)))))
 const monthLabel = computed(() => new Intl.DateTimeFormat(locale.value, { year: 'numeric', month: 'long', timeZone: 'UTC' }).format(new Date(`${month.value}-01T00:00:00Z`)))
 const dayFacets = computed(() => new Map((summary.value.days || []).map(day => [day.key, day])))
-const hueColors = Array.from({ length: 12 }, (_, i) => `hsl(${i * 30} 75% 48%)`)
-const colorKeys = [...Array.from({ length: 12 }, (_, i) => `h${String(i).padStart(2, '0')}`), 'black', 'white', 'gray']
-const wheelGradient = computed(() => `conic-gradient(from -15deg, ${hueColors.map((color, i) => `${color} ${i * 30}deg ${(i + 1) * 30}deg`).join(',')})`)
-const colorName = (key: string) => t(`gallery.library.colorNames.${key}`)
-const colorCount = (key: string) => summary.value.colors?.find(color => color.key === key)?.count || 0
-const hasSelection = computed(() => Object.values(props.filters).some(Boolean))
-const selectionCount = computed(() => Object.values(props.filters).filter(Boolean).length)
+const hasSelection = computed(() => Boolean(props.filters.date_from || props.filters.date_to || props.filters.project))
+const selectionCount = computed(() => [props.filters.date_from || props.filters.date_to, props.filters.project].filter(Boolean).length)
 
 /** 所有筛选都交由图库请求在数据库中执行，视图切换不清除用户明确选择的其他条件。 */
 function filter(key: keyof InspirationLibraryFilters, value: string) {
@@ -168,18 +163,13 @@ defineExpose({
       </div></div>
       <div class="heat-legend"><span>{{ t('gallery.library.less') }}</span><i v-for="n in 5" :key="n" :class="`heat-${n - 1}`" /><span>{{ t('gallery.library.more') }}</span><b />{{ t('gallery.library.achieved') }}</div>
       <nav class="library-tabs" :aria-label="t('gallery.library.view')"><button v-for="[key, icon] in views" :key="key" type="button" :class="{ active: view === key }" :aria-pressed="view === key" @click="view = key"><el-icon><component :is="icon" /></el-icon>{{ t(`gallery.library.${key}`) }}</button></nav>
-      <div v-if="hasSelection" class="library-selection"><span>{{ t('gallery.library.selection') }}</span><el-tag v-if="selectedDate" closable @close="emit('update:filters', { ...filters, date_from: undefined, date_to: undefined })">{{ selectedDate }}</el-tag><el-tag v-if="filters.people" closable @close="filter('people', filters.people!)">{{ filters.people === '3+' ? t('gallery.library.peopleMany') : t('gallery.library.personCount', { count: filters.people }) }}</el-tag><el-tag v-if="filters.color" closable @close="filter('color', filters.color!)">{{ colorName(filters.color) }}</el-tag><el-tag v-if="filters.project" closable @close="filter('project', filters.project!)">{{ filters.project === 'unassigned' ? t('gallery.library.unassigned') : summary.projects?.find(p => p.key === filters.project)?.name || t('gallery.library.projects') }}</el-tag><el-tag v-if="filters.empty_shot" closable @close="filter('empty_shot', filters.empty_shot!)">{{ t(filters.empty_shot === 'true' ? 'gallery.library.emptyOnly' : 'gallery.library.withPeople') }}</el-tag><el-tag v-if="filters.status" closable @close="filter('status', filters.status!)">{{ t(`gallery.library.states.${filters.status}`) }}</el-tag><el-button text @click="emit('update:filters', {})">{{ t('gallery.library.clear') }}</el-button></div>
+      <div v-if="hasSelection" class="library-selection"><span>{{ t('gallery.library.selection') }}</span><el-tag v-if="selectedDate" closable @close="emit('update:filters', { ...filters, date_from: undefined, date_to: undefined })">{{ selectedDate }}</el-tag><el-tag v-if="filters.project" closable @close="filter('project', filters.project!)">{{ filters.project === 'unassigned' ? t('gallery.library.unassigned') : summary.projects?.find(p => p.key === filters.project)?.name || t('gallery.library.projects') }}</el-tag><el-button text @click="emit('update:filters', {})">{{ t('gallery.library.clear') }}</el-button></div>
       <section v-if="view === 'calendar'" class="library-calendar" :aria-label="t('gallery.library.calendar')">
       <div class="calendar-heading"><el-button circle :aria-label="t('gallery.library.previousMonth')" @click="changeMonth(-1)"><el-icon><ArrowLeft /></el-icon></el-button><h3>{{ monthLabel }}</h3><el-button circle :aria-label="t('gallery.library.nextMonth')" @click="changeMonth(1)"><el-icon><ArrowRight /></el-icon></el-button><el-button class="all-dates" text @click="emit('update:filters', { ...filters, date_from: undefined, date_to: undefined })">{{ t('gallery.library.allDates') }}</el-button></div>
       <div class="calendar-week"><span v-for="day in weekdays" :key="day">{{ day }}</span></div>
       <div class="calendar-days"><template v-for="(day, index) in calendar" :key="day || `empty-${index}`"><button v-if="day" type="button" class="calendar-day" :class="{ selected: selectedDate === day, today: day === today }" :aria-label="`${day} ${t('gallery.library.images', { count: number(dayFacets.get(day)?.count || 0) })}`" :aria-pressed="selectedDate === day" @click="selectDay(day)"><span><strong>{{ Number(day.slice(-2)) }}</strong><small v-if="dayFacets.get(day)?.count">{{ number(dayFacets.get(day)!.count) }}</small></span><div class="calendar-previews"><InspirationThumbnail v-for="image in dayFacets.get(day)?.previews || []" :key="image.business_id" :record="image" /></div></button><span v-else class="calendar-padding" /></template></div>
     </section>
-    <div v-else-if="view === 'tags'" class="facet-buttons"><el-button v-for="tag in summary.tags || []" :key="tag.key" :type="selectedTags?.includes(tag.key) ? 'primary' : 'default'" @click="emit('tag', tag.key)">{{ tag.name }}<span class="facet-count">{{ number(tag.count) }}</span></el-button></div>
     <div v-else-if="view === 'projects'" class="facet-buttons"><el-button :type="filters.project === 'unassigned' ? 'primary' : 'default'" @click="filter('project', 'unassigned')">{{ t('gallery.library.unassigned') }}</el-button><el-button v-for="project in summary.projects || []" :key="project.key" :type="filters.project === project.key ? 'primary' : 'default'" @click="filter('project', project.key)">{{ project.name }}<span class="facet-count">{{ number(project.count) }}</span></el-button><p v-if="!summary.projects?.length">{{ t('gallery.library.noProjects') }}</p></div>
-    <div v-else-if="view === 'people'" class="facet-buttons"><el-button v-for="people in ['0', '1', '2', '3+']" :key="people" :type="filters.people === people ? 'primary' : 'default'" @click="filter('people', people)">{{ people === '3+' ? t('gallery.library.peopleMany') : t('gallery.library.personCount', { count: people }) }}<span class="facet-count">{{ number(summary.people?.find(p => p.key === people)?.count || 0) }}</span></el-button></div>
-    <div v-else-if="view === 'empty'" class="empty-facet"><el-button :type="filters.empty_shot === 'true' ? 'primary' : 'default'" @click="filter('empty_shot', 'true')">{{ t('gallery.library.emptyOnly') }}</el-button><el-button :type="filters.empty_shot === 'false' ? 'primary' : 'default'" @click="filter('empty_shot', 'false')">{{ t('gallery.library.withPeople') }}</el-button></div>
-    <section v-else-if="view === 'colors'" class="color-panel" :aria-label="t('gallery.library.colors')"><div class="color-wheel" :style="{ background: wheelGradient }"><button v-for="(_, i) in hueColors" :key="i" type="button" :style="{ transform: `rotate(${i * 30}deg) translateY(-77px) rotate(${-i * 30}deg)` }" :class="{ selected: filters.color === colorKeys[i] }" :aria-pressed="filters.color === colorKeys[i]" :aria-label="t('gallery.library.colorCount', { name: colorName(colorKeys[i]!), count: number(colorCount(colorKeys[i]!)) })" :title="colorName(colorKeys[i]!)" @click="filter('color', colorKeys[i]!)">{{ number(colorCount(colorKeys[i]!)) }}</button><div class="wheel-center">{{ filters.color ? colorName(filters.color) : t('gallery.library.colors') }}</div></div><div class="color-options"><div class="facet-buttons"><el-button v-for="key in colorKeys" :key="key" :type="filters.color === key ? 'primary' : 'default'" @click="filter('color', key)"><i class="color-swatch" :style="{ background: key === 'black' ? '#111' : key === 'white' ? '#fff' : key === 'gray' ? '#888' : hueColors[Number(key.slice(1))] }" />{{ colorName(key) }}<span class="facet-count">{{ number(colorCount(key)) }}</span></el-button></div></div></section>
-      <div class="status-facets"><el-button v-for="status in summary.statuses || []" :key="status.key" text :type="filters.status === status.key ? 'primary' : 'default'" @click="filter('status', status.key)">{{ t(`gallery.library.states.${status.key}`) }} · {{ number(status.count) }}</el-button></div>
     </div>
     <el-dialog v-model="settings" :title="t('gallery.library.goalTitle')" width="min(440px, calc(100vw - 32px))" :close-on-click-modal="false"><el-form label-position="top" @submit.prevent="saveGoal"><el-form-item :label="t('gallery.library.goalEnabled')"><el-switch v-model="draft.enabled" /></el-form-item><el-form-item :label="t('gallery.library.target')"><el-input-number v-model="draft.target" :min="1" :max="100000" :precision="0" :disabled="!draft.enabled" /></el-form-item><el-form-item :label="t('gallery.library.reminderTime')"><el-time-select v-model="draft.reminder_time" start="00:00" end="23:55" step="00:05" :clearable="false" :disabled="!draft.enabled" /></el-form-item><p class="library-hint">{{ t('gallery.library.goalHint') }}</p><p v-if="saveError" class="library-error" role="alert">{{ saveError }}</p></el-form><template #footer><el-button :disabled="saving" @click="settings = false">{{ t('gallery.library.cancel') }}</el-button><el-button type="primary" :loading="saving" @click="saveGoal">{{ t('gallery.library.save') }}</el-button></template></el-dialog>
   </section>

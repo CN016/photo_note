@@ -179,8 +179,12 @@ func (service *InspirationService) List(ctx context.Context, userID uuid.UUID, t
 	if sort == "" {
 		sort = "created_desc"
 	}
-	if sort != "created_desc" && sort != "created_asc" && sort != "updated_desc" {
-		return Page[model.Inspiration]{}, fault.InvalidRequest("sort 只支持 created_desc、created_asc 或 updated_desc")
+	filters := model.InspirationFiltersFromContext(ctx)
+	if sort != "created_desc" && sort != "created_asc" && sort != "updated_desc" && sort != "color_match" {
+		return Page[model.Inspiration]{}, fault.InvalidRequest("sort 只支持 created_desc、created_asc、updated_desc 或 color_match")
+	}
+	if sort == "color_match" && !hexColorPattern.MatchString(filters.Color) {
+		return Page[model.Inspiration]{}, fault.InvalidRequest("color_match 排序必须提供 #rrggbb 色值")
 	}
 	items, total, err := service.inspirations.ListInspirations(ctx, userID, tagIDs, match, query, sort, page.Offset, page.PageSize)
 	if err != nil {

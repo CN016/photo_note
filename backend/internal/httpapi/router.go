@@ -1037,13 +1037,14 @@ func patchCurrentUserHandler(users *service.UserService) gin.HandlerFunc {
 type tagResponse struct {
 	BusinessID uuid.UUID `json:"business_id"`
 	Content    string    `json:"content"`
+	Source     string    `json:"source,omitempty"`
 	CreatedAt  time.Time `json:"created_at"`
 	UpdatedAt  time.Time `json:"updated_at"`
 }
 
 // tagDTO 映射标签公开字段，不暴露标签所属用户字段或数据库自增 ID。
 func tagDTO(tag model.Tag) tagResponse {
-	return tagResponse{BusinessID: tag.BusinessID, Content: tag.Content, CreatedAt: tag.CreatedAt, UpdatedAt: tag.UpdatedAt}
+	return tagResponse{BusinessID: tag.BusinessID, Content: tag.Content, Source: tag.Source, CreatedAt: tag.CreatedAt, UpdatedAt: tag.UpdatedAt}
 }
 
 // pageResponse 统一输出分页项目、页号、页大小与总记录数。
@@ -1257,7 +1258,11 @@ func listInspirationsHandler(inspirations *service.InspirationService) gin.Handl
 			writeError(c, err)
 			return
 		}
-		filters := model.InspirationFilters{DateFrom: c.Query("date_from"), DateTo: c.Query("date_to"), Project: c.Query("project"), People: c.Query("people"), EmptyShot: c.Query("empty_shot"), Color: c.Query("color"), Status: c.Query("status")}
+		filters := model.InspirationFilters{
+			DateFrom: c.Query("date_from"), DateTo: c.Query("date_to"), Project: c.Query("project"),
+			People: c.Query("people"), PeopleMode: c.Query("people_mode"), PeopleMin: c.Query("people_min"), PeopleMax: c.Query("people_max"),
+			EmptyShot: c.Query("empty_shot"), Color: c.Query("color"), Status: c.Query("status"), TagSource: c.Query("tag_source"),
+		}
 		if err := service.ValidateInspirationFilters(filters); err != nil {
 			writeError(c, err)
 			return

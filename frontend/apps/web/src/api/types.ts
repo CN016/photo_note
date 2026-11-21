@@ -27,6 +27,8 @@ export interface UserProfile {
 export interface TagRecord {
   business_id: string
   content: string
+  /** 根据自动标签记录推导的来源；旧服务端可能不返回。 */
+  source?: 'manual' | 'ai' | 'mixed' | 'unused'
   created_at: string
   updated_at: string
 }
@@ -99,7 +101,19 @@ export interface InspirationRecord {
 }
 
 /** 图库扩展筛选不包含资源归属；空间身份统一由请求客户端附加。 */
-export interface InspirationLibraryFilters { date_from?: string; date_to?: string; project?: string; people?: string; empty_shot?: string; color?: string; status?: string }
+export interface InspirationLibraryFilters {
+  date_from?: string
+  date_to?: string
+  project?: string
+  people?: string
+  people_mode?: 'present' | 'absent' | 'exact' | 'range'
+  people_min?: number
+  people_max?: number
+  empty_shot?: string
+  color?: string
+  status?: string
+  tag_source?: 'manual' | 'ai'
+}
 /** 每日数量是成功创建的历史计数，不能以当前列表条数替代。 */
 export interface InspirationDay { day: string; saved_count: number; target: number | null }
 export interface InspirationGoalStatus { goal: { enabled: boolean; target: number; reminder_time: string }; today: InspirationDay; days?: InspirationDay[]; reminder_pending: boolean }

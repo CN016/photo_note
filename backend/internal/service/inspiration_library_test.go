@@ -16,12 +16,23 @@ import (
 
 // TestLibraryFiltersValidation 确保查询白名单拒绝伪日期、SQL 片段和不支持的分类。
 func TestLibraryFiltersValidation(t *testing.T) {
-	for _, f := range []model.InspirationFilters{{DateFrom: "2026-02-30"}, {DateFrom: "2026-10-28", DateTo: "2026-10-01"}, {People: "0 OR 1=1"}, {Color: "h12"}, {Project: "other-user"}, {EmptyShot: "unknown"}, {Status: "failed|succeeded"}} {
+	for _, f := range []model.InspirationFilters{
+		{DateFrom: "2026-02-30"}, {DateFrom: "2026-10-28", DateTo: "2026-10-01"},
+		{People: "0 OR 1=1"}, {People: "0", PeopleMode: "absent"}, {PeopleMode: "exact"},
+		{PeopleMode: "range", PeopleMin: "5", PeopleMax: "2"}, {PeopleMin: "2"},
+		{Color: "h12"}, {Color: "#12345"}, {Project: "other-user"}, {EmptyShot: "unknown"},
+		{Status: "failed|succeeded"}, {TagSource: "remote"},
+	} {
 		if ValidateInspirationFilters(f) == nil {
 			t.Errorf("应拒绝: %+v", f)
 		}
 	}
-	for _, f := range []model.InspirationFilters{{}, {People: "3+", EmptyShot: "false", Color: "h11", Project: "unassigned", Status: "succeeded"}, {DateFrom: "2026-10-01", DateTo: "2026-10-31", Color: "gray"}} {
+	for _, f := range []model.InspirationFilters{
+		{}, {People: "3+", EmptyShot: "false", Color: "h11", Project: "unassigned", Status: "succeeded"},
+		{DateFrom: "2026-10-01", DateTo: "2026-10-31", Color: "gray"},
+		{Color: "#3A7BD5", TagSource: "ai"}, {PeopleMode: "present"},
+		{PeopleMode: "exact", PeopleMin: "4"}, {PeopleMode: "range", PeopleMin: "2", PeopleMax: "6"},
+	} {
 		if e := ValidateInspirationFilters(f); e != nil {
 			t.Errorf("合法条件被拒绝: %v", e)
 		}

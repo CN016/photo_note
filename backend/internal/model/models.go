@@ -77,6 +77,8 @@ type Tag struct {
 	BaseModel
 	UserID  uuid.UUID `gorm:"column:user_id;type:uuid;not null;index"`
 	Content string    `gorm:"column:content;type:varchar(64);not null"`
+	// Source 是查询时根据自动标签记录推导的来源，不持久化到 tags 表。
+	Source string `gorm:"-" json:"source,omitempty"`
 }
 
 // TableName 固定标签模型使用与版本化建表 SQL 相同的表名。

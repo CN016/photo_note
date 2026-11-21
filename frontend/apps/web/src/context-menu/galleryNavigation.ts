@@ -1,9 +1,12 @@
 import type { InspirationLibraryFilters, InspirationRecord } from '../api/types'
+import type { GalleryPeopleMode, GallerySearchKind, GallerySort, GalleryTagSource } from '../gallerySearch'
 
 /** 仅当前标签页内存保留来源；会话代次不同即丢弃，不持久化用户图片及筛选内容。 */
 export interface GallerySnapshot {
   scope: string; key: string; position: number; x: number; y: number
-  search: string; tags: string[]; match: 'any' | 'all'; sort: 'created_desc' | 'created_asc' | 'updated_desc'
+  search: string; tags: string[]; match: 'any' | 'all'; sort: GallerySort
+  searchKind: GallerySearchKind; searchColor: string; tagSource: GalleryTagSource
+  peopleMode: GalleryPeopleMode; peopleMin: number; peopleMax: number
   filters: InspirationLibraryFilters; items: InspirationRecord[]; page: number; total: number
   scroll: number; imageID: string; menuPage: number; menuScroll: number; toolsScroll: number
   tools: { year: number; month: string; view: string }; zoom: { scale: number; scroll: number }

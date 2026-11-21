@@ -12,6 +12,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -189,6 +190,11 @@ func (s *InspirationLibraryService) Retry(ctx context.Context, user, id uuid.UUI
 	return fault.Conflict("未识别图片由每日定时任务处理，不能手动触发AI识别")
 }
 
+var (
+	hexColorPattern    = regexp.MustCompile(`^#[0-9a-fA-F]{6}$`)
+	colorBucketPattern = regexp.MustCompile(`^(h0[0-9]|h1[01]|black|white|gray)$`)
+)
+
 // ValidateInspirationFilters 统一验证新增筛选参数，数据库只接受白名单条件。
 func ValidateInspirationFilters(f model.InspirationFilters) error {
 	for _, d := range []string{f.DateFrom, f.DateTo} {
@@ -206,19 +212,63 @@ func ValidateInspirationFilters(f model.InspirationFilters) error {
 			return fault.InvalidRequest("项目标识无效")
 		}
 	}
+	if f.People != "" && f.PeopleMode != "" {
+		return fault.InvalidRequest("people 与 people_mode 不能同时传入")
+	}
 	if f.People != "" && f.People != "0" && f.People != "1" && f.People != "2" && f.People != "3+" {
 		return fault.InvalidRequest("人数筛选无效")
+	}
+	if f.PeopleMode != "" && f.PeopleMode != "present" && f.PeopleMode != "absent" && f.PeopleMode != "exact" && f.PeopleMode != "range" {
+		return fault.InvalidRequest("人数模式无效")
+	}
+	peopleMin, minErr := parsePeopleBound(f.PeopleMin)
+	peopleMax, maxErr := parsePeopleBound(f.PeopleMax)
+	if minErr != nil || maxErr != nil {
+		return fault.InvalidRequest("人数范围必须为 0 至 100000 的整数")
+	}
+	switch f.PeopleMode {
+	case "":
+		if f.PeopleMin != "" || f.PeopleMax != "" {
+			return fault.InvalidRequest("人数范围必须同时提供 people_mode")
+		}
+	case "present", "absent":
+		if f.PeopleMin != "" || f.PeopleMax != "" {
+			return fault.InvalidRequest("有人或无人筛选不接受人数范围")
+		}
+	case "exact":
+		if f.PeopleMin == "" || f.PeopleMax != "" {
+			return fault.InvalidRequest("精确人数只接受 people_min")
+		}
+	case "range":
+		if f.PeopleMin == "" || f.PeopleMax == "" || peopleMin > peopleMax {
+			return fault.InvalidRequest("人数范围无效")
+		}
 	}
 	if f.EmptyShot != "" && f.EmptyShot != "true" && f.EmptyShot != "false" {
 		return fault.InvalidRequest("空镜筛选无效")
 	}
-	if f.Color != "" && !regexp.MustCompile(`^(h0[0-9]|h1[01]|black|white|gray)$`).MatchString(f.Color) {
+	if f.Color != "" && !hexColorPattern.MatchString(f.Color) && !colorBucketPattern.MatchString(f.Color) {
 		return fault.InvalidRequest("颜色分类无效")
+	}
+	if f.TagSource != "" && f.TagSource != "manual" && f.TagSource != "ai" {
+		return fault.InvalidRequest("标签来源只能是 manual 或 ai")
 	}
 	if f.Status != "" && !strings.Contains("|pending_compression|compressing|pending_analysis|analyzing|succeeded|failed|unsupported|canceled|", "|"+f.Status+"|") {
 		return fault.InvalidRequest("处理状态无效")
 	}
 	return nil
+}
+
+// parsePeopleBound 将可选人数边界转换为非负整数；空字符串仍表示未提供。
+func parsePeopleBound(value string) (int, error) {
+	if value == "" {
+		return 0, nil
+	}
+	number, err := strconv.Atoi(value)
+	if err != nil || number < 0 || number > 100000 {
+		return 0, errors.New("invalid people bound")
+	}
+	return number, nil
 }
 
 // Start 启动受 context 管理的工作线程；配置来自统一服务，调度器每分钟刷新扫描时刻。

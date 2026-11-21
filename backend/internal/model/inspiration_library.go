@@ -75,13 +75,17 @@ func (InspirationProcessingJob) TableName() string { return "inspiration_process
 
 // InspirationFilters 是额外检索条件；服务层验证后传入 repository，不能包含客户端租户标识。
 type InspirationFilters struct {
-	DateFrom  string
-	DateTo    string
-	Project   string
-	People    string
-	EmptyShot string
-	Color     string
-	Status    string
+	DateFrom   string
+	DateTo     string
+	Project    string
+	People     string
+	PeopleMode string
+	PeopleMin  string
+	PeopleMax  string
+	EmptyShot  string
+	Color      string
+	Status     string
+	TagSource  string
 }
 
 // InspirationFacet 是图库分组的安全投影，只返回业务键、展示名称和数量。

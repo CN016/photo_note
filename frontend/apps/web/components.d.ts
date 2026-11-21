@@ -60,6 +60,7 @@ declare module 'vue' {
     ElTooltip: typeof import('element-plus/es')['ElTooltip']
     ElUpload: typeof import('element-plus/es')['ElUpload']
     FeedbackWidget: typeof import('./src/components/FeedbackWidget.vue')['default']
+    GallerySearchPanel: typeof import('./src/components/GallerySearchPanel.vue')['default']
     GlobalContextMenu: typeof import('./src/components/GlobalContextMenu.vue')['default']
     GlobalMessageButton: typeof import('./src/components/GlobalMessageButton.vue')['default']
     InspirationGoalReminder: typeof import('./src/components/InspirationGoalReminder.vue')['default']
