@@ -2,11 +2,11 @@
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute } from 'vue-router'
-import { ChatDotRound, Menu } from '@element-plus/icons-vue'
+import { ChatDotRound } from '@element-plus/icons-vue'
 import { useAuthStore } from '../stores/auth'
 import { useAppShellStore } from '../stores/appShell'
 import BrandMark from './BrandMark.vue'
-import { navigationDrawer, setNavigationDrawer } from '../navigationDrawer'
+import { navigationDrawer } from '../navigationDrawer'
 
 
 const { t } = useI18n()
@@ -28,7 +28,6 @@ const unreadCount = computed(() => appShell.unreadCount)
           <span v-if="unreadCount" class="global-message-count">{{ unreadCount > 99 ? '99+' : unreadCount }}</span>
         </RouterLink>
       </div>
-      <button type="button" class="global-mobile-menu-trigger" :aria-label="t('common.openNavigation')" :aria-expanded="navigationDrawer.progress > 0" @click="setNavigationDrawer(true)"><el-icon aria-hidden="true"><Menu /></el-icon><span v-if="unreadCount" class="global-mobile-unread-dot" aria-hidden="true" /></button>
     </div>
   </header>
 </template>
@@ -38,8 +37,6 @@ const unreadCount = computed(() => appShell.unreadCount)
 .global-message-brand { display: none; }
 .global-message-actions { display: flex; flex: 0 0 auto; align-items: center; gap: 8px; }
 .global-desktop-actions { display: flex; align-items: center; gap: 8px; }
-.global-mobile-menu-trigger { display: none; position: relative; width: 44px; height: 44px; place-items: center; padding: 0; border: 1px solid var(--line); border-radius: var(--radius-control); background: var(--surface); color: var(--ink-soft); cursor: pointer; font-size: 20px; }
-.global-mobile-unread-dot { position: absolute; top: 8px; right: 8px; width: 7px; height: 7px; border: 2px solid var(--surface); border-radius: 50%; background: var(--danger); }
 .global-mobile-menu { display: grid; gap: 4px; }
 .global-mobile-menu-item { display: flex; min-height: 44px; align-items: center; gap: 10px; padding: 0 10px; border: 0; border-radius: var(--radius-control); background: transparent; color: var(--ink); cursor: pointer; font: inherit; font-size: 13px; text-align: left; text-decoration: none; }
 .global-mobile-menu-item:hover { background: var(--surface-soft); }
@@ -60,7 +57,6 @@ const unreadCount = computed(() => appShell.unreadCount)
   .global-message-brand { display: flex; min-width: 0; flex: 1 1 auto; align-items: center; gap: 8px; color: var(--ink); text-decoration: none; }
   .global-message-brand strong { overflow: hidden; font-size: 13px; text-overflow: ellipsis; white-space: nowrap; }
   .global-desktop-actions { display: none; }
-  .global-mobile-menu-trigger { display: grid; }
   .global-message-link { width: 44px; height: 44px; border-radius: var(--radius-control); box-shadow: none; }
 }
 </style>
