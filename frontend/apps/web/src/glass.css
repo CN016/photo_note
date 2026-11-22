@@ -9,17 +9,17 @@
   --surface-overlay: rgb(255 253 249 / 68%);
   --surface-soft: rgb(255 252 247 / 24%);
   --surface-muted: rgb(231 231 226 / 32%);
-  --ink: #2f3b34;
-  --ink-soft: #4a574f;
-  --muted: #526159;
+  --ink: #26332c;
+  --ink-soft: #3d4a43;
+  --muted: #48574f;
   --line: rgb(69 85 75 / 14%);
   --line-strong: rgb(69 85 75 / 24%);
-  --accent: #456f5b;
-  --accent-hover: #4f7c67;
-  --accent-pressed: #3f6754;
+  --accent: #3f6754;
+  --accent-hover: #355b47;
+  --accent-pressed: #2d4f3d;
   --accent-soft: rgb(157 205 179 / 22%);
   --on-accent: #fffaf3;
-  --focus: #456f5b;
+  --focus: #3f6754;
   --glass-blur: 26px;
   --glass-saturation: 108%;
   --ambient-a: rgb(222 243 231 / 52%);
@@ -112,13 +112,13 @@
     radial-gradient(15rem 14rem at 82% 34%, rgb(221 248 242 / 28%), transparent 78%),
     radial-gradient(56rem 44rem at 72% 18%, rgb(235 251 247 / 76%), transparent 76%),
     linear-gradient(112deg, #d3f3ed 0%, #def6f1 34%, #e8f9f5 68%, #f2fcfa 100%);
-  --accent: #267568;
-  --accent-hover: #2b7d70;
-  --accent-pressed: #20685d;
+  --accent: #1f685c;
+  --accent-hover: #1b5d52;
+  --accent-pressed: #164f45;
   --accent-soft: rgb(75 192 173 / 20%);
-  --focus: #267568;
+  --focus: #1f685c;
   --sage: #dff4ee;
-  --sage-ink: #267568;
+  --sage-ink: #1f685c;
   --blue: #e1f2ee;
   --ambient-a: rgb(196 241 232 / 58%);
   --ambient-a-soft: rgb(75 192 173 / 25%);
@@ -140,13 +140,13 @@
     radial-gradient(15rem 14rem at 82% 34%, rgb(226 240 251 / 28%), transparent 78%),
     radial-gradient(56rem 44rem at 72% 18%, rgb(239 248 254 / 76%), transparent 76%),
     linear-gradient(112deg, #dcecf8 0%, #e4f1fa 34%, #edf6fc 68%, #f6fbff 100%);
-  --accent: #376f93;
-  --accent-hover: #40799d;
-  --accent-pressed: #2d5d7c;
+  --accent: #2f6385;
+  --accent-hover: #295775;
+  --accent-pressed: #234b65;
   --accent-soft: rgb(103 174 220 / 19%);
-  --focus: #376f93;
+  --focus: #2f6385;
   --sage: #e2eef6;
-  --sage-ink: #376f93;
+  --sage-ink: #2f6385;
   --blue: #e2eef6;
   --ambient-a: rgb(205 231 246 / 58%);
   --ambient-a-soft: rgb(103 174 220 / 24%);
@@ -168,13 +168,13 @@
     radial-gradient(15rem 14rem at 82% 34%, rgb(251 240 205 / 30%), transparent 78%),
     radial-gradient(56rem 44rem at 72% 18%, rgb(253 246 224 / 78%), transparent 76%),
     linear-gradient(112deg, #f8e8bd 0%, #f9edcc 34%, #fbf2dd 68%, #fdf8eb 100%);
-  --accent: #8a6a1f;
-  --accent-hover: #7d5e18;
-  --accent-pressed: #6b4f12;
+  --accent: #745412;
+  --accent-hover: #68490e;
+  --accent-pressed: #593e0b;
   --accent-soft: rgb(246 195 88 / 22%);
-  --focus: #8a6a1f;
+  --focus: #745412;
   --sage: #f4ecd4;
-  --sage-ink: #8a6a1f;
+  --sage-ink: #745412;
   --blue: #f5eedb;
   --ambient-a: rgb(250 232 183 / 58%);
   --ambient-a-soft: rgb(246 195 88 / 24%);
@@ -331,6 +331,43 @@ body .space-grid .el-card {
   box-shadow: var(--glass-shadow) !important;
   -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturation)) brightness(103%) contrast(104%);
   backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturation)) brightness(103%) contrast(104%);
+}
+
+/*
+ * 列表筛选、编辑工作区和流程面板使用更轻的玻璃层。
+ * 这些区域数量可能较多，降低模糊半径，同时保持与主卡片相同的边框、内高光和底色来源。
+ */
+body .gallery-tools,
+body .library-board,
+body .upload-panel,
+body .upload-card,
+body .workbench-card,
+body .workflow-overview,
+body .workflow-shortcuts > button,
+body .workflow-shortcuts > a,
+body .filter-panel,
+body .kpi-card,
+body .draft-banner,
+body .plans-empty,
+body .project-document-editor .tvp-editor,
+body .project-resource-frame,
+body .portfolio-photo {
+  border-color: var(--glass-border) !important;
+  background: var(--glass-bg-subtle) !important;
+  box-shadow:
+    inset 0 1px 0 var(--glass-edge),
+    inset 0 -1px 0 var(--glass-shade),
+    0 12px 32px rgb(54 59 55 / 10%) !important;
+  -webkit-backdrop-filter: blur(14px) saturate(132%);
+  backdrop-filter: blur(14px) saturate(132%);
+}
+
+body .plan-tabs,
+body .schedule-view-switch,
+body .project-status-filters button[aria-pressed='true'] {
+  border-color: var(--glass-border) !important;
+  background: var(--glass-control) !important;
+  box-shadow: inset 0 1px 0 var(--glass-edge) !important;
 }
 
 /*
@@ -904,7 +941,15 @@ body .global-mobile-menu-item:hover {
   body .statistics-card,
   body .statistics-summary-card,
   body .schedule-calendar-panel,
-  body .schedule-bookings-panel {
+  body .schedule-bookings-panel,
+  body .gallery-tools,
+  body .library-board,
+  body .upload-panel,
+  body .upload-card,
+  body .workbench-card,
+  body .workflow-overview,
+  body .filter-panel,
+  body .kpi-card {
     -webkit-backdrop-filter: blur(14px) saturate(145%);
     backdrop-filter: blur(14px) saturate(145%);
   }

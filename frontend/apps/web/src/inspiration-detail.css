@@ -10,9 +10,9 @@ body.image-detail-route {
   --surface-overlay: rgb(255 253 249 / 70%);
   --surface-soft: rgb(255 252 247 / 24%);
   --surface-muted: rgb(231 231 226 / 34%);
-  --ink: #2f3b34;
-  --ink-soft: #4a574f;
-  --muted: #526159;
+  --ink: #26332c;
+  --ink-soft: #3d4a43;
+  --muted: #48574f;
   --line: rgb(69 85 75 / 16%);
   --line-strong: rgb(69 85 75 / 26%);
   --glass-blur: 30px;
@@ -103,7 +103,6 @@ body.image-detail-route .image-tool-popover .image-tool-panel {
   backdrop-filter: none !important;
 }
 
-body.image-detail-route .image-tools-dialog.el-dialog,
 body.image-detail-route .editor-glass-dialog.el-dialog,
 body.image-detail-route .editor-glass-dialog.el-message-box {
   border: 1px solid color-mix(in srgb, var(--ink) 12%, transparent) !important;
@@ -139,7 +138,6 @@ body.image-detail-route .detail-tag-picker-input .el-input__wrapper {
 }
 
 body.image-detail-route .detail-tag-picker-input .el-button--primary:not(:disabled),
-body.image-detail-route .image-tools-dialog .el-button--primary:not(:disabled),
 body.image-detail-route .editor-glass-dialog .el-button--primary:not(:disabled) {
   border-color: transparent !important;
   background: var(--accent) !important;
@@ -147,7 +145,6 @@ body.image-detail-route .editor-glass-dialog .el-button--primary:not(:disabled) 
 }
 
 body.image-detail-route .detail-tag-picker-input .el-button--primary:hover:not(:disabled),
-body.image-detail-route .image-tools-dialog .el-button--primary:hover:not(:disabled),
 body.image-detail-route .editor-glass-dialog .el-button--primary:hover:not(:disabled) {
   background: var(--accent-hover) !important;
 }
@@ -171,8 +168,7 @@ body.image-detail-route .editor-glass-dialog .el-button--primary:hover:not(:disa
 
 @media (prefers-reduced-motion: reduce) {
   body.image-detail-route .image-edit-dock,
-  body.image-detail-route .image-tool-popover,
-  body.image-detail-route .image-tools-dialog {
+  body.image-detail-route .image-tool-popover {
     transition: none !important;
   }
 }

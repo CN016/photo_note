@@ -16,19 +16,19 @@
   --surface-overlay: #fffaf2;
   --surface-soft: #f2eee6;
   --surface-muted: #e1e6dd;
-  --ink: #2f3b34;
-  --ink-soft: #4a574f;
-  --muted: #526159;
+  --ink: #26332c;
+  --ink-soft: #3d4a43;
+  --muted: #48574f;
   --line: #d3d8cf;
   --line-strong: #b9c4ba;
-  --accent: #456f5b;
-  --accent-hover: #4f7c67;
-  --accent-pressed: #3f6754;
+  --accent: #3f6754;
+  --accent-hover: #355b47;
+  --accent-pressed: #2d4f3d;
   --accent-soft: #dcecdf;
   --on-accent: #fffaf3;
   --on-success: #fffaf3;
   --sage: #e3efe7;
-  --sage-ink: #456f5b;
+  --sage-ink: #3f6754;
   --blue: #e7eee9;
   --mood-one: #d6e8dc;
   --mood-hill: #8eb19c;
@@ -36,15 +36,15 @@
   --mood-leaf: #88a992;
   --mood-five: #e1ebe2;
   --mood-arch: #a8c5b2;
-  --success: #47735f;
+  --success: #3f6855;
   --success-soft: #e3efe8;
-  --warning: #81653f;
+  --warning: #74582f;
   --warning-soft: #f2e6d3;
-  --danger: #995950;
+  --danger: #8a4c44;
   --danger-soft: #f0dfdb;
   --shadow: 0 22px 64px rgb(72 94 81 / 13%), 0 2px 10px rgb(72 94 81 / 6%);
   --soft-shadow: 0 1px 2px rgb(72 94 81 / 5%), 0 8px 24px rgb(72 94 81 / 6%);
-  --focus: #456f5b;
+  --focus: #3f6754;
   --radius-control: 12px;
   --radius-card: 18px;
   --radius-overlay: 28px;
@@ -897,7 +897,8 @@ button.image-anchor:hover .image-anchor-label, button.image-anchor:focus-visible
   .console-pagination > span { font-size: 12px; text-align: center; }
 }
 
-/* 项目文档编辑时，底部横向样式工具栏接管移动端导航区域。 */
+/* 项目文档编辑时，底部横向样式工具栏接管移动端导航区域，整组底栏都不展示。 */
+.project-editor-route .mobile-navigation-bar,
 .project-editor-route .mobile-nav { display: none !important; }
 
 @media (prefers-reduced-motion: reduce) {

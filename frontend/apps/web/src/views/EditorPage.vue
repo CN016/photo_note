@@ -72,6 +72,11 @@ function openTool(panel: 'anchors' | 'adjust' | 'note', event: MouseEvent) {
   else anchorMode.value = false
   toolPanel.value = toolPanel.value === panel ? null : panel
 }
+/** 右上角属性面板与按钮共用同一个锚定玻璃浮层，避免再弹出独立模态框。 */
+function openProperties(event: MouseEvent) {
+  toolAnchor.value = event.currentTarget as HTMLElement
+  toolPanel.value = toolPanel.value === 'properties' ? null : 'properties'
+}
 const toolTitle = computed(() => t(toolPanel.value === 'properties' ? 'editor.metadataPanelTitle' : toolPanel.value === 'anchors' ? 'editor.toolbarAnchors' : toolPanel.value === 'note' ? 'editor.imageNote' : 'editor.adjust'))
 /** 锚点添加需要回到画布接收点击，先关闭工具浮窗，保留当前编辑状态。 */
 function toggleAnchorTool() { anchorMode.value = !anchorMode.value; toolPanel.value = null }
@@ -1573,9 +1578,7 @@ onBeforeUnmount(() => {
           <RouterLink class="detail-back" to="/inspirations" :aria-label="t('common.back')"><el-icon aria-hidden="true"><ArrowLeft /></el-icon></RouterLink>
         </el-tooltip>
         <h1 class="sr-only">{{ isEditing ? t('editor.editTitle') : t('editor.detailTitle') }}</h1>
-        <el-tooltip :content="t('editor.metadataPanelTitle')" placement="bottom-end" effect="dark" popper-class="image-detail-tooltip" :show-after="260">
-          <el-button class="detail-more" circle :aria-label="t('editor.metadataPanelTitle')" :aria-expanded="toolPanel === 'properties'" @click="toolPanel = 'properties'"><el-icon aria-hidden="true"><MoreFilled /></el-icon></el-button>
-        </el-tooltip>
+        <el-button class="detail-more" circle :title="t('editor.metadataPanelTitle')" :aria-label="t('editor.metadataPanelTitle')" :aria-expanded="toolPanel === 'properties' ? 'true' : 'false'" @click="openProperties"><el-icon aria-hidden="true"><MoreFilled /></el-icon></el-button>
       </header>
 
       <section v-if="!isExisting && !imageReady" class="upload-welcome">

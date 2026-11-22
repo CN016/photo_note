@@ -271,7 +271,6 @@ function ariaMobileCurrent(path: string): 'page' | 'location' | undefined {
   .mobile-list-menu-trigger:focus-visible::before { outline: 2px solid var(--focus); outline-offset: 2px; }
   .mobile-list-menu-unread-dot { position: absolute; z-index: 1; top: 7px; right: 7px; width: 7px; height: 7px; border: 2px solid var(--surface); border-radius: 50%; background: var(--danger); }
   .mobile-navigation-bar { display: block; position: fixed; z-index: 40; inset: auto 0 0; padding: 0 8px env(safe-area-inset-bottom); border-top: 1px solid var(--line); background: var(--surface); }
-  :global(.project-editor-route) .mobile-navigation-bar { display: none; }
   .app-navigation { inset: 0 auto 0 0; width: min(320px, 86vw); height: 100dvh; border-top: 0; border-right: 1px solid var(--line); background: var(--surface); transform: translateX(-100%); visibility: hidden; transition: transform 220ms var(--ease-spring), visibility 0s linear 220ms; }
   .app-navigation.drawer-visible { visibility: visible; transition: transform 220ms var(--ease-spring); }
   .app-navigation .desktop-nav { display: grid; }
