@@ -338,7 +338,18 @@ func (store *PostgresStore) ListInspirations(ctx context.Context, userID uuid.UU
 	filters := model.InspirationFiltersFromContext(ctx)
 	if search != "" {
 		pattern := "%" + strings.NewReplacer("\\", "\\\\", "%", "\\%", "_", "\\_").Replace(search) + "%"
-		query = query.Where("file_name ILIKE ? ESCAPE E'\\\\'", pattern)
+		// 文本搜索覆盖文件名、整图备注和锚点文字；非数组锚点按空集合处理，避免脏历史文档阻断查询。
+		query = query.Where(`(
+			file_name ILIKE ? ESCAPE E'\\'
+			OR COALESCE(data->>'image_note', '') ILIKE ? ESCAPE E'\\'
+			OR EXISTS (
+				SELECT 1
+				FROM jsonb_array_elements(
+					CASE WHEN jsonb_typeof(data->'anchors') = 'array' THEN data->'anchors' ELSE '[]'::jsonb END
+				) AS anchor(item)
+				WHERE COALESCE(item->>'note', '') ILIKE ? ESCAPE E'\\'
+			)
+		)`, pattern, pattern, pattern)
 	}
 	if len(tagIDs) > 0 {
 		values := make(pq.StringArray, 0, len(tagIDs))

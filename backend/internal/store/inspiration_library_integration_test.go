@@ -246,6 +246,27 @@ func TestInspirationLibraryPostgres(t *testing.T) {
 	if rangeTotal != 1 || len(rangeMatches) != 1 || rangeMatches[0].BusinessID != blue.BusinessID {
 		t.Fatalf("人数范围筛选错误: total=%d items=%+v", rangeTotal, rangeMatches)
 	}
+	// 文本检索必须覆盖整图备注和锚点文字，而不是只匹配文件名。
+	noteRow := model.Inspiration{BaseModel: model.BaseModel{BusinessID: uuid.New()}, UserID: uid, ImageKey: "unsupported:note-search", FileName: "海边照片", Data: model.JSONB(`{"schema_version":1,"image_note":"逆光下的海岸备注","anchors":[]}`)}
+	must(r.CreateInspiration(ctx, &noteRow))
+	anchorRow := model.Inspiration{BaseModel: model.BaseModel{BusinessID: uuid.New()}, UserID: uid, ImageKey: "unsupported:anchor-search", FileName: "棚拍照片", Data: model.JSONB(`{"schema_version":1,"anchors":[{"id":"a1","x":0.2,"y":0.3,"note":"需要补拍手部锚点"}]}`)}
+	must(r.CreateInspiration(ctx, &anchorRow))
+	// 文本检索样本不是处理任务目标；补齐成功态和自动标签快照，避免后续扫描把它们当作未识别图片。
+	for _, row := range []model.Inspiration{noteRow, anchorRow} {
+		must(db.WithContext(ctx).Model(&model.Inspiration{}).Where("user_id=? AND business_id=?", uid, row.BusinessID).Updates(map[string]any{
+			"analysis_status": "succeeded", "auto_tags": model.JSONB(`{"version":"text-search-test","items":[]}`),
+		}).Error)
+	}
+	noteMatches, noteTotal, e := r.ListInspirations(ctx, uid, nil, "any", "海岸备注", "created_desc", 0, 20)
+	must(e)
+	if noteTotal != 1 || len(noteMatches) != 1 || noteMatches[0].BusinessID != noteRow.BusinessID {
+		t.Fatalf("整图备注文本检索错误: total=%d items=%+v", noteTotal, noteMatches)
+	}
+	anchorMatches, anchorTotal, e := r.ListInspirations(ctx, uid, nil, "any", "手部锚点", "created_desc", 0, 20)
+	must(e)
+	if anchorTotal != 1 || len(anchorMatches) != 1 || anchorMatches[0].BusinessID != anchorRow.BusinessID {
+		t.Fatalf("锚点文本检索错误: total=%d items=%+v", anchorTotal, anchorMatches)
+	}
 	listedTags, _, e := r.ListTags(ctx, uid, "", 0, 100)
 	must(e)
 	tagSources := make(map[string]string, len(listedTags))
@@ -301,7 +322,8 @@ func TestInspirationLibraryPostgres(t *testing.T) {
 	must(r.DeleteInspiration(ctx, uid, item.BusinessID))
 	rows, err = r.ListInspirationActivities(ctx, uid, day, day)
 	must(err)
-	if rows[0].SavedCount != 3 || *rows[0].Target != 4 {
+	// 两次文本检索样本与两条可检索画像样本都计入历史存图数，删除图片不会回减。
+	if rows[0].SavedCount != 5 || *rows[0].Target != 4 {
 		t.Fatal("删除回减历史计数或修改目标丢失快照")
 	}
 }
