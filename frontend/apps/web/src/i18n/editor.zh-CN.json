@@ -71,6 +71,7 @@
   "anchorEmpty": "点击图片，为某个细节添加备注。",
   "anchorPlaceholder": "写下这个细节让你想到什么…",
   "anchorSave": "保存备注",
+  "anchorComplete": "完成",
   "anchorSaved": "锚点已保存",
   "anchorSaveFailed": "锚点保存失败，请稍后重试",
   "anchorDelete": "删除锚点",

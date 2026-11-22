@@ -71,6 +71,7 @@
   "anchorEmpty": "Tap the image to leave a note on a detail.",
   "anchorPlaceholder": "What does this detail make you think of?",
   "anchorSave": "Save note",
+  "anchorComplete": "Done",
   "anchorSaved": "Pin saved",
   "anchorSaveFailed": "Couldn't save the pin. Try again later.",
   "anchorDelete": "Delete pin",

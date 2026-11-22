@@ -33,6 +33,8 @@ export const MIN_PINCH_ZOOM_SCALE = 1.35
 /** 手指继续分开时允许超过全屏阈值，但仍限制单帧几何规模，避免异常触控数据撑爆画布。 */
 export const MAX_PINCH_ZOOM_SCALE = 4
 export const PINCH_FULLSCREEN_THRESHOLD = 0.96
+/** 全屏双指收拢到接近详情原尺寸时返回详情页，避免停在既非全屏也非详情的中间状态。 */
+export const PINCH_RETURN_SCALE = 1.18
 
 function clamp(value: number, minimum: number, maximum: number): number {
   return Math.max(minimum, Math.min(maximum, Number.isFinite(value) ? value : minimum))
@@ -80,4 +82,36 @@ export function pinchZoomFrame(
     progress,
     targetScale,
   }
+}
+
+/**
+ * 全屏层的双指收拢仍以当前全屏比例为起点，按手指距离连续缩小，并始终围绕视口中心收拢。
+ * 调用方在比例接近详情原图尺寸时退出全屏，其余情况抬手后回到全屏基准比例。
+ */
+export function pinchReturnFrame(
+  source: ZoomRect,
+  viewport: ZoomViewport,
+  fullscreenScale: number,
+  start: PinchPoints,
+  current: PinchPoints,
+): PinchFrame {
+  const targetScale = pinchTargetScale(source, viewport)
+  const ratio = current.distance / Math.max(1, start.distance)
+  const scale = clamp(fullscreenScale * ratio, 1, MAX_PINCH_ZOOM_SCALE)
+  const progress = targetScale <= 1 ? 1 : clamp((scale - 1) / (targetScale - 1), 0, 1)
+  const sourceCenterX = source.left + source.width / 2
+  const sourceCenterY = source.top + source.height / 2
+
+  return {
+    scale,
+    x: viewport.width / 2 - sourceCenterX,
+    y: viewport.height / 2 - sourceCenterY,
+    progress,
+    targetScale,
+  }
+}
+
+/** 缩到接近详情原尺寸后退出全屏，避免用户必须把双指完全并拢。 */
+export function shouldReturnFromPinch(frame: PinchFrame): boolean {
+  return frame.scale <= PINCH_RETURN_SCALE
 }

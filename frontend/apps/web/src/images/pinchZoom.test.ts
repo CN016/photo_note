@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest'
-import { MAX_PINCH_ZOOM_SCALE, pinchTargetScale, pinchZoomFrame, pointDistance } from './pinchZoom'
+import {
+  MAX_PINCH_ZOOM_SCALE, PINCH_RETURN_SCALE, pinchReturnFrame, pinchTargetScale, pinchZoomFrame, pointDistance, shouldReturnFromPinch,
+} from './pinchZoom'
 
 const source = { left: 20, top: 100, width: 360, height: 240 }
 const viewport = { width: 390, height: 844 }
@@ -32,5 +34,25 @@ describe('灵感图双指全屏几何', () => {
 
   it('双指距离计算返回欧氏距离', () => {
     expect(pointDistance({ x: 0, y: 0 }, { x: 3, y: 4 })).toBe(5)
+  })
+
+  it('全屏后双指收拢连续缩小，接近原尺寸时返回详情', () => {
+    const target = pinchTargetScale(source, viewport)
+    const start = { distance: 240, x: viewport.width / 2, y: viewport.height / 2 }
+    const partial = pinchReturnFrame(source, viewport, target, start, { ...start, distance: 220 })
+    expect(partial.scale).toBeLessThan(target)
+    expect(partial.scale).toBeGreaterThan(PINCH_RETURN_SCALE)
+    expect(shouldReturnFromPinch(partial)).toBe(false)
+    expect(partial.x + source.width / 2 + source.left).toBeCloseTo(viewport.width / 2)
+
+    const returning = pinchReturnFrame(source, viewport, target, start, { ...start, distance: 80 })
+    expect(returning.scale).toBeLessThanOrEqual(PINCH_RETURN_SCALE)
+    expect(shouldReturnFromPinch(returning)).toBe(true)
+  })
+
+  it('全屏收拢比例不会低于详情原尺寸', () => {
+    const frame = pinchReturnFrame(source, viewport, 2.4, { distance: 200, x: 195, y: 422 }, { distance: 1, x: 195, y: 422 })
+    expect(frame.scale).toBe(1)
+    expect(frame.progress).toBe(0)
   })
 })
