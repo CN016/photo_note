@@ -1,5 +1,5 @@
-/** 有界私有缩略图缓存：同资源合并请求，限制下载并发，切换会话后丢弃旧结果。 */
-export function createThumbnailCache(load: (key: string) => Promise<Blob>, identity: () => string, options: { concurrency?: number; entries?: number; bytes?: number; ttl?: number; now?: () => number } = {}) {
+/** 有界私有图片缓存：同资源合并请求，限制下载并发，切换会话后丢弃旧结果。 */
+export function createThumbnailCache(load: (key: string, version?: string) => Promise<Blob>, identity: () => string, options: { concurrency?: number; entries?: number; bytes?: number; ttl?: number; now?: () => number } = {}) {
   const limit = options.concurrency ?? 4
   const clock = options.now ?? Date.now
   type Entry = { promise: Promise<Blob>; expires: number; size: number; settled: boolean }
@@ -31,7 +31,7 @@ export function createThumbnailCache(load: (key: string) => Promise<Blob>, ident
       queue.push({ reject, run: () => {
         // 排队期间切换空间时不发送请求；在途请求仍由API的会话屏障检查正文。
         if (generation !== epoch || expected !== identity()) { active -= 1; reject(new Error('space_changed')); pump(); return }
-        void load(key).then(blob => {
+        void load(key, version || undefined).then(blob => {
           if (generation !== epoch || expected !== identity()) throw new Error('space_changed')
           entry.size = blob.size; entry.expires = clock() + (options.ttl ?? 300_000)
           resolve(blob)

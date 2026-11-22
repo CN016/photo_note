@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import {
+  applyGalleryPeoplePreset,
   createGallerySearchState,
+  galleryPeoplePreset,
   gallerySearchHasValue,
   inspirationRequestOptions,
   switchGallerySearchKind,
@@ -47,5 +49,15 @@ describe('gallery search criteria', () => {
   it('人数范围会规范上下界并只提交范围参数', () => {
     const state = { ...createGallerySearchState('people'), peopleMode: 'range' as const, peopleMin: 8, peopleMax: 3 }
     expect(inspirationRequestOptions(state, 'created_desc')).toMatchObject({ people_mode: 'range', people_min: 3, people_max: 8 })
+  })
+
+  it('快捷人数覆盖无人、1 至 6 人和多人', () => {
+    const initial = createGallerySearchState('people')
+    expect(applyGalleryPeoplePreset(initial, 'absent')).toMatchObject({ peopleMode: 'absent' })
+    expect(applyGalleryPeoplePreset(initial, '4')).toMatchObject({ peopleMode: 'exact', peopleMin: 4, peopleMax: 4 })
+    expect(applyGalleryPeoplePreset(initial, 'many')).toMatchObject({ peopleMode: 'range', peopleMin: 6, peopleMax: 100000 })
+    expect(galleryPeoplePreset(applyGalleryPeoplePreset(initial, '6'))).toBe('6')
+    expect(galleryPeoplePreset(applyGalleryPeoplePreset(initial, 'many'))).toBe('many')
+    expect(galleryPeoplePreset({ ...initial, peopleMode: 'present' })).toBe('')
   })
 })

@@ -140,8 +140,7 @@ async function openDetail(event: MouseEvent, item: InspirationRecord) {
   const version = ++openVersion, scope = scopeKey()
   openingID.value = item.business_id
   try {
-    const pending = inspirationDetails.peek(inspirationDetailKey(item))
-    if (!pending) throw new Error('detail_preload_failed')
+    const pending = inspirationDetails.peek(inspirationDetailKey(item)) ?? preloadInspirationDetail(item)
     const prepared = await pending
     if (version !== openVersion || !active.value || !alive || scope !== scopeKey() || !marker.isConnected) return
     prepareListImage(marker, prepared.image)
@@ -179,10 +178,9 @@ let requestVersion = 0
 let searchTimer: number | undefined
 let tagsVersion = 0
 
-/** 当前已加载的全部分页条目立即预取；筛选移除的条目释放对象地址，缓存列表返回时继续复用。 */
+/** 保留当前分页的详情任务，筛选移除的条目释放对象地址；高清图由缩略图接近视口时再预取。 */
 watch(items, records => {
   inspirationDetails.retain(new Set(records.map(inspirationDetailKey)))
-  for (const item of records) void preloadInspirationDetail(item).catch(() => { /* 后台失败不刷屏，点击或列表重试再展示已有错误反馈。 */ })
 }, { deep: true, immediate: true })
 
 /** 将网络错误与列表读取错误映射为当前语言的页面提示。 */
@@ -272,9 +270,9 @@ onMounted(async () => {
     tagMatch: saved.match,
     color: saved.searchColor || '',
     tagSource: saved.tagSource || 'all',
-    peopleMode: saved.peopleMode || 'present',
+    peopleMode: saved.peopleMode || 'exact',
     peopleMin: saved.peopleMin ?? 1,
-    peopleMax: saved.peopleMax ?? 3,
+    peopleMax: saved.peopleMax ?? 1,
   }
   const { color: _legacyColor, people: _legacyPeople, people_mode: _legacyPeopleMode, people_min: _legacyPeopleMin, people_max: _legacyPeopleMax, ...persistentFilters } = saved.filters
   void _legacyColor; void _legacyPeople; void _legacyPeopleMode; void _legacyPeopleMin; void _legacyPeopleMax
@@ -333,7 +331,7 @@ onBeforeUnmount(() => { alive = false; inspirationDetails.clear(); openVersion +
       <section v-if="items.length" class="inspiration-grid" :aria-label="t('gallery.title')">
         <article v-for="(item, index) in items" :key="item.business_id" class="inspiration-card" tabindex="0" :data-inspiration-card="item.business_id" :style="{ '--card-index': index % 8 }">
           <RouterLink class="inspiration-link" @click.capture="openDetail($event, item)" :data-shared-transition="item.business_id" :to="`/inspirations/${item.business_id}`" :aria-label="t('gallery.openImage', { name: item.file_name || t('gallery.untitled') })">
-            <div class="gallery-image-frame"><InspirationThumbnail :record="item" show-anchors /></div>
+            <div class="gallery-image-frame"><InspirationThumbnail :record="item" show-anchors detail-transition /></div>
             <p v-if="imageNote(item.data)" class="gallery-image-note" :title="imageNote(item.data)">{{ imageNote(item.data) }}</p>
           </RouterLink>
         </article>
@@ -372,7 +370,7 @@ onBeforeUnmount(() => { alive = false; inspirationDetails.clear(); openVersion +
 .inspiration-card { position: relative; border-radius: var(--radius-card); -webkit-touch-callout: none; }
 .inspiration-card img { -webkit-user-drag: none; }
 .inspiration-card:focus-visible { outline: none; }
-.inspiration-card :deep(.thumbnail-frame) { border: 0 !important; background: transparent !important; box-shadow: none !important; }
+.inspiration-card :deep(.thumbnail-frame) { aspect-ratio: 2 / 3; border: 0 !important; background: transparent !important; box-shadow: none !important; }
 .inspiration-card:hover :deep(.thumbnail-frame), .inspiration-card:focus-within :deep(.thumbnail-frame) { border: 0 !important; box-shadow: none !important; }
 .inspiration-card:focus-visible :deep(.thumbnail-frame) { outline: 3px solid var(--focus); outline-offset: 3px; }
 .gallery-image-frame { position: relative; border: 0 !important; border-radius: var(--radius-card); background: transparent !important; box-shadow: none !important; }

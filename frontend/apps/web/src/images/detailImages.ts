@@ -2,13 +2,23 @@ import { api, getSessionInfo } from '../api/client'
 import type { InspirationRecord } from '../api/types'
 import { createThumbnailCache } from './thumbnailCache'
 import { createDetailPreloadQueue } from './detailPreloadQueue'
+import { clearPersistentImages, readPersistentImage, writePersistentImage } from './persistentImageCache'
 import { parseEditorDocument } from '../../../../packages/editor-core/src'
 import { decodeImagePreview, releaseCanvas, renderDocumentPreview } from '../../../../packages/image-processing/src'
 
 /** 缓存身份包含账号会话、空间与业务代次，不使用令牌作为键。 */
 function identity(): string { const info = getSessionInfo(); return info ? `${info.session_id}:${info.orgid}:${info.session_version}` : '' }
 const limits = { concurrency: 4, entries: 256, bytes: 128 * 1024 * 1024 }
-const images = createThumbnailCache(key => api.download(key), identity, limits)
+/** 优先复用本地高清图；版本变化时读取阶段会删除旧条目，再回退到在线下载。 */
+async function downloadDetailImage(key: string, version?: string): Promise<Blob> {
+  const scope = identity()
+  const cached = await readPersistentImage(scope, key, version || '')
+  if (cached) return cached
+  const blob = await api.download(key)
+  if (version) await writePersistentImage(scope, key, version, blob)
+  return blob
+}
+const images = createThumbnailCache(downloadDetailImage, identity, limits)
 const managedImages = createThumbnailCache(key => {
   const [id, storekey, orgid] = JSON.parse(key) as [string, string, number | null]
   return api.managementImage(id, storekey, orgid ?? undefined)
@@ -19,7 +29,7 @@ const deliveryImages = createThumbnailCache(key => {
   return token ? api.deliveryPublicFile(token, code, photo, false, thumbnail) : api.deliveryFile(task, photo, false, thumbnail)
 }, identity, limits)
 export const loadDeliveryImage = (task: string, photo: string, token = '', code = '', thumbnail = false) => deliveryImages.get(JSON.stringify([task, photo, token, code, thumbnail]))
-/** 普通列表与详情共用工作图 Blob，缓存有界，资源 key 变化自然失效。 */
+/** 普通列表与详情共用工作图 Blob，内存有界并提供本地持久化，资源版本变化自然失效。 */
 export const loadDetailImage = (key: string, version = '') => images.get(key, version)
 /** 管理入口使用独立授权下载与独立缓存，平台选中组织和原记录 ID 均进入键，绝不复用普通私有接口。 */
 export const loadManagedDetailImage = (id: string, key: string, orgid?: number) => managedImages.get(JSON.stringify([id, key, orgid ?? null]))
@@ -29,15 +39,19 @@ export interface PreparedInspirationDetail { record: InspirationRecord; image: H
 export const inspirationDetails = createDetailPreloadQueue<PreparedInspirationDetail>(identity, value => {
   value.image.src = ''; URL.revokeObjectURL(value.url)
 })
-export const inspirationDetailKey = (record: InspirationRecord) => JSON.stringify([record.business_id, record.updated_at, record.image_key, record.file_hash, record.data])
+export type InspirationDetailSeed = Pick<InspirationRecord, 'business_id' | 'updated_at' | 'image_key' | 'file_hash' | 'data'>
+export const inspirationDetailKey = (record: InspirationDetailSeed) => JSON.stringify([record.business_id, record.updated_at, record.image_key, record.file_hash, record.data])
+/** 图片内容版本优先使用服务端文件 SHA-256；历史记录缺少摘要时使用记录更新时间兜底。 */
+export const inspirationImageVersion = (record: Pick<InspirationRecord, 'file_hash' | 'image_key' | 'updated_at'>) =>
+  record.file_hash?.trim() || record.updated_at || record.image_key
 
 /** 列表一返回即准备所有条目，包括屏幕外条目；下载合并、解码并发限制，避免同时保留大量原图画布。 */
-export function preloadInspirationDetail(item: InspirationRecord): Promise<PreparedInspirationDetail> {
+export function preloadInspirationDetail(item: InspirationDetailSeed): Promise<PreparedInspirationDetail> {
   return inspirationDetails.preload(inspirationDetailKey(item), async () => {
     const expected = identity()
     const record = await api.inspiration(item.business_id)
     if (expected !== identity()) throw new Error('space_changed')
-    const blob = await loadDetailImage(record.image_key, record.file_hash || '')
+    const blob = await loadDetailImage(record.image_key, inspirationImageVersion(record))
     let source: HTMLCanvasElement | null = null, output: HTMLCanvasElement | null = null, url = ''
     try {
       // 动画使用详情编辑结果而非裁切缩略图；长边限制1600，完整详情仍从缓存工作图解码。
@@ -64,6 +78,7 @@ let previous = identity()
 function clearChangedScope() {
   if (identity() === previous) return
   previous = identity(); images.clear(); managedImages.clear(); deliveryImages.clear(); inspirationDetails.clear(); handoff = null
+  void clearPersistentImages()
 }
 window.addEventListener('photo-nini-session-updated', clearChangedScope)
 window.addEventListener('storage', event => { if (event.key === 'photo-nini.session') clearChangedScope() })

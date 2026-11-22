@@ -3,6 +3,7 @@ import type { InspirationLibraryFilters } from './api/types'
 /** 灵感库搜索面板一次只启用一种条件，避免隐藏的旧条件继续影响结果。 */
 export type GallerySearchKind = 'text' | 'color' | 'tags' | 'people'
 export type GalleryPeopleMode = 'present' | 'absent' | 'exact' | 'range'
+export type GalleryPeoplePreset = 'absent' | '1' | '2' | '3' | '4' | '5' | '6' | 'many'
 export type GalleryTagSource = 'all' | 'manual' | 'ai'
 export type GallerySort = 'created_desc' | 'created_asc' | 'updated_desc' | 'color_match'
 
@@ -34,9 +35,9 @@ export function createGallerySearchState(kind: GallerySearchKind = 'text'): Gall
     tagIds: [],
     tagMatch: 'any',
     tagSource: 'all',
-    peopleMode: 'present',
+    peopleMode: 'exact',
     peopleMin: 1,
-    peopleMax: 3,
+    peopleMax: 1,
   }
 }
 
@@ -44,6 +45,22 @@ export function createGallerySearchState(kind: GallerySearchKind = 'text'): Gall
 export function switchGallerySearchKind(current: GallerySearchState, kind: GallerySearchKind): GallerySearchState {
   if (current.kind === kind) return current
   return createGallerySearchState(kind)
+}
+
+/** 快捷人数把“多人”映射为 6 人及以上，其余按钮使用无人或精确人数条件。 */
+export function applyGalleryPeoplePreset(current: GallerySearchState, preset: GalleryPeoplePreset): GallerySearchState {
+  if (preset === 'absent') return { ...current, peopleMode: 'absent', peopleMin: 0, peopleMax: 0 }
+  if (preset === 'many') return { ...current, peopleMode: 'range', peopleMin: 6, peopleMax: 100000 }
+  const count = Number(preset)
+  return { ...current, peopleMode: 'exact', peopleMin: count, peopleMax: count }
+}
+
+/** 识别当前状态对应的快捷人数按钮；高级条件不强行映射到快捷按钮。 */
+export function galleryPeoplePreset(state: GallerySearchState): GalleryPeoplePreset | '' {
+  if (state.peopleMode === 'absent') return 'absent'
+  if (state.peopleMode === 'exact' && state.peopleMin >= 1 && state.peopleMin <= 6) return String(state.peopleMin) as GalleryPeoplePreset
+  if (state.peopleMode === 'range' && Math.min(state.peopleMin, state.peopleMax) === 6 && Math.max(state.peopleMin, state.peopleMax) === 100000) return 'many'
+  return ''
 }
 
 /** 判断当前条件是否已有可提交值；色环未选色、标签未选或文本为空都视为未设置。 */
