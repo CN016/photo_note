@@ -14,8 +14,8 @@ describe('锚点文字标签宽度', () => {
   })
 
   it('单个锚点文字倍率和全局展示比例都会放大标签宽度', () => {
-    expect(anchorLabelMaxWidth('发光的树影落在墙上', 400, 1, 2)).toBe(240)
-    expect(anchorLabelMaxWidth('发光的树影落在墙上', 400, 1.5, 1)).toBe(198)
+    expect(anchorLabelMaxWidth('发光的树影落在墙上', 400, 1, 2)).toBe(276)
+    expect(anchorLabelMaxWidth('发光的树影落在墙上', 400, 1.5, 1)).toBe(225)
   })
 })
 

@@ -47,10 +47,10 @@ export function anchorLabelMaxWidth(note: string, availableRight: number, displa
   const scale = Number.isFinite(displayScale) && displayScale > 0 ? displayScale : 1
   const textScale = Number.isFinite(labelScale) && labelScale > 0 ? labelScale : 1
   const characters = Math.max(1, Array.from(note).length)
-  // 单行理想宽度沿用原有 12px/字符的估算，并叠加用户文字倍率。
+  // 单行理想宽度按标题字号（14px/字符）估算，再叠加用户文字倍率，避免标题因低估而提前换行。
   const desired = Math.min(
     ANCHOR_LABEL_MAX_WIDTH * scale * textScale,
-    Math.max(96 * scale, characters * 12 * scale * textScale + 24 * scale),
+    Math.max(96 * scale, characters * 14 * scale * textScale + 24 * scale),
   )
   const available = Math.max(0, Number.isFinite(availableRight) ? availableRight : 0)
   // 右侧没有可用空间时退回最小宽度，避免长备注按完整理想宽度展开后被画布边缘裁掉大半。

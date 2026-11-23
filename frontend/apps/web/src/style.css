@@ -274,18 +274,20 @@ p { line-height: 1.55; }
 /*
  * 锚点以“标题 + 详细描述”的纯文字块呈现：标题带下划线代替圆点，
  * 描述字号略小；文字块从锚点位置向右展开并在空间不足时自动换行。
+ * width:max-content 让 max-width 成为宽度上限，避免锚点贴近右边缘时被压缩成一字一行的竖条。
  */
-.image-anchor { position: absolute; z-index: 3; max-width: var(--anchor-label-max-width, 220px); transform: translateY(-2px); }
+.image-anchor { position: absolute; z-index: 3; width: max-content; max-width: var(--anchor-label-max-width, 220px); transform: translateY(-2px); }
 .image-anchor-body { display: block; padding: 2px 4px 4px 0; color: #fff; cursor: grab; text-shadow: 0 1px 3px rgb(0 0 0 / 55%); touch-action: none; user-select: none; }
 .image-anchor.is-moving { z-index: 5; }
 .image-anchor.is-moving .image-anchor-body { cursor: grabbing; }
 .image-anchor-body:focus-visible { outline: 2px solid #fff; outline-offset: 3px; border-radius: 6px; }
-.image-anchor-title { display: inline-block; padding-bottom: 2px; border-bottom: 1px solid rgb(255 255 255 / 82%); color: #fff; font-size: calc(var(--anchor-title-font-size, 14px) * var(--anchor-label-scale, 1)); font-weight: 600; line-height: 1.3; overflow-wrap: anywhere; }
+/* 用 text-decoration 而不是 border-bottom，标题换行时每一行都会带下划线。 */
+.image-anchor-title { display: inline; text-decoration: underline; text-decoration-thickness: 1px; text-decoration-color: rgb(255 255 255 / 82%); text-underline-offset: 3px; color: #fff; font-size: calc(var(--anchor-title-font-size, 14px) * var(--anchor-label-scale, 1)); font-weight: 600; line-height: 1.3; overflow-wrap: anywhere; }
 .image-anchor-description { display: block; margin-top: 4px; color: rgb(255 255 255 / 80%); font-size: calc(var(--anchor-desc-font-size, 11px) * var(--anchor-label-scale, 1)); line-height: 1.55; overflow-wrap: anywhere; white-space: pre-wrap; }
-/* 正在编辑的锚点用黄色下划线和高亮文字标明当前选中的是哪一条；编辑态不显示圆点。 */
-.image-anchor.is-selected .image-anchor-title { border-bottom-color: #f3e600; }
+/* 正在编辑的锚点用黄色下划线和高亮文字标明当前选中的是哪一条；悬停不能覆盖选中色。 */
+.image-anchor.is-selected .image-anchor-title { text-decoration-color: #f3e600; }
 .image-anchor.is-selected .image-anchor-body { text-shadow: 0 1px 3px rgb(0 0 0 / 68%), 0 0 12px rgb(243 230 0 / 30%); }
-.image-anchor:hover .image-anchor-title { border-bottom-color: #fff; }
+.image-anchor:not(.is-selected):hover .image-anchor-title { text-decoration-color: #fff; }
 .stage-hint, .stage-note { margin: 12px 0 0; color: var(--muted); font-size: 12px; text-align: center; }
 .crop-action-row { display: flex; align-items: center; justify-content: flex-end; gap: 8px; margin-top: 12px; }
 .crop-action-row > span { margin-right: auto; color: var(--muted); font-size: 12px; }
