@@ -30,6 +30,26 @@ export function clampWatermarkPoint(value: number): number {
   return Math.max(0.02, Math.min(0.98, value))
 }
 
+/**
+ * 按水印文字实际尺寸限制中心点，保证整段文字都落在导出画布内。
+ * halfWidthRatio / halfHeightRatio 是文字半宽、半高相对预览画布的归一化比例。
+ * 文字宽于画布时只能在水平方向居中，仍会溢出，但不会因为拖到边缘而只导出半个词。
+ */
+export function clampWatermarkPlacement(
+  x: number,
+  y: number,
+  halfWidthRatio: number,
+  halfHeightRatio: number,
+): { x: number; y: number } {
+  const clampAxis = (value: number, half: number): number => {
+    if (!Number.isFinite(value)) return 0.5
+    if (!Number.isFinite(half) || half <= 0) return Math.max(0, Math.min(1, value))
+    if (half >= 0.5) return 0.5
+    return Math.max(half, Math.min(1 - half, value))
+  }
+  return { x: clampAxis(x, halfWidthRatio), y: clampAxis(y, halfHeightRatio) }
+}
+
 /** 计算导出画布上的水印字号，至少保留 10 像素以保证小图也能辨认。 */
 export function watermarkFontSize(imageHeight: number, scale: number): number {
   const height = Math.max(1, Number.isFinite(imageHeight) ? imageHeight : 1)

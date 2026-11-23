@@ -90,6 +90,7 @@
   "anchorEdit": "Edit note",
   "anchorLabel": "Note pin {number}: {note}",
   "anchorRequired": "Write a note or cancel adding this pin.",
+  "anchorNoteRequired": "The note can't be empty. Use Delete below to remove this anchor.",
   "transformTitle": "What should happen to the pins?",
   "transformText": "Rotating or cropping changes the image position. Keep the pins at their original spots or clear the notes.",
   "keepAnchors": "Keep original positions",

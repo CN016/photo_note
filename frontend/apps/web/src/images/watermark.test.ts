@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import {
-  clampWatermarkPoint, clampWatermarkScale, drawWatermark, watermarkFontSize, watermarkPreviewFontSize,
+  clampWatermarkPlacement, clampWatermarkPoint, clampWatermarkScale, drawWatermark, watermarkFontSize, watermarkPreviewFontSize,
 } from './watermark'
 
 describe('导出水印几何', () => {
@@ -12,6 +12,14 @@ describe('导出水印几何', () => {
     expect(clampWatermarkPoint(-1)).toBe(0.02)
     expect(clampWatermarkPoint(2)).toBe(0.98)
     expect(clampWatermarkPoint(Number.NaN)).toBe(0.5)
+  })
+
+  it('按文字实际尺寸把整段水印限制在画布内', () => {
+    expect(clampWatermarkPlacement(0.98, 0.5, 0.2, 0.05)).toEqual({ x: 0.8, y: 0.5 })
+    expect(clampWatermarkPlacement(0.01, 0.01, 0.2, 0.1)).toEqual({ x: 0.2, y: 0.1 })
+    expect(clampWatermarkPlacement(0.5, 0.5, 0.2, 0.1)).toEqual({ x: 0.5, y: 0.5 })
+    expect(clampWatermarkPlacement(0.9, 0.9, 0.55, 0.6)).toEqual({ x: 0.5, y: 0.5 })
+    expect(clampWatermarkPlacement(Number.NaN, Number.NaN, 0.1, 0.1)).toEqual({ x: 0.5, y: 0.5 })
   })
 
   it('字号随图片高度和倍率变化，并保留最小可读值', () => {

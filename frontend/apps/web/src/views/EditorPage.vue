@@ -22,7 +22,7 @@ import { exportFile, FileExportError } from '../platform'
 import { anchorLabelMaxWidth, anchorNoteLongestLine, anchorNoteTitle, splitAnchorNote, ANCHOR_LABEL_MARKER_OFFSET } from './editorAnchorLayout'
 import {
   DEFAULT_WATERMARK_SCALE, MAX_WATERMARK_SCALE, MIN_WATERMARK_SCALE,
-  clampWatermarkPoint, clampWatermarkScale, drawWatermark, watermarkPreviewFontSize, type WatermarkPlacement,
+  clampWatermarkPlacement, clampWatermarkScale, drawWatermark, watermarkPreviewFontSize, type WatermarkPlacement,
 } from '../images/watermark'
 import {
   anchorToView, clampAnchorLabelScale, createEditorDocument, cropOnRotatedCanvas, DocumentHistory, parseEditorDocument, viewSelectionToSourceRect,
@@ -38,7 +38,7 @@ type RGBChannel = 'red' | 'green' | 'blue'
 interface AnchorDraft { id: string | null; x: number; y: number; note: string; label_scale?: number }
 interface AnchorMoveDraft { anchorId: string; pointerId: number; startX: number; startY: number; viewX: number; viewY: number; x: number; y: number; moved: boolean }
 interface AnchorLabelResizeDraft { anchorId: string; pointerId: number; startX: number; startY: number; startScale: number; scale: number }
-interface WatermarkMoveDraft { pointerId: number; startX: number; startY: number }
+interface WatermarkMoveDraft { pointerId: number; startX: number; startY: number; viewX: number; viewY: number }
 
 const { t, locale } = useI18n()
 const route = useRoute()
@@ -444,7 +444,8 @@ function beginEditing(): void {
 
 /** 详情默认保持沉浸阅读；只有用户从属性面板明确选择时才进入带保存按钮的完整编辑态。 */
 function startFullEditing(): void {
-  // 进入完整编辑前退出属性面板URL状态和水印预览，避免返回键被面板记录打断。
+  // 进入完整编辑前退出属性面板URL状态、锚点输入条和水印预览，避免底部层级互相遮挡。
+  closeAnchorEditor()
   syncPropertiesQuery(false)
   exitWatermarkMode()
   toolPanel.value = null
@@ -1296,6 +1297,8 @@ function endFullscreenPinch(): void {
 
 /** 属性面板的键盘/鼠标入口复用同一快照和 GSAP 轨迹，桌面端也能完整查看大图。 */
 function openFullscreenFromToolbar(): void {
+  // 全屏层低于锚点编辑条，先收起正在输入的锚点，避免底部编辑条压在全屏层上。
+  closeAnchorEditor()
   syncPropertiesQuery(false)
   toolPanel.value = null
   const origin = prepareZoomSnapshot()
@@ -1549,11 +1552,10 @@ function deleteCurrentAnchor(): void {
   if (id) deleteAnchorById(id)
 }
 
-/** 新增或更新锚点；详情态保存按钮只等待自动写回，不再依赖已取消的底栏。 */
+/** 新增或更新锚点；文字为空时不自动删除，必须使用显式删除按钮。 */
 async function saveAnchor(): Promise<void> {
   if (!anchorDraft.value?.note.trim()) {
-    if (anchorDraft.value?.id) deleteAnchorById(anchorDraft.value.id)
-    else error.value = t('editor.anchorRequired')
+    error.value = t(anchorDraft.value?.id ? 'editor.anchorNoteRequired' : 'editor.anchorRequired')
     return
   }
   const draft = { ...anchorDraft.value, note: anchorDraft.value.note.trim() }
@@ -1577,6 +1579,10 @@ function makeAnchorId(): string {
 /** 进入水印模式；属性面板保持原详情状态，水印只存在于本页内存，不写入图片文档。 */
 function startWatermarkMode(): void {
   if (!sourceCanvas.value || isEditing.value) return
+  // 锚点编辑条层级高于水印操作条，进入水印前必须先收起，避免遮挡取消/导出按钮。
+  closeAnchorEditor()
+  anchorMode.value = false
+  cropMode.value = false
   syncPropertiesQuery(false)
   toolPanel.value = null
   watermarkMode.value = true
@@ -1591,24 +1597,50 @@ function exitWatermarkMode(): void {
   watermarkMoving.value = null
 }
 
+/** 复用离屏上下文测量当前水印文字相对预览画布的宽高，避免拖到边缘后导出被裁掉半个字。 */
+let watermarkMeasureContext: CanvasRenderingContext2D | null = null
+function watermarkHalfRatios(scale: number): { halfWidth: number; halfHeight: number } {
+  const displayWidth = Math.max(1, displayDimensions.value.width)
+  const displayHeight = Math.max(1, displayDimensions.value.height)
+  const fontSize = watermarkPreviewFontSize(displayHeight, scale)
+  watermarkMeasureContext ??= document.createElement('canvas').getContext('2d')
+  if (!watermarkMeasureContext) return { halfWidth: 0, halfHeight: 0 }
+  watermarkMeasureContext.font = `700 ${fontSize}px "Manrope", "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif`
+  const textWidth = watermarkMeasureContext.measureText(t('common.brand')).width
+  return { halfWidth: textWidth / displayWidth / 2, halfHeight: (fontSize * 0.6) / displayHeight }
+}
+
 /** 点击画布选择水印位置；只有落在图片内才生效，重复点击会移动既有水印。 */
 function placeWatermarkAtClientPoint(clientX: number, clientY: number): void {
   const bounds = previewCanvas.value?.getBoundingClientRect()
   if (!bounds || !bounds.width || !bounds.height) return
   if (clientX < bounds.left || clientX > bounds.right || clientY < bounds.top || clientY > bounds.bottom) return
+  const scale = watermarkDraft.value?.scale ?? DEFAULT_WATERMARK_SCALE
+  const ratios = watermarkHalfRatios(scale)
   watermarkDraft.value = {
-    x: clampWatermarkPoint((clientX - bounds.left) / bounds.width),
-    y: clampWatermarkPoint((clientY - bounds.top) / bounds.height),
-    scale: watermarkDraft.value?.scale ?? DEFAULT_WATERMARK_SCALE,
+    ...clampWatermarkPlacement(
+      (clientX - bounds.left) / bounds.width,
+      (clientY - bounds.top) / bounds.height,
+      ratios.halfWidth,
+      ratios.halfHeight,
+    ),
+    scale,
   }
 }
 
-/** 拖动水印本体微调位置；使用指针捕获保证手指移出图片后仍能跟手。 */
+/** 拖动水印本体微调位置；记录起点后按位移移动，避免按下时文字中心跳到手指位置。 */
 function beginWatermarkMove(event: PointerEvent): void {
-  if (!watermarkDraft.value) return
+  const placement = watermarkDraft.value
+  if (!placement) return
   const target = event.currentTarget
   if (!(target instanceof HTMLElement)) return
-  watermarkMoving.value = { pointerId: event.pointerId, startX: event.clientX, startY: event.clientY }
+  watermarkMoving.value = {
+    pointerId: event.pointerId,
+    startX: event.clientX,
+    startY: event.clientY,
+    viewX: placement.x,
+    viewY: placement.y,
+  }
   try { target.setPointerCapture(event.pointerId) } catch { /* 浏览器失焦时由 pointercancel 清理临时状态。 */ }
 }
 
@@ -1618,10 +1650,15 @@ function moveWatermark(event: PointerEvent): void {
   const placement = watermarkDraft.value
   const bounds = previewCanvas.value?.getBoundingClientRect()
   if (!moving || !placement || moving.pointerId !== event.pointerId || !bounds?.width || !bounds.height) return
+  const ratios = watermarkHalfRatios(placement.scale)
   watermarkDraft.value = {
-    ...placement,
-    x: clampWatermarkPoint((event.clientX - bounds.left) / bounds.width),
-    y: clampWatermarkPoint((event.clientY - bounds.top) / bounds.height),
+    ...clampWatermarkPlacement(
+      moving.viewX + (event.clientX - moving.startX) / bounds.width,
+      moving.viewY + (event.clientY - moving.startY) / bounds.height,
+      ratios.halfWidth,
+      ratios.halfHeight,
+    ),
+    scale: placement.scale,
   }
 }
 
@@ -1632,7 +1669,12 @@ function endWatermarkMove(event: PointerEvent): void {
 /** 滑杆只调整预览倍率，导出时使用同一倍率绘制，保证所见即所得。 */
 function updateWatermarkScale(value: number): void {
   if (!watermarkDraft.value) return
-  watermarkDraft.value = { ...watermarkDraft.value, scale: clampWatermarkScale(value) }
+  const scale = clampWatermarkScale(value)
+  const ratios = watermarkHalfRatios(scale)
+  watermarkDraft.value = {
+    ...clampWatermarkPlacement(watermarkDraft.value.x, watermarkDraft.value.y, ratios.halfWidth, ratios.halfHeight),
+    scale,
+  }
 }
 
 /** 按原文件名选择导出编码；带透明通道的格式保留 PNG，其余照片使用 JPEG 控制体积。 */
@@ -2238,7 +2280,7 @@ onBeforeUnmount(() => {
             type="primary"
             native-type="button"
             :loading="anchorSaving"
-            :disabled="!anchorDraft.note.trim() && !anchorDraft.id"
+            :disabled="!anchorDraft.note.trim()"
             @click="saveAnchor"
           >
             <el-icon aria-hidden="true"><Check /></el-icon>

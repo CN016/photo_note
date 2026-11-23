@@ -90,6 +90,7 @@
   "anchorEdit": "编辑备注",
   "anchorLabel": "备注锚点 {number}：{note}",
   "anchorRequired": "请写下一条备注，或取消添加锚点。",
+  "anchorNoteRequired": "文字不能为空；如需删除这个锚点，请点击下方的“删除”。",
   "transformTitle": "锚点将如何处理？",
   "transformText": "旋转或裁切会改变图片位置。你可以保留锚点原位置，也可以清除备注。",
   "keepAnchors": "保留原位置",
