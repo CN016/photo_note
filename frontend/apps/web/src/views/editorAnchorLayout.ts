@@ -53,6 +53,6 @@ export function anchorLabelMaxWidth(note: string, availableRight: number, displa
     Math.max(96 * scale, characters * 12 * scale * textScale + 24 * scale),
   )
   const available = Math.max(0, Number.isFinite(availableRight) ? availableRight : 0)
-  // 右侧空间不足时先收缩到该空间以触发换行；空间极端不足时保底最小宽度，允许轻微溢出画布。
-  return Math.max(ANCHOR_LABEL_MIN_WIDTH * scale, Math.min(desired, available || desired))
+  // 右侧没有可用空间时退回最小宽度，避免长备注按完整理想宽度展开后被画布边缘裁掉大半。
+  return Math.max(ANCHOR_LABEL_MIN_WIDTH * scale, Math.min(desired, available))
 }

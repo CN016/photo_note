@@ -10,6 +10,7 @@ describe('锚点文字标签宽度', () => {
   it('右侧空间不足时收缩到可用宽度以触发自动换行', () => {
     expect(anchorLabelMaxWidth('一'.repeat(20), 120, 1, 1)).toBe(120)
     expect(anchorLabelMaxWidth('一'.repeat(20), 20, 1, 1)).toBe(ANCHOR_LABEL_MIN_WIDTH)
+    expect(anchorLabelMaxWidth('一'.repeat(20), 0, 1, 1)).toBe(ANCHOR_LABEL_MIN_WIDTH)
   })
 
   it('单个锚点文字倍率和全局展示比例都会放大标签宽度', () => {

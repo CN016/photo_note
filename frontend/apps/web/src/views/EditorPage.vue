@@ -1001,6 +1001,7 @@ function addAnchorAtClientPoint(clientX: number, clientY: number): void {
   const source = viewToSource(point, documentData.value)
   anchorDraft.value = { id: null, x: source.x, y: source.y, note: '' }
   toolPanel.value = null
+  syncPropertiesQuery(false)
   anchorEditorOpen.value = true
 }
 
@@ -1347,12 +1348,14 @@ function addAnchorAtCenter(): void {
   const source = viewToSource({ x: 0.5, y: 0.5 }, documentData.value)
   anchorDraft.value = { id: null, x: source.x, y: source.y, note: '' }
   toolPanel.value = null
+  syncPropertiesQuery(false)
   anchorEditorOpen.value = true
 }
 
 /** 把已保存锚点载入底部小输入条，供用户修改或删除。 */
 function editAnchor(anchor: ImageAnchor): void {
   toolPanel.value = null
+  syncPropertiesQuery(false)
   // 只复制持久化字段；可见锚点对象还带有 index、left/top 等展示字段，不能写回文档。
   anchorDraft.value = {
     id: anchor.id,
