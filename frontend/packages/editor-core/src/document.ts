@@ -1,7 +1,17 @@
 /** 编辑文档只保存轻量参数和备注，不包含图片像素，原图二进制独立存储。 */
 export interface NormalizedRect { x: number; y: number; width: number; height: number }
 export interface RGBOffsets { red: number; green: number; blue: number }
-export interface ImageAnchor { id: string; x: number; y: number; note: string }
+export interface ImageAnchor {
+  id: string
+  x: number
+  y: number
+  note: string
+  /**
+   * 锚点文字标签相对默认字号的倍率，缺省按 1 处理。
+   * 只影响标签文字与内边距，不改变锚点坐标；旧文档没有该字段时保持原有显示。
+   */
+  label_scale?: number
+}
 export interface EditorDocument {
   schema_version: 1
   rotation: 0 | 90 | 180 | 270
@@ -35,9 +45,27 @@ export function parseEditorDocument(value: Record<string, unknown>): EditorDocum
     if (!anchor || typeof anchor !== 'object') return []
     const item = anchor as Record<string, unknown>
     if (typeof item.note !== 'string' || !item.note.trim()) return []
-    return [{ id: typeof item.id === 'string' ? item.id : `anchor-${index}`, x: clampUnit(Number(item.x)), y: clampUnit(Number(item.y)), note: item.note }]
+    // 标签倍率只接受有限数字；非法或缺失时不写入字段，避免旧文档被批量改写。
+    const hasLabelScale = item.label_scale !== undefined && item.label_scale !== null && Number.isFinite(Number(item.label_scale))
+    return [{
+      id: typeof item.id === 'string' ? item.id : `anchor-${index}`,
+      x: clampUnit(Number(item.x)),
+      y: clampUnit(Number(item.y)),
+      note: item.note,
+      ...(hasLabelScale ? { label_scale: clampAnchorLabelScale(Number(item.label_scale)) } : {}),
+    }]
   }) : []
   return { ...base, ...value, schema_version: 1, rotation, crop, rgb, anchors }
+}
+
+export const ANCHOR_LABEL_SCALE_MIN = 0.75
+export const ANCHOR_LABEL_SCALE_MAX = 2
+
+/** 锚点文字倍率限制在可读范围内，并按 5% 对齐，避免拖动时产生无意义的浮点噪声。 */
+export function clampAnchorLabelScale(value: number): number {
+  if (!Number.isFinite(value)) return 1
+  const clamped = Math.max(ANCHOR_LABEL_SCALE_MIN, Math.min(ANCHOR_LABEL_SCALE_MAX, value))
+  return Math.round(clamped * 20) / 20
 }
 
 /** 将不可靠的裁切参数收敛到合法且非零的原图范围。 */

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { anchorToView, createEditorDocument, parseEditorDocument, viewToSource } from './document'
+import { anchorToView, clampAnchorLabelScale, createEditorDocument, parseEditorDocument, viewToSource } from './document'
 import { DocumentHistory } from './history'
 
 describe('editor document geometry', () => {
@@ -20,6 +20,23 @@ describe('editor document geometry', () => {
     expect(parseEditorDocument({ rotation: 45, rgb: { red: 1000 }, anchors: [{ x: 2, y: -1, note: ' detail ' }] })).toMatchObject({
       rotation: 0, rgb: { red: 100 }, anchors: [{ x: 1, y: 0, note: ' detail ' }],
     })
+  })
+
+  it('reads anchor label scale within a readable range and leaves legacy anchors untouched', () => {
+    const parsed = parseEditorDocument({
+      anchors: [
+        { id: 'a', x: 0.5, y: 0.5, note: '主体', label_scale: 1.37 },
+        { id: 'b', x: 0.5, y: 0.5, note: '背景', label_scale: 9 },
+        { id: 'c', x: 0.5, y: 0.5, note: '旧数据' },
+        { id: 'd', x: 0.5, y: 0.5, note: '异常值', label_scale: 'huge' },
+      ],
+    })
+    expect(parsed.anchors[0]?.label_scale).toBe(1.35)
+    expect(parsed.anchors[1]?.label_scale).toBe(2)
+    expect(parsed.anchors[2]).not.toHaveProperty('label_scale')
+    expect(parsed.anchors[3]).not.toHaveProperty('label_scale')
+    expect(clampAnchorLabelScale(0.2)).toBe(0.75)
+    expect(clampAnchorLabelScale(Number.NaN)).toBe(1)
   })
 })
 
