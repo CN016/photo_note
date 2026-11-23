@@ -271,17 +271,21 @@ p { line-height: 1.55; }
 .anchor-active .editor-canvas { cursor: crosshair; }
 .crop-active .editor-canvas { cursor: crosshair; touch-action: none; }
 .crop-selection { position: absolute; z-index: 2; border: 2px solid #fff; background: rgb(244 244 244 / 15%); box-shadow: 0 0 0 999px rgb(15 22 26 / 47%); pointer-events: none; }
-.image-anchor { position: absolute; z-index: 3; display: grid; width: 44px; height: 44px; place-items: center; padding: 0; border: 0; background: transparent; color: #fff; transform: translate(-50%, -50%); }
-button.image-anchor { cursor: grab; touch-action: none; user-select: none; }
-button.image-anchor.is-moving { z-index: 5; cursor: grabbing; }
-.image-anchor-label { position: absolute; top: 50%; display: block; max-width: var(--anchor-label-max-width, 220px); overflow: hidden; padding: var(--anchor-label-padding-y, 7px) var(--anchor-label-padding-x, 11px); border: 1px solid rgb(255 255 255 / 34%); border-radius: 999px; background: rgb(22 24 25 / 28%); box-shadow: 0 3px 12px rgb(0 0 0 / 16%); color: #fff; font-size: var(--anchor-label-font-size, 12px); font-weight: 500; line-height: 1.35; text-overflow: ellipsis; white-space: nowrap; text-shadow: 0 1px 2px rgb(0 0 0 / 62%); transform: translateY(-50%); pointer-events: none; }
-.image-anchor.anchor-left .image-anchor-label { right: calc(50% + var(--anchor-dot-half, 12px) + var(--anchor-gap, 6px)); }
-.image-anchor.anchor-right .image-anchor-label { left: calc(50% + var(--anchor-dot-half, 12px) + var(--anchor-gap, 6px)); }
-.image-anchor-dot { display: grid; width: var(--anchor-dot-size, 24px); height: var(--anchor-dot-size, 24px); place-items: center; border: 2px solid rgb(255 255 255 / 64%); border-radius: 50%; background: rgb(28 30 31 / 40%); box-shadow: 0 2px 8px rgb(0 0 0 / 18%); }
-.image-anchor-dot > span { width: var(--anchor-dot-core-size, 10px); height: var(--anchor-dot-core-size, 10px); border-radius: 50%; background: #f3df00; box-shadow: 0 0 0 1px rgb(0 0 0 / 12%); }
-button.image-anchor:hover { z-index: 4; }
-button.image-anchor:hover .image-anchor-label, button.image-anchor:focus-visible .image-anchor-label { border-color: rgb(255 255 255 / 48%); background: rgb(20 22 23 / 42%); }
-.image-anchor:focus-visible { outline: 2px solid #fff; outline-offset: 2px; border-radius: 24px; }
+/*
+ * 锚点以“标题 + 详细描述”的纯文字块呈现：标题带下划线代替圆点，
+ * 描述字号略小；文字块从锚点位置向右展开并在空间不足时自动换行。
+ */
+.image-anchor { position: absolute; z-index: 3; max-width: var(--anchor-label-max-width, 220px); transform: translateY(-2px); }
+.image-anchor-body { display: block; padding: 2px 4px 4px 0; color: #fff; cursor: grab; text-shadow: 0 1px 3px rgb(0 0 0 / 55%); touch-action: none; user-select: none; }
+.image-anchor.is-moving { z-index: 5; }
+.image-anchor.is-moving .image-anchor-body { cursor: grabbing; }
+.image-anchor-body:focus-visible { outline: 2px solid #fff; outline-offset: 3px; border-radius: 6px; }
+.image-anchor-title { display: inline-block; padding-bottom: 2px; border-bottom: 1px solid rgb(255 255 255 / 82%); color: #fff; font-size: calc(var(--anchor-title-font-size, 14px) * var(--anchor-label-scale, 1)); font-weight: 600; line-height: 1.3; overflow-wrap: anywhere; }
+.image-anchor-description { display: block; margin-top: 4px; color: rgb(255 255 255 / 80%); font-size: calc(var(--anchor-desc-font-size, 11px) * var(--anchor-label-scale, 1)); line-height: 1.55; overflow-wrap: anywhere; white-space: pre-wrap; }
+/* 正在编辑的锚点用黄色下划线和高亮文字标明当前选中的是哪一条；编辑态不显示圆点。 */
+.image-anchor.is-selected .image-anchor-title { border-bottom-color: #f3e600; }
+.image-anchor.is-selected .image-anchor-body { text-shadow: 0 1px 3px rgb(0 0 0 / 68%), 0 0 12px rgb(243 230 0 / 30%); }
+.image-anchor:hover .image-anchor-title { border-bottom-color: #fff; }
 .stage-hint, .stage-note { margin: 12px 0 0; color: var(--muted); font-size: 12px; text-align: center; }
 .crop-action-row { display: flex; align-items: center; justify-content: flex-end; gap: 8px; margin-top: 12px; }
 .crop-action-row > span { margin-right: auto; color: var(--muted); font-size: 12px; }

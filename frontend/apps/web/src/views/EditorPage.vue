@@ -14,12 +14,18 @@ import { gsap } from 'gsap'
 import { useI18n } from 'vue-i18n'
 import { onBeforeRouteLeave, useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox, type UploadFile } from 'element-plus'
-import { ArrowLeft, ArrowRight, Check, Close, Crop, Delete, FullScreen, Plus, RefreshLeft, RefreshRight, UploadFilled, MoreFilled, Aim, Operation, Document } from '@element-plus/icons-vue'
+import { ArrowLeft, ArrowRight, Check, Close, Crop, Delete, Download, FullScreen, MagicStick, Plus, RefreshLeft, RefreshRight, UploadFilled, MoreFilled, Aim, Operation, Document } from '@element-plus/icons-vue'
 import { api as baseApi } from '../api/client'
 import { ApiError, type InspirationImageMetadata, type InspirationRecord } from '../api/types'
 import { useAnchorDisplayStore } from '../stores/anchorDisplay'
+import { exportFile, FileExportError } from '../platform'
+import { anchorLabelMaxWidth, anchorNoteLongestLine, anchorNoteTitle, splitAnchorNote, ANCHOR_LABEL_MARKER_OFFSET } from './editorAnchorLayout'
 import {
-  anchorToView, createEditorDocument, cropOnRotatedCanvas, DocumentHistory, parseEditorDocument, viewSelectionToSourceRect,
+  DEFAULT_WATERMARK_SCALE, MAX_WATERMARK_SCALE, MIN_WATERMARK_SCALE,
+  clampWatermarkPoint, clampWatermarkScale, drawWatermark, watermarkPreviewFontSize, type WatermarkPlacement,
+} from '../images/watermark'
+import {
+  anchorToView, clampAnchorLabelScale, createEditorDocument, cropOnRotatedCanvas, DocumentHistory, parseEditorDocument, viewSelectionToSourceRect,
   viewToSource, type EditorDocument, type ImageAnchor, type NormalizedRect,
 } from '../../../../packages/editor-core/src'
 import {
@@ -29,8 +35,10 @@ import {
 
 type TransformAction = 'rotate' | 'crop' | 'reset'
 type RGBChannel = 'red' | 'green' | 'blue'
-interface AnchorDraft { id: string | null; x: number; y: number; note: string }
-interface AnchorMoveDraft { anchorId: string; pointerId: number; startX: number; startY: number; x: number; y: number; moved: boolean }
+interface AnchorDraft { id: string | null; x: number; y: number; note: string; label_scale?: number }
+interface AnchorMoveDraft { anchorId: string; pointerId: number; startX: number; startY: number; viewX: number; viewY: number; x: number; y: number; moved: boolean }
+interface AnchorLabelResizeDraft { anchorId: string; pointerId: number; startX: number; startY: number; startScale: number; scale: number }
+interface WatermarkMoveDraft { pointerId: number; startX: number; startY: number }
 
 const { t, locale } = useI18n()
 const route = useRoute()
@@ -52,7 +60,10 @@ const api = {
 const isExisting = computed(() => itemId.value.length > 0)
 const isEditing = ref(false)
 // 属性和工具按需打开，不把拍摄参数、标签与编辑控件堆在图片下方。
-const toolPanel = ref<'properties' | 'anchors' | 'adjust' | 'note' | null>(null)
+// 详情态属性面板同时写入 ?panel=properties，直接打开该地址时首帧就恢复面板。
+const toolPanel = ref<'properties' | 'anchors' | 'adjust' | 'note' | null>(
+  route.query.panel === 'properties' && typeof route.params.id === 'string' ? 'properties' : null,
+)
 const tagPickerOpen = ref(false)
 const detailTagQuery = ref('')
 const toolAnchor = shallowRef<HTMLElement>()
@@ -64,9 +75,36 @@ const notePersisted = ref('')
 const noteInput = ref<{ focus: () => void } | null>(null)
 /** 图片备注沿用文档扩展JSON和已有保存接口；详情态直接输入，新图和显式编辑态仍进入撤销历史。 */
 function updateImageNote(value: string | number) { commit({ ...documentData.value, image_note: String(value).slice(0, 500) }) }
+/**
+ * 详情态属性面板同步到 ?panel=properties。
+ *
+ * 打开时新增一条历史记录，Android 返回键或浏览器后退会先回到不带参数的图片详情；
+ * 关闭时若能确认是我们刚新增的记录，就直接后退移除它，避免留下重复的详情步骤。
+ * 直接打开带参数的地址（没有可后退的详情记录）时才用替换方式清理参数。
+ * 编辑态和新建态不写 URL，避免与未保存修改确认、上传流程互相抢占后退行为。
+ */
+let propertiesHistoryEntry = false
+function syncPropertiesQuery(active: boolean): void {
+  if (!isExisting.value || isEditing.value) return
+  const current = route.query.panel === 'properties'
+  if (active === current) return
+  if (active) {
+    propertiesHistoryEntry = true
+    void router.push({ query: { ...route.query, panel: 'properties' } })
+    return
+  }
+  const canStepBack = propertiesHistoryEntry && Boolean(window.history.state?.back)
+  propertiesHistoryEntry = false
+  const query = { ...route.query }
+  delete query.panel
+  if (canStepBack) router.back()
+  else void router.replace({ query })
+}
+
 /** 参数浮层不阻挡画布；锚点一键进入编辑和点按添加状态。 */
 function openTool(panel: 'anchors' | 'adjust' | 'note', event: MouseEvent) {
   toolAnchor.value = event.currentTarget as HTMLElement
+  syncPropertiesQuery(false)
   if (!isEditing.value) beginEditing()
   if (panel === 'anchors') { anchorMode.value = true; cropMode.value = false }
   else anchorMode.value = false
@@ -75,11 +113,35 @@ function openTool(panel: 'anchors' | 'adjust' | 'note', event: MouseEvent) {
 /** 右上角属性面板与按钮共用同一个锚定玻璃浮层，避免再弹出独立模态框。 */
 function openProperties(event: MouseEvent) {
   toolAnchor.value = event.currentTarget as HTMLElement
-  toolPanel.value = toolPanel.value === 'properties' ? null : 'properties'
+  const willOpen = toolPanel.value !== 'properties'
+  if (isExisting.value && !isEditing.value) {
+    syncPropertiesQuery(willOpen)
+    toolPanel.value = willOpen ? 'properties' : null
+    return
+  }
+  toolPanel.value = willOpen ? 'properties' : null
+}
+/** 点击浮层外部或工具关闭时清理面板状态，同时移除属性面板的URL记录。 */
+function closeToolPanel(panel: string): void {
+  if (toolPanel.value !== panel) return
+  toolPanel.value = null
+  if (panel === 'properties') syncPropertiesQuery(false)
 }
 const toolTitle = computed(() => t(toolPanel.value === 'properties' ? 'editor.metadataPanelTitle' : toolPanel.value === 'anchors' ? 'editor.toolbarAnchors' : toolPanel.value === 'note' ? 'editor.imageNote' : 'editor.adjust'))
 /** 锚点添加需要回到画布接收点击，先关闭工具浮窗，保留当前编辑状态。 */
-function toggleAnchorTool() { anchorMode.value = !anchorMode.value; toolPanel.value = null }
+function toggleAnchorTool() { anchorMode.value = !anchorMode.value; syncPropertiesQuery(false); toolPanel.value = null }
+
+/** 地址栏面板状态是详情态的单一来源：系统返回后同步收起浮层。 */
+watch(() => route.query.panel, value => {
+  if (!isExisting.value || isEditing.value) return
+  if (value === 'properties') {
+    toolPanel.value = 'properties'
+    return
+  }
+  // 后退已经消费掉我们新增的记录；后续关闭不应再触发一次历史后退。
+  propertiesHistoryEntry = false
+  if (toolPanel.value === 'properties') toolPanel.value = null
+})
 
 /** 可视视口变化时同步键盘占位；小输入条使用固定定位，但不会被软键盘盖住。 */
 function updateAnchorEditorViewport(): void {
@@ -151,6 +213,13 @@ const anchorEditorOpen = ref(false)
 const anchorDraft = ref<AnchorDraft | null>(null)
 const anchorEditorInput = ref<{ focus: () => void } | null>(null)
 const movingAnchor = ref<AnchorMoveDraft | null>(null)
+/** 拖动锚点标签右下角时只预览倍率，指针抬起后才写入文档和历史。 */
+const resizingAnchor = ref<AnchorLabelResizeDraft | null>(null)
+/** 水印只在详情态临时存在，不写入图片文档；导出成功后自动退出。 */
+const watermarkMode = ref(false)
+const watermarkDraft = ref<WatermarkPlacement | null>(null)
+const watermarkMoving = ref<WatermarkMoveDraft | null>(null)
+const exportingImage = ref(false)
 const pressedDetailTag = ref('')
 const historyRevision = ref(0)
 const cropSelection = ref<NormalizedRect | null>(null)
@@ -279,13 +348,9 @@ const displayDimensions = computed(() => {
 const anchorDisplayStyle = computed<Record<string, string>>(() => {
   const scale = anchorDisplayStore.size / 100
   return {
-    '--anchor-dot-half': `${12 * scale}px`,
-    '--anchor-dot-size': `${24 * scale}px`,
-    '--anchor-dot-core-size': `${10 * scale}px`,
-    '--anchor-gap': `${6 * scale}px`,
-    '--anchor-label-font-size': `${12 * scale}px`,
-    '--anchor-label-padding-y': `${6 * scale}px`,
-    '--anchor-label-padding-x': `${11 * scale}px`,
+    // 标题略大于描述，形成参考图里的“标题 + 小号说明”层次。
+    '--anchor-title-font-size': `${14 * scale}px`,
+    '--anchor-desc-font-size': `${11 * scale}px`,
     '--anchor-index-size': `${21 * scale}px`,
     '--anchor-index-font-size': `${9 * scale}px`,
     '--anchor-note-font-size': `${11 * scale}px`,
@@ -298,19 +363,19 @@ const visibleAnchors = computed(() => documentData.value.anchors.flatMap((anchor
   if (!position.visible) return []
   const width = Math.max(1, displayDimensions.value.width)
   const scale = anchorDisplayStore.size / 100
-  const desiredLabelWidth = Math.min(240 * scale, Math.max(80 * scale, Array.from(anchor.note).length * 12 * scale + 24 * scale))
-  const leftSpace = position.x * width
-  const rightSpace = (1 - position.x) * width
-  const markerOffset = 36 * scale
-  const leftLabelSpace = Math.max(0, leftSpace - markerOffset)
-  const rightLabelSpace = Math.max(0, rightSpace - markerOffset)
-  const side = leftLabelSpace >= desiredLabelWidth || leftLabelSpace >= rightLabelSpace ? 'anchor-left' : 'anchor-right'
-  const availableLabelWidth = side === 'anchor-left' ? leftLabelSpace : rightLabelSpace
+  // 拖动文字块右下角期间使用临时倍率，指针抬起后才提交，避免连续拖动写入大量历史。
+  const resizing = resizingAnchor.value?.anchorId === anchor.id ? resizingAnchor.value.scale : undefined
+  const labelScale = clampAnchorLabelScale(resizing ?? anchor.label_scale ?? 1)
+  const availableRight = (1 - position.x) * width - ANCHOR_LABEL_MARKER_OFFSET * scale
+  const { title, description } = splitAnchorNote(anchor.note)
   return [{
     ...displayAnchor,
     index,
-    side,
-    labelMaxWidth: `${Math.max(52 * scale, Math.min(desiredLabelWidth, availableLabelWidth))}px`,
+    title,
+    description,
+    // 文字块始终从锚点位置向右展开；空间不足时靠自动换行适配，不再跳到左侧。
+    labelScale,
+    labelMaxWidth: `${anchorLabelMaxWidth(anchorNoteLongestLine(anchor.note), availableRight, scale, labelScale)}px`,
     left: `${position.x * 100}%`,
     top: `${position.y * 100}%`,
   }]
@@ -320,6 +385,16 @@ const draftAnchorPosition = computed(() => {
   if (!draft || draft.id) return null
   const position = anchorToView(draft, documentData.value)
   return position.visible ? { left: `${position.x * 100}%`, top: `${position.y * 100}%` } : null
+})
+/** 水印预览与导出使用同一归一化坐标；字号随当前预览高度和用户倍率变化。 */
+const watermarkOverlayStyle = computed<Record<string, string>>((): Record<string, string> => {
+  const placement = watermarkDraft.value
+  if (!placement) return {}
+  return {
+    left: `${placement.x * 100}%`,
+    top: `${placement.y * 100}%`,
+    fontSize: `${watermarkPreviewFontSize(displayDimensions.value.height, placement.scale)}px`,
+  }
 })
 const cropDragStyle = computed(() => {
   const selection = cropSelection.value
@@ -369,6 +444,9 @@ function beginEditing(): void {
 
 /** 详情默认保持沉浸阅读；只有用户从属性面板明确选择时才进入带保存按钮的完整编辑态。 */
 function startFullEditing(): void {
+  // 进入完整编辑前退出属性面板URL状态和水印预览，避免返回键被面板记录打断。
+  syncPropertiesQuery(false)
+  exitWatermarkMode()
   toolPanel.value = null
   beginEditing()
 }
@@ -667,7 +745,14 @@ async function loadExisting(): Promise<void> {
     scheduleRender()
     await nextTick()
     observeStage()
-  } catch (cause) { if (version === decodeVersion) error.value = localError(cause, t('editor.loadError')) }
+  } catch (cause) {
+    if (version === decodeVersion) {
+      error.value = localError(cause, t('editor.loadError'))
+      // 记录无法打开时不要在错误页上保留属性浮层，同时移除可直接分享的过期 URL 状态。
+      toolPanel.value = null
+      syncPropertiesQuery(false)
+    }
+  }
   finally { if (version === decodeVersion) loading.value = false }
 }
 
@@ -751,6 +836,7 @@ async function removeDetailTag(name: string): Promise<void> {
 
 /** 标签设置独立于底部操作栏，通过行尾“更多”打开透明磨砂选择框。 */
 function toggleTagPicker(): void {
+  syncPropertiesQuery(false)
   toolPanel.value = null
   tagPickerOpen.value = !tagPickerOpen.value
 }
@@ -917,7 +1003,7 @@ function addAnchorAtClientPoint(clientX: number, clientY: number): void {
   anchorEditorOpen.value = true
 }
 
-/** 详情单指点击只负责添加锚点；双指放大由独立查看层承接，避免单击同时触发全屏。 */
+/** 详情单指点击负责水印定位或添加锚点；双指放大由独立查看层承接。 */
 function onStageClick(event: MouseEvent): void {
   if (anchorEditorOpen.value) {
     closeAnchorEditor()
@@ -925,6 +1011,13 @@ function onStageClick(event: MouseEvent): void {
   }
   if (suppressPreviewClick) {
     suppressPreviewClick = false
+    return
+  }
+  if (watermarkMode.value) {
+    // 水印本体的拖动/点击已停止冒泡；其余画布点击都用于放置或移动水印。
+    if (!(event.target instanceof Element) || !event.target.closest('.image-watermark')) {
+      placeWatermarkAtClientPoint(event.clientX, event.clientY)
+    }
     return
   }
   if (isExisting.value && !isEditing.value) {
@@ -1091,7 +1184,7 @@ function endPreviewPinch(): void {
 
 /** 开始双指手势时同步复制真实画布像素，首帧就与用户手指位置对齐。 */
 function beginPreviewPinch(event: TouchEvent): void {
-  if (isEditing.value || zoomActive.value || anchorEditorOpen.value || event.touches.length !== 2) return
+  if (isEditing.value || zoomActive.value || anchorEditorOpen.value || watermarkMode.value || event.touches.length !== 2) return
   const origin = prepareZoomSnapshot()
   if (!origin) return
   event.preventDefault()
@@ -1203,6 +1296,7 @@ function endFullscreenPinch(): void {
 
 /** 属性面板的键盘/鼠标入口复用同一快照和 GSAP 轨迹，桌面端也能完整查看大图。 */
 function openFullscreenFromToolbar(): void {
+  syncPropertiesQuery(false)
   toolPanel.value = null
   const origin = prepareZoomSnapshot()
   const shell = zoomShell.value
@@ -1246,7 +1340,7 @@ function closeInspirationViewer(): void {
 
 /** 键盘用户聚焦预览画布并按 Enter/Space 时，在画面中心添加备注锚点。 */
 function addAnchorAtCenter(): void {
-  if (cropMode.value || (isEditing.value && !anchorMode.value) || (!isEditing.value && !isExisting.value)) return
+  if (watermarkMode.value || cropMode.value || (isEditing.value && !anchorMode.value) || (!isEditing.value && !isExisting.value)) return
   const source = viewToSource({ x: 0.5, y: 0.5 }, documentData.value)
   anchorDraft.value = { id: null, x: source.x, y: source.y, note: '' }
   toolPanel.value = null
@@ -1256,7 +1350,14 @@ function addAnchorAtCenter(): void {
 /** 把已保存锚点载入底部小输入条，供用户修改或删除。 */
 function editAnchor(anchor: ImageAnchor): void {
   toolPanel.value = null
-  anchorDraft.value = { ...anchor }
+  // 只复制持久化字段；可见锚点对象还带有 index、left/top 等展示字段，不能写回文档。
+  anchorDraft.value = {
+    id: anchor.id,
+    x: anchor.x,
+    y: anchor.y,
+    note: anchor.note,
+    ...(anchor.label_scale !== undefined ? { label_scale: anchor.label_scale } : {}),
+  }
   anchorEditorOpen.value = true
 }
 
@@ -1270,11 +1371,15 @@ function closeAnchorEditor(): void {
 /** 在预览画布上拖动锚点时即时更新叠层位置，抬起指针后只提交一条可撤销历史。 */
 function beginAnchorMove(event: PointerEvent, anchor: ImageAnchor): void {
   if (anchorMode.value || cropMode.value || anchorEditorOpen.value || event.button !== 0) return
+  // 文字块可能很宽，记录拖动起点的画布坐标后按位移计算，避免按下瞬间把锚点吸到手指位置。
+  const position = anchorToView(anchor, documentData.value)
   movingAnchor.value = {
     anchorId: anchor.id,
     pointerId: event.pointerId,
     startX: event.clientX,
     startY: event.clientY,
+    viewX: position.x,
+    viewY: position.y,
     x: anchor.x,
     y: anchor.y,
     moved: false,
@@ -1294,9 +1399,10 @@ function updateAnchorMove(event: PointerEvent): void {
   if (!moved) return
   const bounds = canvas.getBoundingClientRect()
   if (!bounds.width || !bounds.height) return
+  // 使用相对位移而不是绝对指针位置，文字块在手指下方不会再发生跳动。
   const point = {
-    x: Math.max(0, Math.min(1, (event.clientX - bounds.left) / bounds.width)),
-    y: Math.max(0, Math.min(1, (event.clientY - bounds.top) / bounds.height)),
+    x: Math.max(0, Math.min(1, draft.viewX + (event.clientX - draft.startX) / bounds.width)),
+    y: Math.max(0, Math.min(1, draft.viewY + (event.clientY - draft.startY) / bounds.height)),
   }
   const source = viewToSource(point, documentData.value)
   movingAnchor.value = { ...draft, x: source.x, y: source.y, moved: true }
@@ -1326,10 +1432,66 @@ function cancelAnchorMove(event: PointerEvent): void {
   if (movingAnchor.value?.pointerId === event.pointerId) movingAnchor.value = null
 }
 
-/** 普通点击打开备注编辑；拖动结束产生的合成 click 只消费一次，避免意外打开对话框。 */
+/** 开始拖动锚点文字右下角的缩放手柄；手势不进入锚点拖动，避免同时改变坐标。 */
+function beginAnchorLabelResize(event: PointerEvent, anchor: ImageAnchor): void {
+  if (event.pointerType === 'mouse' && event.button !== 0) return
+  const target = event.currentTarget
+  if (!(target instanceof HTMLElement)) return
+  const startScale = clampAnchorLabelScale(anchor.label_scale ?? 1)
+  resizingAnchor.value = {
+    anchorId: anchor.id,
+    pointerId: event.pointerId,
+    startX: event.clientX,
+    startY: event.clientY,
+    startScale,
+    scale: startScale,
+  }
+  try { target.setPointerCapture(event.pointerId) } catch { /* 浏览器失焦时由 pointercancel 清理临时状态。 */ }
+}
+
+/** 右下拖动放大文字、左上拖动缩小；只在本地更新预览，不写入历史。 */
+function updateAnchorLabelResize(event: PointerEvent): void {
+  const draft = resizingAnchor.value
+  if (!draft || draft.pointerId !== event.pointerId) return
+  const delta = (event.clientX - draft.startX + event.clientY - draft.startY) / 160
+  const scale = clampAnchorLabelScale(draft.startScale + delta)
+  if (scale !== draft.scale) resizingAnchor.value = { ...draft, scale }
+}
+
+/** 指针抬起后提交一条可撤销的文字倍率修改，详情态同步自动保存。 */
+function finishAnchorLabelResize(event: PointerEvent): void {
+  updateAnchorLabelResize(event)
+  const draft = resizingAnchor.value
+  if (!draft || draft.pointerId !== event.pointerId) return
+  resizingAnchor.value = null
+  applyAnchorLabelScale(draft.anchorId, draft.scale)
+}
+
+/** 系统打断缩放手势时丢弃预览倍率，保持原有文字大小。 */
+function cancelAnchorLabelResize(event: PointerEvent): void {
+  if (resizingAnchor.value?.pointerId === event.pointerId) resizingAnchor.value = null
+}
+
+/** 将单个锚点的文字倍率写入文档；详情态自动保存，编辑态仍由统一保存按钮提交。 */
+function applyAnchorLabelScale(anchorId: string, scale: number): void {
+  const current = documentData.value.anchors.find(anchor => anchor.id === anchorId)
+  if (!current || Math.abs(clampAnchorLabelScale(current.label_scale ?? 1) - scale) < 0.001) return
+  const anchors = documentData.value.anchors.map(anchor => anchor.id === anchorId ? { ...anchor, label_scale: scale } : anchor)
+  commit({ ...documentData.value, anchors })
+  if (anchorDraft.value?.id === anchorId) anchorDraft.value = { ...anchorDraft.value, label_scale: scale }
+  if (isExisting.value && !isEditing.value) void persistDetailAnchor(detailLocalRevision)
+}
+
+/** 键盘用户聚焦缩放手柄后用方向键调整文字大小。 */
+function resizeAnchorLabelByKeyboard(anchor: ImageAnchor, direction: -1 | 1): void {
+  applyAnchorLabelScale(anchor.id, clampAnchorLabelScale((anchor.label_scale ?? 1) + direction * 0.05))
+}
+
+/** 点击已保存锚点进入文字编辑；裁切和水印模式不抢占画布手势。 */
 function handleAnchorClick(anchor: ImageAnchor): void {
   if (suppressAnchorClick) { suppressAnchorClick = false; return }
-  if (!anchorMode.value) editAnchor(anchor)
+  if (cropMode.value || watermarkMode.value) return
+  editAnchor(anchor)
 }
 
 /** 键盘聚焦的锚点可用方向键微调，Shift 配合方向键按较大步幅移动。 */
@@ -1377,7 +1539,14 @@ function deleteAnchorById(id: string): void {
     anchorEditorOpen.value = false
     anchorDraft.value = null
   }
+  error.value = ''
   void persistDetailAnchor(expectedRevision)
+}
+
+/** 底部编辑条上的显式删除按钮；与列表删除共用同一历史和自动保存流程。 */
+function deleteCurrentAnchor(): void {
+  const id = anchorDraft.value?.id
+  if (id) deleteAnchorById(id)
 }
 
 /** 新增或更新锚点；详情态保存按钮只等待自动写回，不再依赖已取消的底栏。 */
@@ -1403,6 +1572,116 @@ async function saveAnchor(): Promise<void> {
 /** 生成锚点 ID；旧浏览器缺少 randomUUID 时使用本地随机回退。 */
 function makeAnchorId(): string {
   return typeof crypto.randomUUID === 'function' ? crypto.randomUUID() : `anchor-${Date.now()}-${Math.random().toString(36).slice(2)}`
+}
+
+/** 进入水印模式；属性面板保持原详情状态，水印只存在于本页内存，不写入图片文档。 */
+function startWatermarkMode(): void {
+  if (!sourceCanvas.value || isEditing.value) return
+  syncPropertiesQuery(false)
+  toolPanel.value = null
+  watermarkMode.value = true
+  watermarkDraft.value = null
+  error.value = ''
+}
+
+/** 退出水印模式并清空临时预览；取消或导出成功后都回到普通详情态。 */
+function exitWatermarkMode(): void {
+  watermarkMode.value = false
+  watermarkDraft.value = null
+  watermarkMoving.value = null
+}
+
+/** 点击画布选择水印位置；只有落在图片内才生效，重复点击会移动既有水印。 */
+function placeWatermarkAtClientPoint(clientX: number, clientY: number): void {
+  const bounds = previewCanvas.value?.getBoundingClientRect()
+  if (!bounds || !bounds.width || !bounds.height) return
+  if (clientX < bounds.left || clientX > bounds.right || clientY < bounds.top || clientY > bounds.bottom) return
+  watermarkDraft.value = {
+    x: clampWatermarkPoint((clientX - bounds.left) / bounds.width),
+    y: clampWatermarkPoint((clientY - bounds.top) / bounds.height),
+    scale: watermarkDraft.value?.scale ?? DEFAULT_WATERMARK_SCALE,
+  }
+}
+
+/** 拖动水印本体微调位置；使用指针捕获保证手指移出图片后仍能跟手。 */
+function beginWatermarkMove(event: PointerEvent): void {
+  if (!watermarkDraft.value) return
+  const target = event.currentTarget
+  if (!(target instanceof HTMLElement)) return
+  watermarkMoving.value = { pointerId: event.pointerId, startX: event.clientX, startY: event.clientY }
+  try { target.setPointerCapture(event.pointerId) } catch { /* 浏览器失焦时由 pointercancel 清理临时状态。 */ }
+}
+
+/** 按画布实际边界反算水印归一化坐标，避免旋转或缩放后位置漂移。 */
+function moveWatermark(event: PointerEvent): void {
+  const moving = watermarkMoving.value
+  const placement = watermarkDraft.value
+  const bounds = previewCanvas.value?.getBoundingClientRect()
+  if (!moving || !placement || moving.pointerId !== event.pointerId || !bounds?.width || !bounds.height) return
+  watermarkDraft.value = {
+    ...placement,
+    x: clampWatermarkPoint((event.clientX - bounds.left) / bounds.width),
+    y: clampWatermarkPoint((event.clientY - bounds.top) / bounds.height),
+  }
+}
+
+function endWatermarkMove(event: PointerEvent): void {
+  if (watermarkMoving.value?.pointerId === event.pointerId) watermarkMoving.value = null
+}
+
+/** 滑杆只调整预览倍率，导出时使用同一倍率绘制，保证所见即所得。 */
+function updateWatermarkScale(value: number): void {
+  if (!watermarkDraft.value) return
+  watermarkDraft.value = { ...watermarkDraft.value, scale: clampWatermarkScale(value) }
+}
+
+/** 按原文件名选择导出编码；带透明通道的格式保留 PNG，其余照片使用 JPEG 控制体积。 */
+function exportImageFormat(): { mime: 'image/png' | 'image/jpeg'; extension: 'png' | 'jpg' } {
+  const name = (record.value?.file_name || filename.value || '').toLowerCase()
+  return /\.(png|webp|gif|avif|bmp)$/.test(name) ? { mime: 'image/png', extension: 'png' } : { mime: 'image/jpeg', extension: 'jpg' }
+}
+
+/** 将画布编码为 Blob；编码失败交给页面提示，不静默返回空文件。 */
+function encodeExportCanvas(canvas: HTMLCanvasElement, mime: string): Promise<Blob> {
+  return new Promise((resolve, reject) => canvas.toBlob(
+    blob => blob ? resolve(blob) : reject(new Error('canvas_encode_failed')),
+    mime,
+    mime === 'image/jpeg' ? 0.92 : undefined,
+  ))
+}
+
+/**
+ * 导出当前旋转、裁切和色彩调整后的图片。
+ *
+ * 水印导出沿用预览层保存的位置和倍率，在完整预览分辨率上重新绘制；
+ * 文件保存/分享面板由平台适配层处理，用户取消时保留水印预览以便继续调整。
+ */
+async function exportEditedImage(withWatermark: boolean): Promise<void> {
+  const source = sourceCanvas.value
+  if (!source || exportingImage.value) return
+  if (withWatermark && !watermarkDraft.value) return
+  exportingImage.value = true
+  error.value = ''
+  let output: HTMLCanvasElement | null = null
+  try {
+    output = renderDocumentPreview(source, documentData.value)
+    if (withWatermark && watermarkDraft.value) {
+      const context = output.getContext('2d')
+      if (!context) throw new Error('canvas_unavailable')
+      drawWatermark(context, t('common.brand'), watermarkDraft.value, output.width, output.height)
+    }
+    const format = exportImageFormat()
+    const blob = await encodeExportCanvas(output, format.mime)
+    const stem = (record.value?.file_name || filename.value || 'image').replace(/\.[^.]+$/, '').trim() || 'image'
+    const result = await exportFile(blob, `${stem}-${withWatermark ? 'watermark' : 'export'}.${format.extension}`)
+    if (withWatermark && result !== 'cancelled') exitWatermarkMode()
+  } catch (cause) {
+    // exportFile 已提示保存失败；这里只补充画布渲染和编码错误，避免同一次失败弹两次提示。
+    if (!(cause instanceof FileExportError)) showTopNotice(t('editor.exportFailed'), 'error')
+  } finally {
+    releaseCanvas(output)
+    exportingImage.value = false
+  }
 }
 
 /** 有锚点时先显示三选一确认；没有锚点则直接开始操作。 */
@@ -1510,6 +1789,10 @@ function observeStage(): void {
 
 onMounted(() => {
   observeStage()
+  // 直接打开 ?panel=properties 时，浮层锚点要等右上角按钮挂载后才能定位。
+  if (toolPanel.value === 'properties') {
+    void nextTick(() => { toolAnchor.value = document.querySelector<HTMLElement>('.detail-more') ?? undefined })
+  }
   if (isExisting.value) void loadExisting()
   else { isEditing.value = true; history = new DocumentHistory(documentData.value); historyRevision.value += 1 }
 })
@@ -1558,6 +1841,7 @@ onBeforeUnmount(() => {
   // 先交出真实渲染像素，再释放原画布；退出动画不依赖已经卸载的编辑组件。
   captureDetailImage(previewCanvas.value)
   resetZoomViewer()
+  exitWatermarkMode()
   stopAnchorEditorViewportTracking()
   decodeVersion += 1
   tagSearchVersion += 1
@@ -1593,8 +1877,8 @@ onBeforeUnmount(() => {
           <div
             ref="stageBox"
             class="canvas-stage"
-            :data-content-zoom-ignore="cropMode || anchorMode || (isExisting && !isEditing) ? 'true' : undefined"
-            :class="{ 'anchor-active': anchorMode, 'crop-active': cropMode, 'preview-ready': isExisting && !isEditing }"
+            :data-content-zoom-ignore="cropMode || anchorMode || watermarkMode || (isExisting && !isEditing) ? 'true' : undefined"
+            :class="{ 'anchor-active': anchorMode, 'crop-active': cropMode, 'watermark-active': watermarkMode, 'preview-ready': isExisting && !isEditing }"
             @click="onStageClick"
             @touchstart="beginPreviewPinch"
             @touchmove="movePreviewPinch"
@@ -1602,7 +1886,7 @@ onBeforeUnmount(() => {
             @touchcancel="endPreviewPinch"
           >
             <canvas v-if="!isEditing" ref="backdropCanvas" class="canvas-backdrop" aria-hidden="true"></canvas>
-            <div v-if="imageReady" class="editor-canvas-wrap" :style="{ width: `${displayDimensions.width}px`, height: `${displayDimensions.height}px` }">
+            <div v-if="imageReady" class="editor-canvas-wrap" :class="{ 'watermark-mode': watermarkMode }" :style="{ width: `${displayDimensions.width}px`, height: `${displayDimensions.height}px` }">
               <canvas
                 ref="previewCanvas"
                 class="editor-canvas"
@@ -1617,34 +1901,80 @@ onBeforeUnmount(() => {
                 @pointercancel="endCropSelection"
               ></canvas>
               <div v-if="cropMode && cropSelection" class="crop-selection" :style="cropDragStyle" aria-hidden="true"></div>
-              <button
+              <!--
+                锚点由“标题 + 详细描述”组成，标题下划线代替原来的圆点。
+                外壳只负责定位，body 承担点按、拖动和键盘操作；正在编辑的锚点显示选中高亮。
+              -->
+              <span
                 v-for="anchor in visibleAnchors"
                 :key="anchor.id"
-                type="button"
-                :class="['image-anchor', anchor.side, { 'is-moving': movingAnchor?.anchorId === anchor.id }]"
-                :style="{ left: anchor.left, top: anchor.top, '--anchor-label-max-width': anchor.labelMaxWidth }"
-                :aria-label="t('editor.anchorLabel', { number: anchor.index + 1, note: anchor.note })"
-                :aria-description="t('editor.anchorMoveHelp')"
-                @pointerdown.stop="beginAnchorMove($event, anchor)"
-                @pointermove.stop="updateAnchorMove($event)"
-                @pointerup.stop="finishAnchorMove($event)"
-                @pointercancel.stop="cancelAnchorMove($event)"
-                @keydown.left.prevent="moveAnchorByKeyboard(anchor, $event)"
-                @keydown.right.prevent="moveAnchorByKeyboard(anchor, $event)"
-                @keydown.up.prevent="moveAnchorByKeyboard(anchor, $event)"
-                @keydown.down.prevent="moveAnchorByKeyboard(anchor, $event)"
-                @click.stop="handleAnchorClick(anchor)"
+                :class="['image-anchor', { 'is-moving': movingAnchor?.anchorId === anchor.id, 'is-selected': anchorEditorOpen && anchorDraft?.id === anchor.id }]"
+                :style="{ left: anchor.left, top: anchor.top, '--anchor-label-max-width': anchor.labelMaxWidth, '--anchor-label-scale': anchor.labelScale }"
               >
-                <span class="image-anchor-label">{{ anchor.note }}</span>
-                <span class="image-anchor-dot" aria-hidden="true"><span></span></span>
-              </button>
-              <span v-if="draftAnchorPosition" class="image-anchor is-draft anchor-right" :style="draftAnchorPosition" aria-hidden="true">
-                <span class="image-anchor-dot"><span></span></span>
+                <span
+                  class="image-anchor-body"
+                  role="button"
+                  tabindex="0"
+                  :aria-label="t('editor.anchorLabel', { number: anchor.index + 1, note: anchor.title })"
+                  :aria-description="t('editor.anchorMoveHelp')"
+                  @pointerdown.stop="beginAnchorMove($event, anchor)"
+                  @pointermove.stop="updateAnchorMove($event)"
+                  @pointerup.stop="finishAnchorMove($event)"
+                  @pointercancel.stop="cancelAnchorMove($event)"
+                  @keydown.enter.prevent="handleAnchorClick(anchor)"
+                  @keydown.space.prevent="handleAnchorClick(anchor)"
+                  @keydown.left.prevent="moveAnchorByKeyboard(anchor, $event)"
+                  @keydown.right.prevent="moveAnchorByKeyboard(anchor, $event)"
+                  @keydown.up.prevent="moveAnchorByKeyboard(anchor, $event)"
+                  @keydown.down.prevent="moveAnchorByKeyboard(anchor, $event)"
+                  @click.stop="handleAnchorClick(anchor)"
+                >
+                  <span class="image-anchor-title">{{ anchor.title }}</span>
+                  <span v-if="anchor.description" class="image-anchor-description">{{ anchor.description }}</span>
+                </span>
+                <!-- 缩放手柄放在文字块外层，避免在按钮语义内嵌套滑块。 -->
+                <span
+                  v-if="anchorEditorOpen && anchorDraft?.id === anchor.id"
+                  class="image-anchor-resize"
+                  role="slider"
+                  tabindex="0"
+                  :aria-label="t('editor.anchorTextSize')"
+                  :aria-valuenow="Math.round(anchor.labelScale * 100)"
+                  aria-valuemin="75"
+                  aria-valuemax="200"
+                  @pointerdown.stop.prevent="beginAnchorLabelResize($event, anchor)"
+                  @pointermove.stop="updateAnchorLabelResize($event)"
+                  @pointerup.stop="finishAnchorLabelResize($event)"
+                  @pointercancel.stop="cancelAnchorLabelResize($event)"
+                  @click.stop.prevent
+                  @keydown.left.stop.prevent="resizeAnchorLabelByKeyboard(anchor, -1)"
+                  @keydown.down.stop.prevent="resizeAnchorLabelByKeyboard(anchor, -1)"
+                  @keydown.right.stop.prevent="resizeAnchorLabelByKeyboard(anchor, 1)"
+                  @keydown.up.stop.prevent="resizeAnchorLabelByKeyboard(anchor, 1)"
+                ></span>
               </span>
+              <!-- 新增锚点尚未输入文字时，用一段横线代替旧圆点提示落点。 -->
+              <span v-if="draftAnchorPosition" class="image-anchor is-draft" :style="draftAnchorPosition" aria-hidden="true">
+                <span class="image-anchor-draft-line"></span>
+              </span>
+              <!-- 水印只是导出前的临时预览，不写入文档，也不参与锚点点击。 -->
+              <span
+                v-if="watermarkMode && watermarkDraft"
+                class="image-watermark"
+                :style="watermarkOverlayStyle"
+                role="img"
+                :aria-label="t('editor.watermarkTitle')"
+                @click.stop
+                @pointerdown.stop.prevent="beginWatermarkMove"
+                @pointermove.stop.prevent="moveWatermark"
+                @pointerup.stop="endWatermarkMove"
+                @pointercancel.stop="endWatermarkMove"
+              >{{ t('common.brand') }}</span>
             </div>
             <div v-else class="loading-inline" role="status"><span class="loading-dot"></span>{{ t('common.loading') }}</div>
           </div>
           <div v-if="cropMode" class="crop-action-row"><span>{{ t('editor.cropHint') }}</span><el-button class="compact-button" @click="cancelCrop">{{ t('common.cancel') }}</el-button><el-button class="primary-button compact-button" type="primary" :disabled="!cropSelection" @click="applyCrop">{{ t('editor.cropApply') }}</el-button></div>
+          <p v-else-if="watermarkMode" class="stage-hint">{{ watermarkDraft ? t('editor.watermarkAdjustHint') : t('editor.watermarkPlaceHint') }}</p>
           <p v-else-if="anchorMode" class="stage-hint">{{ t('editor.anchorModeOn') }}</p>
           <p v-else-if="isEditing && documentData.anchors.length" class="stage-hint">{{ t('editor.anchorMoveHelp') }}</p>
           <p v-if="downsampled" class="stage-note">{{ t('editor.largeImage') }}</p>
@@ -1718,12 +2048,24 @@ onBeforeUnmount(() => {
       <p v-else-if="busyPhase" class="image-dock-status" role="status">{{ busyPhase }}</p>
       <p v-else-if="status" class="image-dock-status success-message" role="status">{{ status }}</p>
     </div>
-    <EditorToolSurface v-if="toolPanel" :panel="toolPanel" :title="toolTitle" :anchor="toolAnchor" :ambient="detailAmbientStyle['--detail-ambient']" @close="panel => { if (toolPanel === panel) toolPanel = null }">
+    <EditorToolSurface v-if="toolPanel && toolAnchor" :panel="toolPanel" :title="toolTitle" :anchor="toolAnchor" :ambient="detailAmbientStyle['--detail-ambient']" @close="closeToolPanel">
         <div class="image-tool-panel">
           <div v-if="toolPanel === 'properties' && isExisting && !isEditing" class="detail-tool-actions">
             <el-button @click="openFullscreenFromToolbar"><el-icon aria-hidden="true"><FullScreen /></el-icon>{{ t('editor.fullscreenImage') }}</el-button>
             <el-button type="primary" @click="startFullEditing"><el-icon aria-hidden="true"><Operation /></el-icon>{{ t('editor.editImage') }}</el-button>
           </div>
+          <!-- 导出入口只在详情态提供，导出当前旋转、裁切和色彩调整后的结果。 -->
+          <section v-if="toolPanel === 'properties' && isExisting && !isEditing" class="control-section export-section" :aria-label="t('editor.exportSection')">
+            <div class="section-title-row"><h2>{{ t('editor.exportSection') }}</h2><span v-if="exportingImage" class="profile-saving" role="status">{{ t('editor.exportingImage') }}</span></div>
+            <div class="export-actions">
+              <el-button class="export-button" :disabled="exportingImage || !sourceCanvas" @click="exportEditedImage(false)">
+                <el-icon aria-hidden="true"><Download /></el-icon>{{ t('editor.exportImage') }}
+              </el-button>
+              <el-button class="export-button" type="primary" :disabled="exportingImage || !sourceCanvas" @click="startWatermarkMode">
+                <el-icon aria-hidden="true"><MagicStick /></el-icon>{{ t('editor.watermarkAdd') }}
+              </el-button>
+            </div>
+          </section>
           <el-input v-if="toolPanel === 'note'" :model-value="noteText" type="textarea" :rows="3" maxlength="500" show-word-limit :aria-label="t('editor.imageNote')" :placeholder="t('editor.imageNotePlaceholder')" @update:model-value="updateImageNote" />
           <dl v-if="toolPanel === 'properties' && sourceCanvas" class="image-metadata-list basic-image-properties">
             <div><dt>{{ t('editor.metadataWidth') }}</dt><dd>{{ new Intl.NumberFormat(locale).format(sourceCanvas.width) }}</dd></div>
@@ -1802,7 +2144,7 @@ onBeforeUnmount(() => {
               <p v-if="!documentData.anchors.length" class="notes-empty">{{ t('editor.anchorEmpty') }}</p>
               <div v-else class="note-list">
                 <div v-for="(anchor, index) in documentData.anchors" :key="anchor.id" class="note-list-item-row">
-                  <el-button class="note-list-item" @click="editAnchor(anchor)"><span class="note-index">{{ index + 1 }}</span><span>{{ anchor.note }}</span><el-icon class="note-arrow" aria-hidden="true"><ArrowRight /></el-icon></el-button>
+                  <el-button class="note-list-item" @click="editAnchor(anchor)"><span class="note-index">{{ index + 1 }}</span><span :title="anchor.note">{{ anchorNoteTitle(anchor.note) }}</span><el-icon class="note-arrow" aria-hidden="true"><ArrowRight /></el-icon></el-button>
                   <el-tooltip :content="t('editor.anchorDeleteLabel', { number: index + 1 })" placement="top" effect="dark" popper-class="image-detail-tooltip" :show-after="260">
                     <el-button class="note-delete-button" text :aria-label="t('editor.anchorDeleteLabel', { number: index + 1 })" @click="deleteAnchorById(anchor.id)"><el-icon aria-hidden="true"><Close /></el-icon></el-button>
                   </el-tooltip>
@@ -1813,11 +2155,36 @@ onBeforeUnmount(() => {
 
           <section v-else-if="toolPanel === 'anchors' && documentData.anchors.length" class="control-section detail-notes-section">
             <div class="section-title-row"><div><h2>{{ t('editor.anchors') }}</h2><span class="notes-count">{{ documentData.anchors.length }}</span></div></div>
-            <ul class="detail-note-list"><li v-for="(anchor, index) in documentData.anchors" :key="anchor.id"><span class="note-index">{{ index + 1 }}</span><span>{{ anchor.note }}</span></li></ul>
+            <ul class="detail-note-list"><li v-for="(anchor, index) in documentData.anchors" :key="anchor.id"><span class="note-index">{{ index + 1 }}</span><span :title="anchor.note">{{ anchorNoteTitle(anchor.note) }}</span></li></ul>
           </section>
           <p v-if="status && !isEditing" class="success-message" role="status">{{ status }}</p>
         </div>
     </EditorToolSurface>
+
+    <!-- 水印模式下固定底部操作条：先点图片定位，再拖动或滑杆调整大小后导出。 -->
+    <div v-if="watermarkMode" class="watermark-dock" role="region" :aria-label="t('editor.watermarkTitle')">
+      <div class="watermark-dock-copy">
+        <strong>{{ t('editor.watermarkTitle') }}</strong>
+        <span>{{ watermarkDraft ? t('editor.watermarkAdjustHint') : t('editor.watermarkPlaceHint') }}</span>
+      </div>
+      <label v-if="watermarkDraft" class="watermark-size-control">
+        <span>{{ t('editor.watermarkSize') }}</span>
+        <el-slider
+          :model-value="Math.round(watermarkDraft.scale * 100)"
+          :min="MIN_WATERMARK_SCALE * 100"
+          :max="MAX_WATERMARK_SCALE * 100"
+          :step="5"
+          :show-tooltip="false"
+          :aria-label="t('editor.watermarkSize')"
+          @input="updateWatermarkScale(Number($event) / 100)"
+        />
+        <output>{{ Math.round(watermarkDraft.scale * 100) }}%</output>
+      </label>
+      <div class="watermark-dock-actions">
+        <el-button native-type="button" :disabled="exportingImage" @click="exitWatermarkMode">{{ t('common.cancel') }}</el-button>
+        <el-button type="primary" native-type="button" :disabled="!watermarkDraft || exportingImage" :loading="exportingImage" @click="exportEditedImage(true)">{{ t('editor.watermarkExport') }}</el-button>
+      </div>
+    </div>
 
     <el-dialog :model-value="!!transformDialog" class="editor-glass-dialog" :title="t('editor.transformTitle')" width="min(500px, calc(100vw - 32px))" @close="transformDialog = null">
       <p>{{ t('editor.transformText') }}</p>
@@ -1839,16 +2206,33 @@ onBeforeUnmount(() => {
           :aria-label="anchorDraft.id ? t('editor.anchorEdit') : t('editor.anchorMode')"
           @keydown.esc.prevent="closeAnchorEditor"
         >
+          <!-- 多行输入：第一行生成带下划线的标题，回车后的内容作为更小的详细描述。 -->
           <el-input
             ref="anchorEditorInput"
             v-model="anchorDraft.note"
             class="anchor-editor-input"
+            type="textarea"
+            :autosize="{ minRows: 1, maxRows: 3 }"
             maxlength="500"
+            resize="none"
             :placeholder="t('editor.anchorPlaceholder')"
             :aria-label="t('editor.anchorPlaceholder')"
-            enterkeyhint="done"
-            @keyup.enter.prevent="saveAnchor"
+            enterkeyhint="enter"
+            @keydown.ctrl.enter.prevent="saveAnchor"
+            @keydown.meta.enter.prevent="saveAnchor"
           />
+          <!-- 已有锚点在编辑位置提供显式删除入口，不再让用户猜测“清空文字后完成”。 -->
+          <el-button
+            v-if="anchorDraft.id"
+            class="anchor-editor-delete"
+            text
+            native-type="button"
+            :aria-label="t('editor.anchorDelete')"
+            :disabled="anchorSaving"
+            @click="deleteCurrentAnchor"
+          >
+            <el-icon aria-hidden="true"><Delete /></el-icon><span>{{ t('editor.anchorDeleteShort') }}</span>
+          </el-button>
           <el-button
             class="anchor-editor-confirm"
             type="primary"
@@ -1857,8 +2241,8 @@ onBeforeUnmount(() => {
             :disabled="!anchorDraft.note.trim() && !anchorDraft.id"
             @click="saveAnchor"
           >
-            <el-icon aria-hidden="true"><Delete v-if="anchorDraft.id && !anchorDraft.note.trim()" /><Check v-else /></el-icon>
-            <span>{{ anchorDraft.id && !anchorDraft.note.trim() ? t('editor.anchorDelete') : t('editor.anchorComplete') }}</span>
+            <el-icon aria-hidden="true"><Check /></el-icon>
+            <span>{{ t('editor.anchorComplete') }}</span>
           </el-button>
           <p v-if="error" class="anchor-editor-error" role="alert">{{ error }}</p>
         </section>
@@ -1938,11 +2322,12 @@ onBeforeUnmount(() => {
               v-for="anchor in visibleAnchors"
               :key="anchor.id"
               class="inspiration-zoom-anchor"
-              :class="anchor.side"
-              :style="{ left: anchor.left, top: anchor.top }"
+              :style="{ left: anchor.left, top: anchor.top, '--anchor-label-scale': anchor.labelScale }"
             >
-              <span class="inspiration-zoom-anchor-dot"></span>
-              <span class="inspiration-zoom-anchor-label">{{ anchor.note }}</span>
+              <span class="inspiration-zoom-anchor-body">
+                <span class="inspiration-zoom-anchor-title">{{ anchor.title }}</span>
+                <span v-if="anchor.description" class="inspiration-zoom-anchor-description">{{ anchor.description }}</span>
+              </span>
             </span>
           </div>
         </div>
@@ -2025,6 +2410,9 @@ onBeforeUnmount(() => {
 .image-tool-panel .control-section:first-child { padding-top: 0; }
 .detail-tool-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; padding-bottom: 16px; border-bottom: 1px solid color-mix(in srgb, var(--ink) 8%, transparent); }
 .detail-tool-actions .el-button { margin: 0; min-height: 40px; }
+.export-section .section-title-row { margin-bottom: 10px; }
+.export-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.export-actions .export-button { flex: 1 1 150px; margin: 0; min-height: 42px; }
 .image-tool-panel :deep(.el-select__tags-text) { color: var(--ink); }
 .basic-image-properties { margin: 0; padding-bottom: 16px; }
 .image-tool-panel .metadata-scroll { height: auto; max-height: 45dvh; }
@@ -2062,14 +2450,40 @@ onBeforeUnmount(() => {
   .image-dock-tools button:active:not(:disabled) { transform: scale(.96); }
   .image-dock-save { width: 100%; padding-top: 6px; border-top: 1px solid var(--line); }
   .image-dock-save .el-button:last-child { margin-left: auto; }
+  .watermark-dock { right: 10px; bottom: calc(10px + env(safe-area-inset-bottom)); left: 10px; width: calc(100% - 20px); gap: 8px 12px; padding: 10px 12px; }
+  .watermark-dock-copy { flex-basis: 100%; }
+  .watermark-size-control { flex-basis: 100%; }
+  .watermark-dock-actions { flex-basis: 100%; justify-content: flex-end; margin-left: 0; }
 }
 
-.image-anchor.is-draft { pointer-events: none; opacity: .76; }
+.image-anchor.is-draft { pointer-events: none; opacity: .9; transform: translateY(-50%); }
+/* 新增锚点尚未输入文字时，用短横线提示落点，代替旧版圆点。 */
+.image-anchor-draft-line { display: block; width: 28px; height: 2px; border-radius: 2px; background: #f3e600; box-shadow: 0 1px 4px rgb(0 0 0 / 35%); }
+/* 正在编辑的锚点右下角提供文字缩放手柄；手柄可独立接收指针和键盘事件。 */
+.image-anchor-resize { position: absolute; right: -8px; bottom: -8px; width: 20px; height: 20px; border: 2px solid #fff; border-radius: 50%; background: #f3e600; box-shadow: 0 2px 8px rgb(0 0 0 / 28%); cursor: nwse-resize; pointer-events: auto; touch-action: none; }
+.image-anchor-resize::after { position: absolute; right: 4px; bottom: 4px; width: 7px; height: 7px; border-right: 1.5px solid rgb(23 23 23 / 60%); border-bottom: 1.5px solid rgb(23 23 23 / 60%); content: ''; }
+.image-anchor-resize:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
+/* 水印预览保持与导出一致的字体、颜色和阴影；拖动和放置都不会改写图片文档。 */
+.image-watermark { position: absolute; z-index: 6; display: block; color: rgb(255 255 255 / 86%); font-family: 'Manrope', 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif; font-weight: 700; line-height: 1; text-shadow: 0 2px 8px rgb(0 0 0 / 45%); white-space: nowrap; cursor: move; user-select: none; touch-action: none; transform: translate(-50%, -50%); }
+.watermark-mode .image-anchor { opacity: .5; pointer-events: none; }
+.canvas-stage.watermark-active .editor-canvas { cursor: crosshair; }
+.watermark-dock { position: fixed; z-index: 60; right: 16px; bottom: calc(16px + env(safe-area-inset-bottom)); left: 16px; display: flex; width: min(720px, calc(100% - 32px)); flex-wrap: wrap; align-items: center; gap: 10px 14px; margin: 0 auto; padding: 10px 14px; border: 1px solid color-mix(in srgb, var(--ink) 12%, transparent); border-radius: 22px; background: radial-gradient(140% 180% at 8% 0%, color-mix(in srgb, var(--detail-ambient, var(--accent)) 20%, transparent), transparent 58%), linear-gradient(180deg, rgb(255 255 255 / 24%), rgb(255 255 255 / 4%)), color-mix(in srgb, var(--ink) 8%, transparent); box-shadow: inset 0 1px 0 rgb(255 255 255 / 58%), 0 16px 42px rgb(0 0 0 / 18%); backdrop-filter: blur(30px) saturate(190%); -webkit-backdrop-filter: blur(30px) saturate(190%); }
+.watermark-dock-copy { display: grid; min-width: 0; flex: 1 1 200px; gap: 2px; }
+.watermark-dock-copy strong { color: var(--ink); font-size: 13px; }
+.watermark-dock-copy span { color: var(--muted); font-size: 12px; line-height: 1.4; }
+.watermark-size-control { display: grid; min-width: 0; flex: 1 1 220px; grid-template-columns: auto minmax(80px, 1fr) auto; align-items: center; gap: 8px; color: var(--ink-soft); font-size: 12px; }
+.watermark-size-control :deep(.el-slider) { margin: 0; }
+.watermark-size-control output { min-width: 38px; color: var(--ink); font-variant-numeric: tabular-nums; text-align: right; }
+.watermark-dock-actions { display: flex; flex: 0 0 auto; gap: 8px; margin-left: auto; }
+.watermark-dock-actions .el-button { margin: 0; min-height: 40px; }
 .anchor-inline-editor { position: fixed; z-index: 2500; right: 0; bottom: var(--anchor-keyboard-bottom, 0px); left: 0; display: flex; min-height: 68px; align-items: center; gap: 10px; padding: 9px max(14px, env(safe-area-inset-right)) max(9px, env(safe-area-inset-bottom)) max(14px, env(safe-area-inset-left)); border: 0; background: rgb(12 13 15 / 92%); color: #fff; box-shadow: none; backdrop-filter: blur(18px) saturate(140%); -webkit-backdrop-filter: blur(18px) saturate(140%); }
 .anchor-editor-input { min-width: 0; flex: 1; }
-.anchor-editor-input :deep(.el-input__wrapper) { min-height: 48px; padding: 0 2px; border: 0; border-radius: 0; background: transparent !important; background-image: none !important; box-shadow: none !important; }
-.anchor-editor-input :deep(.el-input__inner) { color: #fff; font-size: 17px; font-weight: 500; }
-.anchor-editor-input :deep(.el-input__inner::placeholder) { color: rgb(255 255 255 / 52%); }
+.anchor-editor-input :deep(.el-textarea__inner) { min-height: 44px !important; max-height: 104px; padding: 9px 2px 8px; border: 0; border-radius: 0; background: transparent !important; background-image: none !important; box-shadow: none !important; color: #fff; font-size: 17px; line-height: 1.45; resize: none; }
+.anchor-editor-input :deep(.el-textarea__inner::placeholder) { color: rgb(255 255 255 / 52%); }
+.anchor-editor-input :deep(.el-textarea__inner:focus) { box-shadow: none; }
+.anchor-editor-delete.el-button { min-height: 44px; flex: 0 0 auto; margin: 0; padding: 0 8px; color: #ffb4ac !important; font-weight: 600; }
+.anchor-editor-delete.el-button:hover, .anchor-editor-delete.el-button:focus { color: #fff !important; }
+.anchor-editor-delete .el-icon { margin-right: 3px; }
 .anchor-editor-confirm.el-button { min-width: 88px; min-height: 48px; flex: 0 0 auto; margin: 0; padding: 0 18px; border: 0; border-radius: 999px; background: #f3e600 !important; background-image: none !important; box-shadow: none !important; color: #171717 !important; font-weight: 700; opacity: 1; }
 .anchor-editor-confirm.el-button:hover, .anchor-editor-confirm.el-button:focus { border: 0; background: #fff33d !important; color: #171717 !important; }
 .anchor-editor-confirm.el-button.is-disabled { background: #f3e600 !important; color: rgb(23 23 23 / 46%) !important; opacity: 1; }
@@ -2084,12 +2498,11 @@ onBeforeUnmount(() => {
 .inspiration-zoom-image { position: absolute; transform-origin: center; will-change: transform; }
 .inspiration-zoom-image canvas { display: block; width: 100%; height: 100%; }
 .inspiration-zoom-anchors { position: absolute; z-index: 1; inset: 0; pointer-events: none; }
-.inspiration-zoom-anchor { position: absolute; width: 0; height: 0; color: #fff; transform: scale(var(--zoom-anchor-inverse, 1)); transform-origin: 0 0; }
-.inspiration-zoom-anchor-dot { position: absolute; top: 0; left: 0; width: var(--anchor-dot-size, 24px); height: var(--anchor-dot-size, 24px); border: 2px solid rgb(255 255 255 / 64%); border-radius: 50%; background: rgb(28 30 31 / 40%); box-shadow: 0 2px 8px rgb(0 0 0 / 18%); transform: translate(-50%, -50%); }
-.inspiration-zoom-anchor-dot::after { position: absolute; top: 50%; left: 50%; width: var(--anchor-dot-core-size, 10px); height: var(--anchor-dot-core-size, 10px); border-radius: 50%; background: #f3df00; box-shadow: 0 0 0 1px rgb(0 0 0 / 12%); content: ''; transform: translate(-50%, -50%); }
-.inspiration-zoom-anchor-label { position: absolute; top: 0; display: block; max-width: min(240px, 48vw); overflow: hidden; padding: var(--anchor-label-padding-y, 7px) var(--anchor-label-padding-x, 11px); border: 1px solid rgb(255 255 255 / 34%); border-radius: 999px; background: rgb(22 24 25 / 28%); box-shadow: 0 3px 12px rgb(0 0 0 / 16%); color: #fff; font-size: var(--anchor-label-font-size, 12px); font-weight: 500; line-height: 1.35; text-overflow: ellipsis; white-space: nowrap; text-shadow: 0 1px 2px rgb(0 0 0 / 62%); transform: translateY(-50%); }
-.inspiration-zoom-anchor.anchor-left .inspiration-zoom-anchor-label { right: calc(var(--anchor-dot-half, 12px) + var(--anchor-gap, 6px)); }
-.inspiration-zoom-anchor.anchor-right .inspiration-zoom-anchor-label { left: calc(var(--anchor-dot-half, 12px) + var(--anchor-gap, 6px)); }
+.inspiration-zoom-anchor { position: absolute; width: 0; height: 0; color: #fff; transform: scale(var(--zoom-anchor-inverse, 1)) translateY(-2px); transform-origin: 0 0; }
+/* 全屏层沿用详情页的标题下划线 + 小号描述结构，并用反向缩放保持屏幕字号稳定。 */
+.inspiration-zoom-anchor-body { display: block; width: max-content; max-width: min(260px, 52vw); text-shadow: 0 1px 3px rgb(0 0 0 / 55%); }
+.inspiration-zoom-anchor-title { display: inline-block; padding-bottom: 2px; border-bottom: 1px solid rgb(255 255 255 / 82%); color: #fff; font-size: calc(var(--anchor-title-font-size, 14px) * var(--anchor-label-scale, 1)); font-weight: 600; line-height: 1.3; overflow-wrap: anywhere; }
+.inspiration-zoom-anchor-description { display: block; margin-top: 4px; color: rgb(255 255 255 / 80%); font-size: calc(var(--anchor-desc-font-size, 11px) * var(--anchor-label-scale, 1)); line-height: 1.55; overflow-wrap: anywhere; white-space: pre-wrap; }
 .inspiration-zoom-close { position: absolute; z-index: 2; top: max(12px, env(safe-area-inset-top)); right: max(12px, env(safe-area-inset-right)); display: grid; width: 48px; height: 48px; place-items: center; border: 1px solid rgb(255 255 255 / 30%); border-radius: 50%; background: rgb(255 255 255 / 12%); color: #fff; cursor: pointer; font-size: 22px; backdrop-filter: blur(24px) saturate(180%); -webkit-backdrop-filter: blur(24px) saturate(180%); box-shadow: inset 0 1px 0 rgb(255 255 255 / 34%), 0 8px 26px rgb(0 0 0 / 28%); }
 .inspiration-zoom-close:active { transform: scale(.94); }
 .inspiration-zoom-close:focus-visible { outline: 2px solid #fff; outline-offset: 3px; }
