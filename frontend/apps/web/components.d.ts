@@ -63,6 +63,7 @@ declare module 'vue' {
     GallerySearchPanel: typeof import('./src/components/GallerySearchPanel.vue')['default']
     GlobalContextMenu: typeof import('./src/components/GlobalContextMenu.vue')['default']
     GlobalMessageButton: typeof import('./src/components/GlobalMessageButton.vue')['default']
+    ImageAnchorMarker: typeof import('./src/components/ImageAnchorMarker.vue')['default']
     InspirationGoalReminder: typeof import('./src/components/InspirationGoalReminder.vue')['default']
     InspirationLibraryTools: typeof import('./src/components/InspirationLibraryTools.vue')['default']
     InspirationThumbnail: typeof import('./src/components/InspirationThumbnail.vue')['default']

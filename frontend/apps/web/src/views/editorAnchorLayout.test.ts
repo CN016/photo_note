@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest'
-import { ANCHOR_LABEL_MAX_WIDTH, ANCHOR_LABEL_MIN_WIDTH, anchorLabelMaxWidth, anchorNoteTitle, splitAnchorNote } from './editorAnchorLayout'
+import {
+  ANCHOR_LABEL_MAX_WIDTH,
+  ANCHOR_LABEL_MIN_WIDTH,
+  anchorLabelMaxWidth,
+  anchorNoteTitle,
+  splitAnchorNote,
+  thumbnailAnchorTextScale,
+} from './editorAnchorLayout'
 
 describe('锚点文字标签宽度', () => {
   it('文字较短时保持紧凑，较长时扩展到上限', () => {
@@ -35,5 +42,19 @@ describe('锚点标题与详细描述', () => {
       description: '留出人物到树顶的整段高度',
     })
     expect(splitAnchorNote('')).toEqual({ title: '', description: '' })
+  })
+})
+
+describe('列表锚点视觉比例', () => {
+  it('文字、圆点和短横线随图片渲染宽度等比缩小', () => {
+    expect(thumbnailAnchorTextScale(420)).toBe(1)
+    expect(thumbnailAnchorTextScale(336)).toBeCloseTo(0.8)
+    expect(thumbnailAnchorTextScale(630)).toBe(1.25)
+  })
+
+  it('过小、非法尺寸使用可读下限，避免手机双列列表文字不可辨认', () => {
+    expect(thumbnailAnchorTextScale(120)).toBe(0.6)
+    expect(thumbnailAnchorTextScale(0)).toBe(0.6)
+    expect(thumbnailAnchorTextScale(Number.NaN)).toBe(0.6)
   })
 })

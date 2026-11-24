@@ -2,9 +2,11 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import type { InspirationRecord } from '../api/types'
-import { anchorToView, parseEditorDocument, type EditorDocument } from '../../../../packages/editor-core/src'
+import { anchorToView, clampAnchorLabelScale, parseEditorDocument, type EditorDocument } from '../../../../packages/editor-core/src'
 import { decodeImagePreview, releaseCanvas, renderDocumentPreview } from '../../../../packages/image-processing/src'
 import { loadThumbnail } from '../images/thumbnails'
+import ImageAnchorMarker from './ImageAnchorMarker.vue'
+import { anchorNoteTitle, thumbnailAnchorTextScale } from '../views/editorAnchorLayout'
 import {
   inspirationDetailKey,
   inspirationDetails,
@@ -57,11 +59,29 @@ const anchors = computed(() => {
     const x = point.x * renderedWidth - (renderedWidth - width) / 2
     const y = point.y * renderedHeight - (renderedHeight - height) / 2
     if (!point.visible || x < 0 || y < 0 || x > width || y > height) return []
-    return [{ ...anchor, number: index + 1, x, y, right: x < width / 2, maxWidth: Math.max(24, (x < width / 2 ? width - x : x) - 22) }]
+    const title = anchorNoteTitle(anchor.note)
+    const imageTextScale = thumbnailAnchorTextScale(renderedWidth)
+    const labelScale = clampAnchorLabelScale(anchor.label_scale ?? 1)
+    const visualScale = imageTextScale * labelScale
+    // 列表标题只保留第一行，并跟随图片实际渲染宽度缩放；落点坐标始终独立于文字尺寸。
+    return [{
+      id: anchor.id,
+      title,
+      x,
+      y,
+      style: {
+        left: `${x}px`,
+        top: `${y}px`,
+        '--anchor-title-font-size': `${14 * imageTextScale}px`,
+        '--anchor-label-scale': `${labelScale}`,
+        '--anchor-marker-dot-size': `${14 * visualScale * .56}px`,
+        '--anchor-marker-rule-width': `${14 * visualScale * 3}px`,
+        '--anchor-marker-gap': `${14 * visualScale * .36}px`,
+        '--thumbnail-anchor-note-width': `${Math.max(36 * visualScale, Math.min(width - x - 8, 160 * visualScale))}px`,
+      },
+    }]
   })
 })
-/** 列表锚点超过四个时只保留位置点，避免密集标签遮挡图片。 */
-const showAnchorLabels = computed(() => anchors.value.length <= 4)
 const imageName = computed(() => props.record.file_name || t('gallery.untitled'))
 const imageLabel = computed(() => t('gallery.openImage', { name: imageName.value }))
 const imageKey = computed(() => props.record.image_key)
@@ -192,12 +212,11 @@ onBeforeUnmount(() => {
       v-for="anchor in anchors"
       :key="anchor.id"
       class="thumbnail-anchor"
-      :class="{ right: anchor.right, 'point-only': !showAnchorLabels }"
-      :style="{ left: `${anchor.x}px`, top: `${anchor.y}px`, '--note-width': `${anchor.maxWidth}px` }"
-      :title="anchor.note"
+      :style="anchor.style"
+      :title="anchor.title"
     >
-      <span class="thumbnail-anchor-point" aria-hidden="true" />
-      <span v-if="showAnchorLabels" class="thumbnail-anchor-note">{{ anchor.note }}</span>
+      <ImageAnchorMarker />
+      <span class="thumbnail-anchor-title">{{ anchor.title }}</span>
     </span>
   </div>
 </template>
@@ -209,11 +228,20 @@ onBeforeUnmount(() => {
 .thumbnail-detail.ready { opacity: 1; transform: scale(1); }
 .thumbnail-frame.has-detail .thumbnail-preview { opacity: 0; }
 .thumbnail-state { position: relative; z-index: 2; }
-.thumbnail-anchor { position: absolute; z-index: 3; display: flex; flex-direction: row-reverse; align-items: center; gap: 5px; transform: translate(calc(-100% + 8px), -50%); pointer-events: none; }
-.thumbnail-anchor.right { flex-direction: row; transform: translate(-8px, -50%); }
-.thumbnail-anchor.point-only { transform: translate(-50%, -50%); }
-.thumbnail-anchor-point { width: 16px; height: 16px; flex: 0 0 16px; border: 2px solid #cdd0ca; border-radius: 50%; background: #f3df00; box-shadow: inset 0 0 0 3px rgb(35 37 38 / 82%); }
-.thumbnail-anchor-note { max-width: var(--note-width); padding: 4px 7px; overflow: hidden; border: 1px solid rgb(194 197 193 / 84%); border-radius: 12px; background: rgb(38 40 41 / 65%); color: white; font-size: 11px; line-height: 1.35; text-overflow: ellipsis; white-space: nowrap; }
+.thumbnail-anchor { position: absolute; z-index: 3; width: 0; height: 0; pointer-events: none; }
+.thumbnail-anchor-title {
+  position: absolute;
+  bottom: calc(var(--anchor-marker-dot-size, 8px) / 2 + var(--anchor-marker-gap, 5px));
+  left: 0;
+  width: max-content;
+  max-width: var(--thumbnail-anchor-note-width, 120px);
+  color: #fff;
+  font-size: calc(var(--anchor-title-font-size, 14px) * var(--anchor-label-scale, 1));
+  font-weight: 600;
+  line-height: 1.2;
+  overflow-wrap: anywhere;
+  text-shadow: 0 1px 3px rgb(0 0 0 / 68%);
+}
 @media (prefers-reduced-motion: reduce) {
   .thumbnail-preview, .thumbnail-detail { transition: none; }
 }

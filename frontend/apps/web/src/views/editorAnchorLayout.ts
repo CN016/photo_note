@@ -11,6 +11,22 @@ export const ANCHOR_LABEL_MIN_WIDTH = 72
 export const ANCHOR_LABEL_MAX_WIDTH = 280
 /** 文字块起点到画布右边缘之间预留的避让距离，按锚点展示比例缩放。 */
 export const ANCHOR_LABEL_MARKER_OFFSET = 8
+/** 缩略图锚点文字按渲染图片宽度缩小的参考宽度，保持列表与编辑器中的比例关系。 */
+export const THUMBNAIL_ANCHOR_REFERENCE_WIDTH = 420
+
+/**
+ * 计算列表锚点文字随图片渲染宽度变化的倍率。
+ *
+ * 以 420px 宽的编辑预览为基准，图片缩小时文字、圆点和短横线同步缩小；
+ * 设置 60% 下限，避免手机双列列表中文字小到无法辨认。非法尺寸按最小倍率处理。
+ *
+ * @param renderedWidth 图片在缩略图裁切后实际渲染的宽度，单位为 CSS 像素。
+ * @returns 适用于列表锚点标题、圆点和修饰线的视觉倍率。
+ */
+export function thumbnailAnchorTextScale(renderedWidth: number): number {
+  if (!Number.isFinite(renderedWidth) || renderedWidth <= 0) return 0.6
+  return Math.max(0.6, Math.min(1.25, renderedWidth / THUMBNAIL_ANCHOR_REFERENCE_WIDTH))
+}
 
 /**
  * 拆分锚点文字：第一行是带下划线的标题，其余行是更小的详细描述。

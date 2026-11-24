@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { loadDetailImage, loadManagedDetailImage, takeDetailRecord } from '../images/detailImages'
 import EditorToolSurface from '../components/EditorToolSurface.vue'
+import ImageAnchorMarker from '../components/ImageAnchorMarker.vue'
 import { captureDetailImage, copyVisibleImage, detailImageReady } from '../motion/imageMotion'
 import {
   PINCH_FULLSCREEN_THRESHOLD, pinchReturnFrame, pinchTargetScale, pinchZoomFrame, pointDistance, shouldReturnFromPinch,
@@ -1947,8 +1948,8 @@ onBeforeUnmount(() => {
               ></canvas>
               <div v-if="cropMode && cropSelection" class="crop-selection" :style="cropDragStyle" aria-hidden="true"></div>
               <!--
-                锚点由“标题 + 详细描述”组成，标题下划线代替原来的圆点。
-                外壳只负责定位，body 承担点按、拖动和键盘操作；正在编辑的锚点显示选中高亮。
+                锚点由固定的“黄色圆点 + 短横线”落点和标题/描述组成。
+                落点以原图坐标为中心，文本只向上下排列，不能改变圆点与短横线的位置。
               -->
               <span
                 v-for="anchor in visibleAnchors"
@@ -1974,6 +1975,7 @@ onBeforeUnmount(() => {
                   @keydown.down.prevent="moveAnchorByKeyboard(anchor, $event)"
                   @click.stop="handleAnchorClick(anchor)"
                 >
+                  <ImageAnchorMarker interactive />
                   <span class="image-anchor-title">{{ anchor.title }}</span>
                   <span v-if="anchor.description" class="image-anchor-description">{{ anchor.description }}</span>
                 </span>
@@ -1998,9 +2000,9 @@ onBeforeUnmount(() => {
                   @keydown.up.stop.prevent="resizeAnchorLabelByKeyboard(anchor, 1)"
                 ></span>
               </span>
-              <!-- 新增锚点尚未输入文字时，用一段横线代替旧圆点提示落点。 -->
+              <!-- 新增锚点尚未输入文字时，使用与保存后完全相同的圆点和短横线提示落点。 -->
               <span v-if="draftAnchorPosition" class="image-anchor is-draft" :style="draftAnchorPosition" aria-hidden="true">
-                <span class="image-anchor-draft-line"></span>
+                <ImageAnchorMarker />
               </span>
               <!-- 水印只是导出前的临时预览，不写入文档，也不参与锚点点击。 -->
               <span
@@ -2370,6 +2372,7 @@ onBeforeUnmount(() => {
               :style="{ left: anchor.left, top: anchor.top, '--anchor-label-scale': anchor.labelScale }"
             >
               <span class="inspiration-zoom-anchor-body">
+                <ImageAnchorMarker />
                 <span class="inspiration-zoom-anchor-title">{{ anchor.title }}</span>
                 <span v-if="anchor.description" class="inspiration-zoom-anchor-description">{{ anchor.description }}</span>
               </span>
@@ -2501,11 +2504,9 @@ onBeforeUnmount(() => {
   .watermark-dock-actions { flex-basis: 100%; justify-content: flex-end; margin-left: 0; }
 }
 
-.image-anchor.is-draft { pointer-events: none; opacity: .9; transform: translateY(-50%); }
-/* 新增锚点尚未输入文字时，用短横线提示落点，代替旧版圆点。 */
-.image-anchor-draft-line { display: block; width: 28px; height: 2px; border-radius: 2px; background: #f3e600; box-shadow: 0 1px 4px rgb(0 0 0 / 35%); }
+.image-anchor.is-draft { pointer-events: none; opacity: .9; }
 /* 正在编辑的锚点右下角提供文字缩放手柄；手柄可独立接收指针和键盘事件。 */
-.image-anchor-resize { position: absolute; right: -8px; bottom: -8px; width: 20px; height: 20px; border: 2px solid #fff; border-radius: 50%; background: #f3e600; box-shadow: 0 2px 8px rgb(0 0 0 / 28%); cursor: nwse-resize; pointer-events: auto; touch-action: none; }
+.image-anchor-resize { position: absolute; top: -10px; left: calc(var(--anchor-marker-rule-width) + 10px); width: 20px; height: 20px; border: 2px solid #fff; border-radius: 50%; background: #f3e600; box-shadow: 0 2px 8px rgb(0 0 0 / 28%); cursor: nwse-resize; pointer-events: auto; touch-action: none; }
 .image-anchor-resize::after { position: absolute; right: 4px; bottom: 4px; width: 7px; height: 7px; border-right: 1.5px solid rgb(23 23 23 / 60%); border-bottom: 1.5px solid rgb(23 23 23 / 60%); content: ''; }
 .image-anchor-resize:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
 /* 水印预览保持与导出一致的字体、颜色和阴影；拖动和放置都不会改写图片文档。 */
@@ -2543,11 +2544,21 @@ onBeforeUnmount(() => {
 .inspiration-zoom-image { position: absolute; transform-origin: center; will-change: transform; }
 .inspiration-zoom-image canvas { display: block; width: 100%; height: 100%; }
 .inspiration-zoom-anchors { position: absolute; z-index: 1; inset: 0; pointer-events: none; }
-.inspiration-zoom-anchor { position: absolute; width: 0; height: 0; color: #fff; transform: scale(var(--zoom-anchor-inverse, 1)) translateY(-2px); transform-origin: 0 0; }
-/* 全屏层沿用详情页的标题下划线 + 小号描述结构，并用反向缩放保持屏幕字号稳定。 */
-.inspiration-zoom-anchor-body { display: block; width: max-content; max-width: min(260px, 52vw); text-shadow: 0 1px 3px rgb(0 0 0 / 55%); }
-.inspiration-zoom-anchor-title { display: inline; text-decoration: underline; text-decoration-thickness: 1px; text-decoration-color: rgb(255 255 255 / 82%); text-underline-offset: 3px; color: #fff; font-size: calc(var(--anchor-title-font-size, 14px) * var(--anchor-label-scale, 1)); font-weight: 600; line-height: 1.3; overflow-wrap: anywhere; }
-.inspiration-zoom-anchor-description { display: block; margin-top: 4px; color: rgb(255 255 255 / 80%); font-size: calc(var(--anchor-desc-font-size, 11px) * var(--anchor-label-scale, 1)); line-height: 1.55; overflow-wrap: anywhere; white-space: pre-wrap; }
+.inspiration-zoom-anchor {
+  --anchor-marker-dot-size: calc(var(--anchor-title-font-size, 14px) * var(--anchor-label-scale, 1) * .56);
+  --anchor-marker-rule-width: calc(var(--anchor-title-font-size, 14px) * var(--anchor-label-scale, 1) * 3);
+  --anchor-marker-gap: calc(var(--anchor-title-font-size, 14px) * var(--anchor-label-scale, 1) * .36);
+  position: absolute;
+  width: 0;
+  height: 0;
+  color: #fff;
+  transform: scale(var(--zoom-anchor-inverse, 1));
+  transform-origin: 0 0;
+}
+/* 全屏层沿用详情页的黄色落点与上下文字布局，并用反向缩放保持屏幕字号稳定。 */
+.inspiration-zoom-anchor-body { position: absolute; top: 0; left: 0; width: min(260px, 52vw); text-shadow: 0 1px 3px rgb(0 0 0 / 55%); }
+.inspiration-zoom-anchor-title { position: absolute; bottom: calc(var(--anchor-marker-dot-size) / 2 + var(--anchor-marker-gap)); left: 0; display: block; width: max-content; max-width: 100%; color: #fff; font-size: calc(var(--anchor-title-font-size, 14px) * var(--anchor-label-scale, 1)); font-weight: 600; line-height: 1.3; overflow-wrap: anywhere; }
+.inspiration-zoom-anchor-description { position: absolute; top: calc(var(--anchor-marker-dot-size) / 2 + var(--anchor-marker-gap)); left: 0; display: block; width: max-content; max-width: 100%; color: rgb(255 255 255 / 80%); font-size: calc(var(--anchor-desc-font-size, 11px) * var(--anchor-label-scale, 1)); line-height: 1.55; overflow-wrap: anywhere; white-space: pre-wrap; }
 .inspiration-zoom-close { position: absolute; z-index: 2; top: max(12px, env(safe-area-inset-top)); right: max(12px, env(safe-area-inset-right)); display: grid; width: 48px; height: 48px; place-items: center; border: 1px solid rgb(255 255 255 / 30%); border-radius: 50%; background: rgb(255 255 255 / 12%); color: #fff; cursor: pointer; font-size: 22px; backdrop-filter: blur(24px) saturate(180%); -webkit-backdrop-filter: blur(24px) saturate(180%); box-shadow: inset 0 1px 0 rgb(255 255 255 / 34%), 0 8px 26px rgb(0 0 0 / 28%); }
 .inspiration-zoom-close:active { transform: scale(.94); }
 .inspiration-zoom-close:focus-visible { outline: 2px solid #fff; outline-offset: 3px; }
