@@ -199,6 +199,35 @@ public class WebUpdateInstrumentedTest {
         updater.confirm();
     }
 
+    /** 每次冷启动重新请求清单，同次启动使用最新版；无新版仍检查但不产生候选。 */
+    @Test public void everyColdStartFetchesAndAppliesLatest() throws Exception {
+        int before = feedRequests.get();
+        WebBundleUpdater updater = new WebBundleUpdater(isolated,config());
+        updater.prepare((p,n) -> {});
+        assertEquals(before + 1,feedRequests.get());
+        assertTrue(page(updater).contains("fixture-2")); updater.confirm();
+        release(3,false,false);
+        updater = new WebBundleUpdater(isolated,config()); updater.prepare((p,n) -> {});
+        assertEquals(before + 2,feedRequests.get());
+        assertTrue(page(updater).contains("fixture-3")); updater.confirm();
+        updater = new WebBundleUpdater(isolated,config()); updater.prepare((p,n) -> {});
+        assertEquals(before + 3,feedRequests.get());
+        assertTrue(page(updater).contains("fixture-3")); assertFalse(updater.hasCandidate());
+    }
+
+    /** 旧壳遗留 ready 包可直接启动；新清单损坏时也不得丢弃该已验证候选。 */
+    @Test public void coldStartRetainsReadyWhenRemoteFails() throws Exception {
+        WebBundleUpdater updater = new WebBundleUpdater(isolated,config());
+        updater.prepare((p,n) -> {}); updater.confirm();
+        release(3,false,false); updater.refreshRemote();
+        feed = "invalid-envelope".getBytes(java.nio.charset.StandardCharsets.UTF_8);
+        updater = new WebBundleUpdater(isolated,config()); updater.prepare((p,n) -> {});
+        assertTrue(page(updater).contains("fixture-3")); assertTrue(updater.hasCandidate());
+        updater.confirm();
+        updater = new WebBundleUpdater(isolated,config()); updater.prepare((p,n) -> {});
+        assertTrue(page(updater).contains("fixture-3")); assertFalse(updater.hasCandidate());
+    }
+
     @Test public void signedInstallTamperRestartAndRollback() throws Exception {
         WebBundleUpdater updater = new WebBundleUpdater(isolated,config());
         List<String> phases = new ArrayList<>(); updater.prepare((phase, percent) -> phases.add(phase));

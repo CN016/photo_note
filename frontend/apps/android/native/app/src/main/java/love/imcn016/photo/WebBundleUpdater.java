@@ -74,7 +74,7 @@ public final class WebBundleUpdater {
         }
     }
 
-    /** 兼容需要同次启动立即测试新版本的调用；生产 Activity 只使用 prepareLocal。 */
+    /** 冷启动入口：先恢复本地可用包，再检查远端并在本次启动启用已验证的新版本。 */
     public synchronized void prepare(Progress progress) {
         prepareLocal();
         refreshRemote(progress, true);
@@ -86,11 +86,14 @@ public final class WebBundleUpdater {
     }
 
     /**
-     * 下载、验签并解包更新。applyNow 仅供兼容入口和自动化测试立即切换候选；
-     * 正常生产流程写入 ready，避免用户正在编辑时自动刷新或阻塞首屏。
+     * 下载、验签并解包更新。冷启动 applyNow 在页面创建前切换候选；
+     * 已打开页面的调用只写入 ready，不能刷新正在编辑的文档。
      */
     private void refreshRemote(Progress progress, boolean applyNow) {
         if (!config.optBoolean("enabled")) return;
+        // 保留已验证的本地候选；远端失败不能丢弃上次下载的 ready 或误留其 pending。
+        String previousSelected = selected;
+        String previousCandidate = candidate;
         try {
             if (progress != null) progress.show("checking", 0);
             byte[] envelope = download(new URL(config.getString("url")), 1024 * 1024, null);
@@ -149,10 +152,10 @@ public final class WebBundleUpdater {
                 Files.write(new File(staging, ".release.json").toPath(), envelope);
                 if (!staging.renameTo(directory)) throw new IOException("directory");
                 if (applyNow) {
-                    candidate = id;
-                    selected = id;
                     verifyLocal(id);
                     if (!state.edit().putString("pending", id).remove("ready").commit()) throw new IOException("state");
+                    candidate = id;
+                    selected = id;
                 } else if (!state.edit().putString("ready", id).commit()) {
                     remove(directory);
                     throw new IOException("state");
@@ -162,12 +165,12 @@ public final class WebBundleUpdater {
         } catch (Exception error) {
             // 网络、签名或资源错误只影响此次更新，不把远端正文/地址写入日志。
             if (applyNow) {
-                candidate = null;
-                selected = state.getString("stable", null);
+                candidate = previousCandidate;
+                selected = previousSelected;
                 if (progress != null) progress.show("fallback", 0);
             }
         }
-        if (applyNow) try { if (selected != null) displayVersion = verifyLocal(selected); } catch (Exception error) { selected = null; }
+        if (applyNow) try { displayVersion = selected == null ? config.optString("version") : verifyLocal(selected); } catch (Exception error) { selected = null; displayVersion = config.optString("version"); }
     }
     /** 重新校验持久化副本，损坏文件不得因曾被下载过而获得信任。 */
     private String verifyLocal(String id) throws Exception {

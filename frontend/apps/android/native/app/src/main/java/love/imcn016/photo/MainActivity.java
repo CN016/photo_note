@@ -51,7 +51,6 @@ public class MainActivity extends AppCompatActivity {
     private ApkUpdateChecker apkUpdates;
     private androidx.appcompat.app.AlertDialog apkDialog;
     private boolean apkEntryCheckPending;
-    private boolean remoteRefreshStarted;
     private final android.os.Handler apkHandler = new android.os.Handler(android.os.Looper.getMainLooper());
     private final java.util.concurrent.ExecutorService apkIO = java.util.concurrent.Executors.newSingleThreadExecutor();
     private final Runnable apkListener = () -> runOnUiThread(this::showApkUpdate);
@@ -167,14 +166,21 @@ public class MainActivity extends AppCompatActivity {
         updateIO.execute(() -> {
             try {
                 updater = new WebBundleUpdater(getApplicationContext());
-                // 先使用已安装或上次完整下载的本地包启动，更新清单与下载不能阻塞首屏。
-                runOnUiThread(() -> {
-                    if (!isDestroyed()) {
-                        status.setText(R.string.update_fallback);
-                        updateProgress.setIndeterminate(true);
-                    }
-                });
-                updater.prepareLocal();
+                // 冷启动先检查签名清单，下载校验完成后再创建资源服务器，本次直接使用新版。
+                // 网络或校验失败由更新器保留本地可用包，不依赖旧页面先完成挂载。
+                updater.prepare((phase, percent) -> runOnUiThread(() -> {
+                    if (isDestroyed()) return;
+                    int text = switch (phase) {
+                        case "downloading" -> R.string.update_downloading;
+                        case "verifying" -> R.string.update_verifying;
+                        case "fallback" -> R.string.update_fallback;
+                        default -> R.string.update_checking;
+                    };
+                    status.setText("downloading".equals(phase) ? getString(text, percent) : getString(text));
+                    updateProgress.setIndeterminate(!"downloading".equals(phase));
+                    updateProgress.setProgress(percent);
+                    updateVersion.setText(getString(R.string.update_version, updater.displayVersion));
+                }));
                 if (Thread.currentThread().isInterrupted()) return;
                 localWeb = new LocalWebServer(getApplicationContext(), updater);
                 runOnUiThread(() -> {
@@ -285,17 +291,6 @@ public class MainActivity extends AppCompatActivity {
         localWeb.finishMigration();
         getSharedPreferences("web-local-origin", 0).edit().putBoolean("migrated", true).apply();
         updateIO.execute(() -> updater.confirm());
-        refreshWebBundleInBackground();
-    }
-
-    /** 页面已可用后才检查远端更新；下载包留给下一次冷启动，不打断当前编辑。 */
-    private void refreshWebBundleInBackground() {
-        if (remoteRefreshStarted || updater == null || pagePort == null) return;
-        remoteRefreshStarted = true;
-        updateIO.execute(() -> {
-            try { updater.refreshRemote(); }
-            catch (Exception ignored) { /* 后台更新失败保留当前本地版本。 */ }
-        });
     }
 
     /** 仅清理本选择器一天前的随机缓存目录，避免图片长期滞留；不触碰其他缓存。 */
@@ -396,7 +391,6 @@ public class MainActivity extends AppCompatActivity {
             session.setActive(true);
             if (browserView != null) browserView.postInvalidateOnAnimation();
             if (pageReady) updatePage.setVisibility(View.GONE);
-            refreshWebBundleInBackground();
         }
         ApkUpdateChecker.subscribe(apkListener);
     }
