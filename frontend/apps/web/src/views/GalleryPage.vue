@@ -62,7 +62,10 @@ const contentZoom = ref<InstanceType<typeof ContentZoom>>()
 const gridColumns = ref(2)
 const gridZoom = ref(1)
 const gridNavTop = ref(0)
+const gridNavThumbTop = ref(0)
 const gridNavVisible = ref(false)
+const gridNavTrack = ref<HTMLElement>()
+const gridNavThumb = ref<HTMLElement>()
 let gridNavFrame = 0
 let gridTouchDistance = 0
 let gridTouchZoom = 1
@@ -253,9 +256,9 @@ function resetFilters() {
 function changeGridZoom(next: number) {
   const nextZoom = Math.max(.8, Math.min(2, next))
   gridZoom.value = nextZoom
-  gridColumns.value = Math.max(1, Math.min(6, Math.round(gridBaseColumns * nextZoom)))
+  gridColumns.value = Math.max(1, Math.min(6, Math.round(gridBaseColumns / nextZoom)))
   gridNavVisible.value = true
-  window.clearTimeout(gridNavFrame)
+  window.clearTimeout(gridNavFrame);
   gridNavFrame = window.setTimeout(() => { gridNavVisible.value = false }, 1400)
 }
 /** 计算图库两指间距，用于保持相对缩放比例。 */
@@ -281,26 +284,41 @@ function galleryTouchMove(event: TouchEvent) {
 function galleryTouchEnd(event: TouchEvent) { if (!event.touches.length) gridTouchDistance = 0 }
 /** 依据页面相对视口的位置更新右侧快速定位滑块。 */
 function updateGridNavigation() {
-  const root = galleryRoot.value
-  if (!root) return
-  const max = Math.max(1, root.scrollHeight - window.innerHeight)
-  gridNavTop.value = Math.max(0, Math.min(1, -root.getBoundingClientRect().top / max))
+  const max = Math.max(1, document.documentElement.scrollHeight - window.innerHeight)
+  setGridNavigationPosition(window.scrollY / max)
 }
 /** 屏幕旋转或窗口尺寸变化后，以当前平台默认列数重新计算网格。 */
-function resizeGrid() { gridBaseColumns = window.innerWidth <= 768 ? 2 : 4; gridColumns.value = Math.max(1, Math.min(6, Math.round(gridBaseColumns * gridZoom.value))) }
+function resizeGrid() { gridBaseColumns = window.innerWidth <= 768 ? 2 : 4; gridColumns.value = Math.max(1, Math.min(6, Math.round(gridBaseColumns / gridZoom.value))) }
+/** 同步列表整体滚动比例和滑块像素位置，拖动与手动滚动使用同一位置计算。 */
+function setGridNavigationPosition(ratio: number) {
+  gridNavTop.value = Math.max(0, Math.min(1, ratio))
+  const track = gridNavTrack.value
+  if (track) gridNavThumbTop.value = gridNavTop.value * Math.max(0, track.clientHeight - (gridNavThumb.value?.clientHeight ?? 26))
+}
 /** 将右侧导航轨道上的点击或拖动位置映射为图库垂直滚动位置。 */
 function seekGridPosition(event: PointerEvent) {
   const track = event.currentTarget as HTMLElement
   const bounds = track.getBoundingClientRect()
   const ratio = Math.max(0, Math.min(1, (event.clientY - bounds.top) / bounds.height))
-  gridNavTop.value = ratio
+  setGridNavigationPosition(ratio)
   seekGalleryEdge(ratio)
 }
 /** 跳转到图库内容范围内的相对位置。 */
-function seekGalleryEdge(ratio: number) { const root = galleryRoot.value; if (root) window.scrollTo({ top: window.scrollY + root.getBoundingClientRect().top + ratio * Math.max(0, root.scrollHeight - window.innerHeight), behavior: 'instant' as ScrollBehavior }) }
-function startGridNavigation(event: PointerEvent) { gridNavDragging = true; (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId); seekGridPosition(event) }
+function seekGalleryEdge(ratio: number) { window.scrollTo({ top: ratio * Math.max(0, document.documentElement.scrollHeight - window.innerHeight), behavior: 'instant' as ScrollBehavior }) }
+function startGridNavigation(event: PointerEvent) {
+  gridNavDragging = true; gridNavVisible.value = true
+  window.clearTimeout(gridNavFrame);
+  (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId)
+  seekGridPosition(event)
+}
 function moveGridNavigation(event: PointerEvent) { if (gridNavDragging) seekGridPosition(event) }
-function endGridNavigation() { gridNavDragging = false }
+function endGridNavigation() {
+  if (!gridNavDragging) return
+  gridNavDragging = false
+  setGridNavigationPosition(gridNavTop.value)
+  window.clearTimeout(gridNavFrame)
+  gridNavFrame = window.setTimeout(() => { gridNavVisible.value = false }, 1400)
+}
 
 /** 色系搜索固定按距离排序，其余条件允许用户选择收藏或编辑时间。 */
 function setSort(value: string) {
@@ -423,8 +441,8 @@ onBeforeUnmount(() => { alive = false; inspirationDetails.clear(); openVersion +
       <InspirationLibraryTools ref="libraryTools" v-model:filters="libraryFilters" :revision="libraryRevision" />
     </main></ContentZoom>
     <CreateFab class="gallery-create-fab" :label="t('gallery.newImage')" to="/inspirations/new" />
-    <div v-if="items.length > 5" class="gallery-side-nav" :class="{ visible: gridNavVisible }" role="slider" tabindex="0" :aria-label="t('gallery.listPosition')" aria-valuemin="0" aria-valuemax="100" :aria-valuenow="Math.round(gridNavTop * 100)" @pointerdown="startGridNavigation" @pointermove="moveGridNavigation" @pointerup="endGridNavigation" @pointercancel="endGridNavigation" @lostpointercapture="endGridNavigation" @keydown.home.prevent="seekGalleryEdge(0)" @keydown.end.prevent="seekGalleryEdge(1)">
-      <span class="gallery-side-nav-thumb" :style="{ top: `${gridNavTop * 100}%` }" />
+    <div v-if="items.length > 5" ref="gridNavTrack" class="gallery-side-nav" :class="{ visible: gridNavVisible, dragging: gridNavDragging }" role="slider" tabindex="0" :aria-label="t('gallery.listPosition')" aria-valuemin="0" aria-valuemax="100" :aria-valuenow="Math.round(gridNavTop * 100)" @pointerdown="startGridNavigation" @pointermove="moveGridNavigation" @pointerup="endGridNavigation" @pointercancel="endGridNavigation" @lostpointercapture="endGridNavigation" @keydown.home.prevent="seekGalleryEdge(0)" @keydown.end.prevent="seekGalleryEdge(1)">
+      <span ref="gridNavThumb" class="gallery-side-nav-thumb" :style="{ top: `${gridNavThumbTop}px` }" />
     </div>
     <footer class="workspace-footer"><span>{{ t('common.brand') }}</span><span>{{ t('common.footer') }}</span></footer>
   </div>
@@ -443,9 +461,12 @@ onBeforeUnmount(() => { alive = false; inspirationDetails.clear(); openVersion +
 .gallery-sort-button:disabled { cursor: default; opacity: .72; }
 .sort-chevron { font-size: 11px; }
 .inspiration-grid { grid-template-columns: repeat(var(--grid-columns, 2), minmax(0, 1fr)); gap: 12px; touch-action: pan-y; }
-.gallery-side-nav { position: fixed; z-index: 35; top: 42%; right: 4px; width: 20px; height: 112px; border-radius: 999px; background: color-mix(in srgb, var(--ink) 22%, transparent); opacity: .25; touch-action: none; transition: opacity .18s; }
+.gallery-side-nav { position: fixed; z-index: 35; top: 42%; right: 4px; width: 28px; height: 132px; border-radius: 999px; background: color-mix(in srgb, var(--ink) 22%, transparent); opacity: .25; touch-action: none; transition: width .16s ease, height .16s ease, opacity .18s; cursor: grab; }
+.gallery-side-nav::before { position: absolute; top: 13px; right: 12px; bottom: 13px; left: 12px; border-radius: 999px; background: color-mix(in srgb, var(--ink) 18%, transparent); content: ''; }
 .gallery-side-nav:hover, .gallery-side-nav:focus-visible, .gallery-side-nav.visible { opacity: .8; outline: none; }
-.gallery-side-nav-thumb { position: absolute; left: 3px; width: 14px; height: 26px; border-radius: 999px; background: var(--surface-overlay); box-shadow: 0 1px 4px rgb(0 0 0 / 20%); transform: translateY(-50%); }
+.gallery-side-nav.dragging { width: 38px; height: 148px; opacity: 1; cursor: grabbing; }
+.gallery-side-nav-thumb { position: absolute; left: 4px; width: 20px; height: 26px; border-radius: 999px; background: var(--surface-overlay); box-shadow: 0 1px 4px rgb(0 0 0 / 20%); transition: width .16s ease, height .16s ease, left .16s ease; pointer-events: none; }
+.gallery-side-nav.dragging .gallery-side-nav-thumb { left: 5px; width: 28px; height: 40px; box-shadow: 0 3px 12px rgb(0 0 0 / 26%); }
 .inspiration-card { position: relative; border-radius: var(--radius-card); -webkit-touch-callout: none; }
 .inspiration-card img { -webkit-user-drag: none; }
 .inspiration-card:focus-visible { outline: none; }
@@ -462,7 +483,7 @@ onBeforeUnmount(() => { alive = false; inspirationDetails.clear(); openVersion +
   .gallery-meta { margin: 8px 0 10px; }
   .gallery-sort-button { min-height: 44px; padding-inline: 5px; }
   .inspiration-grid { gap: 8px; }
-  .gallery-side-nav { right: 3px; }
+  .gallery-side-nav { right: 2px; }
   .inspiration-card :deep(.thumbnail-frame) { border-radius: 14px; }
 }
 @media (min-width: 769px) {
