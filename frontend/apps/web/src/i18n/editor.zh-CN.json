@@ -1,7 +1,7 @@
 {
   "imageNote": "备注",
   "imageNotePlaceholder": "添加图片备注",
-  "notePlaceholder": "点击添加图片备注",
+  "notePlaceholder": "在这里记录布光思路、引导话术、拍摄参数",
   "noteEditLabel": "编辑图片备注",
   "noteAutosaved": "备注已自动保存",
   "noteSaveFailed": "备注保存失败，请稍后重试",

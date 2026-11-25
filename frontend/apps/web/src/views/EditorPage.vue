@@ -145,6 +145,9 @@ watch(() => route.query.panel, value => {
   if (toolPanel.value === 'properties') toolPanel.value = null
 })
 
+let anchorEditorScrollSnapshot: { left: number; top: number } | null = null
+let anchorEditorScrollRestoreTimers: number[] = []
+
 /** 可视视口变化时同步键盘占位；小输入条使用固定定位，但不会被软键盘盖住。 */
 function updateAnchorEditorViewport(): void {
   cancelAnimationFrame(anchorEditorViewportFrame)
@@ -165,13 +168,42 @@ function startAnchorEditorViewportTracking(): void {
 }
 
 function stopAnchorEditorViewportTracking(): void {
-  if (!anchorEditorTracking) return
-  anchorEditorTracking = false
+  if (anchorEditorTracking) {
+    anchorEditorTracking = false
+    window.visualViewport?.removeEventListener('resize', updateAnchorEditorViewport)
+    window.visualViewport?.removeEventListener('scroll', updateAnchorEditorViewport)
+    window.removeEventListener('resize', updateAnchorEditorViewport)
+  }
   cancelAnimationFrame(anchorEditorViewportFrame)
-  window.visualViewport?.removeEventListener('resize', updateAnchorEditorViewport)
-  window.visualViewport?.removeEventListener('scroll', updateAnchorEditorViewport)
-  window.removeEventListener('resize', updateAnchorEditorViewport)
   document.documentElement.style.removeProperty('--anchor-keyboard-bottom')
+}
+
+/** 清理锚点编辑期间延后执行的滚动恢复，避免旧编辑状态干扰下一次点击。 */
+function clearAnchorEditorScrollRestore(): void {
+  for (const timer of anchorEditorScrollRestoreTimers) window.clearTimeout(timer)
+  anchorEditorScrollRestoreTimers = []
+}
+
+/**
+ * 记录打开编辑条前的页面滚动位置。
+ *
+ * 移动端 WebView 聚焦固定输入条时可能自动滚动文档，软键盘收起时又不会完全复原。
+ * 锚点编辑期间以当前图片位置为准记录快照，关闭后分阶段恢复，避免图片随键盘上移。
+ */
+function captureAnchorEditorScroll(): void {
+  clearAnchorEditorScrollRestore()
+  anchorEditorScrollSnapshot = { left: window.scrollX, top: window.scrollY }
+}
+
+/** 恢复锚点编辑前的滚动位置；延迟补一次以覆盖移动端软键盘收起后的视口回调。 */
+function restoreAnchorEditorScroll(): void {
+  const snapshot = anchorEditorScrollSnapshot
+  if (!snapshot) return
+  clearAnchorEditorScrollRestore()
+  const restore = () => window.scrollTo(snapshot.left, snapshot.top)
+  restore()
+  requestAnimationFrame(restore)
+  anchorEditorScrollRestoreTimers = [80, 180, 360].map(delay => window.setTimeout(restore, delay))
 }
 
 const editSnapshot = ref('')
@@ -382,12 +414,24 @@ const visibleAnchors = computed(() => documentData.value.anchors.flatMap((anchor
     top: `${position.y * 100}%`,
   }]
 }))
-const draftAnchorPosition = computed(() => {
+const draftAnchorView = computed(() => {
   const draft = anchorDraft.value
-  // 新建草稿在输入有效文字前不显示黄色落点，避免空格或未输入内容留下标记。
-  if (!draft || draft.id || !hasAnchorNoteContent(draft.note)) return null
+  if (!draft || draft.id) return null
   const position = anchorToView(draft, documentData.value)
-  return position.visible ? { left: `${position.x * 100}%`, top: `${position.y * 100}%` } : null
+  if (!position.visible) return null
+  const width = Math.max(1, displayDimensions.value.width)
+  const scale = anchorDisplayStore.size / 100
+  const labelScale = clampAnchorLabelScale(draft.label_scale ?? 1)
+  const availableRight = (1 - position.x) * width - ANCHOR_LABEL_MARKER_OFFSET * scale
+  const { title, description } = splitAnchorNote(draft.note)
+  return {
+    title,
+    description,
+    left: `${position.x * 100}%`,
+    top: `${position.y * 100}%`,
+    labelScale,
+    labelMaxWidth: `${anchorLabelMaxWidth(anchorNoteLongestLine(draft.note), availableRight, scale, labelScale)}px`,
+  }
 })
 /** 水印预览与导出使用同一归一化坐标；字号随当前预览高度和用户倍率变化。 */
 const watermarkOverlayStyle = computed<Record<string, string>>((): Record<string, string> => {
@@ -903,11 +947,16 @@ watch(isEditing, editing => { if (editing) tagPickerOpen.value = false })
 watch(anchorEditorOpen, async open => {
   if (!open) {
     stopAnchorEditorViewportTracking()
+    restoreAnchorEditorScroll()
     return
   }
+  captureAnchorEditorScroll()
   startAnchorEditorViewportTracking()
   await nextTick()
-  anchorEditorInput.value?.focus()
+  const textarea = document.querySelector<HTMLTextAreaElement>('.anchor-inline-editor textarea')
+  if (textarea) textarea.focus({ preventScroll: true })
+  else anchorEditorInput.value?.focus()
+  restoreAnchorEditorScroll()
 })
 
 /** 画布更新合并到下一帧，避免 RGB 拖动时重复做高分辨率像素循环。 */
@@ -1562,7 +1611,7 @@ function deleteCurrentAnchor(): void {
 async function saveAnchor(): Promise<void> {
   if (!anchorDraft.value) return
   const note = anchorDraft.value.note.trim()
-  if (!note) {
+  if (!hasAnchorNoteContent(anchorDraft.value.note)) {
     // 新建时直接完成空白草稿；已有锚点仍保留显式删除语义，避免误删用户内容。
     if (!anchorDraft.value.id) {
       closeAnchorEditor()
@@ -1898,6 +1947,7 @@ onBeforeUnmount(() => {
   resetZoomViewer()
   exitWatermarkMode()
   stopAnchorEditorViewportTracking()
+  clearAnchorEditorScrollRestore()
   decodeVersion += 1
   tagSearchVersion += 1
   if (tagSearchTimer !== undefined) window.clearTimeout(tagSearchTimer)
@@ -2009,9 +2059,23 @@ onBeforeUnmount(() => {
                   @keydown.up.stop.prevent="resizeAnchorLabelByKeyboard(anchor, 1)"
                 ></span>
               </span>
-              <!-- 新增锚点尚未输入文字时，使用与保存后完全相同的圆点和短横线提示落点。 -->
-              <span v-if="draftAnchorPosition" class="image-anchor is-draft" :style="draftAnchorPosition" aria-hidden="true">
+              <!-- 编辑中的新增锚点即时显示落点；输入标题后下划线随文字宽度同步变化。 -->
+              <span
+                v-if="draftAnchorView"
+                class="image-anchor is-draft"
+                :class="{ 'is-empty': !draftAnchorView.title.trim() }"
+                :style="{
+                  left: draftAnchorView.left,
+                  top: draftAnchorView.top,
+                  '--anchor-label-max-width': draftAnchorView.labelMaxWidth,
+                  '--anchor-label-scale': draftAnchorView.labelScale,
+                }"
+                aria-hidden="true"
+              >
                 <ImageAnchorMarker />
+                <span v-if="draftAnchorView.title" class="image-anchor-title">{{ draftAnchorView.title }}</span>
+                <span v-else class="image-anchor-draft-rule"></span>
+                <span v-if="draftAnchorView.description" class="image-anchor-description">{{ draftAnchorView.description }}</span>
               </span>
               <!-- 水印只是导出前的临时预览，不写入文档，也不参与锚点点击。 -->
               <span
@@ -2258,7 +2322,9 @@ onBeforeUnmount(() => {
         v-if="anchorEditorOpen && anchorDraft"
         class="anchor-editor-dismiss-layer"
         aria-hidden="true"
-        @pointerdown.stop.prevent="closeAnchorEditor"
+        @pointerdown.stop
+        @pointerup.stop
+        @click.stop.prevent="closeAnchorEditor"
       ></div>
       <Transition name="anchor-editor">
         <section
@@ -2499,7 +2565,7 @@ onBeforeUnmount(() => {
   .preview-ready .editor-canvas { cursor: crosshair; -webkit-touch-callout: none; }
   .editor-page.is-editing .canvas-stage { height: calc(100dvh - 280px); }
   .detail-caption { gap: 12px; margin: 0; padding: 18px 18px 28px; }
-  .detail-note-trigger { min-height: 44px; padding: 2px 0 4px; font-size: 15px; letter-spacing: -.006em; line-height: 1.65; }
+  .detail-note-trigger { min-height: 40px; padding: 2px 0 4px; font-size: 14px; letter-spacing: -.004em; line-height: 1.6; }
   .detail-note-editor :deep(.el-textarea__inner) { min-height: 32px !important; padding: 2px 0 4px; font-size: 15px; letter-spacing: -.006em; line-height: 1.65; }
   .detail-tag-row { flex-wrap: nowrap; gap: 8px; overflow-x: auto; padding: 1px 0 4px; scrollbar-width: none; overscroll-behavior-inline: contain; }
   .detail-tag-row::-webkit-scrollbar { display: none; }
@@ -2519,7 +2585,11 @@ onBeforeUnmount(() => {
   .watermark-dock-actions { flex-basis: 100%; justify-content: flex-end; margin-left: 0; }
 }
 
-.image-anchor.is-draft { pointer-events: none; opacity: .9; }
+.image-anchor.is-draft { pointer-events: none; opacity: .92; }
+.image-anchor.is-draft .image-anchor-title,
+.image-anchor.is-draft .image-anchor-description { cursor: default; pointer-events: none; }
+/* 尚未输入标题时保留一小段黄色定位线，开始输入后由标题自身绘制等宽下划线。 */
+.image-anchor-draft-rule { position: absolute; top: 0; left: 0; width: calc(var(--anchor-title-font-size, 14px) * var(--anchor-label-scale, 1) * 2.8); height: max(2px, calc(var(--anchor-title-font-size, 14px) * var(--anchor-label-scale, 1) * .14)); border-radius: 999px; background: #f3e600; box-shadow: 0 1px 3px rgb(0 0 0 / 28%); transform: translateY(-50%); }
 /* 正在编辑的锚点标题左侧提供文字缩放手柄；手柄可独立接收指针和键盘事件。 */
 .image-anchor-resize { position: absolute; top: -10px; left: 8px; width: 18px; height: 18px; border: 2px solid #fff; border-radius: 50%; background: #f3e600; box-shadow: 0 2px 8px rgb(0 0 0 / 28%); cursor: nwse-resize; pointer-events: auto; touch-action: none; }
 .image-anchor-resize::after { position: absolute; right: 4px; bottom: 4px; width: 7px; height: 7px; border-right: 1.5px solid rgb(23 23 23 / 60%); border-bottom: 1.5px solid rgb(23 23 23 / 60%); content: ''; }
