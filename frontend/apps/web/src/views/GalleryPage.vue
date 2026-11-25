@@ -447,7 +447,7 @@ onBeforeUnmount(() => { alive = false; inspirationDetails.clear(); openVersion +
 
       <div v-if="error" class="inline-error" role="alert"><span>{{ error }}</span><el-button text :disabled="loading" @click="loadPage(page)">{{ t('gallery.retry') }}</el-button></div>
 
-      <TransitionGroup v-if="items.length" tag="section" name="gallery-grid" move-class="gallery-grid-move" class="inspiration-grid" data-content-zoom-ignore :style="{ '--grid-columns': gridColumns }" :aria-label="t('gallery.title')">
+      <TransitionGroup v-if="items.length" tag="section" name="gallery-grid" move-class="gallery-grid-move" class="inspiration-grid" :class="{ 'is-dense': gridColumns > 5 }" data-content-zoom-ignore :style="{ '--grid-columns': gridColumns }" :aria-label="t('gallery.title')">
         <article v-for="(item, index) in items" :key="item.business_id" class="inspiration-card" :class="{ 'is-zoom-focus': focusedRowStart >= 0 && index >= focusedRowStart && index < focusedRowStart + 5 }" tabindex="0" :data-inspiration-card="item.business_id" :style="{ '--card-index': index % 8 }">
           <RouterLink class="inspiration-link" @click.capture="handleGalleryImageClick($event, item)" :data-shared-transition="item.business_id" :to="`/inspirations/${item.business_id}`" :aria-label="t('gallery.openImage', { name: item.file_name || t('gallery.untitled') })">
             <div class="gallery-image-frame"><InspirationThumbnail :record="item" show-anchors detail-transition /></div>
@@ -493,6 +493,7 @@ onBeforeUnmount(() => { alive = false; inspirationDetails.clear(); openVersion +
 .gallery-sort-button:disabled { cursor: default; opacity: .72; }
 .sort-chevron { font-size: 11px; }
 .inspiration-grid { grid-template-columns: repeat(var(--grid-columns, 2), minmax(0, 1fr)); gap: 12px; touch-action: pan-y; }
+.inspiration-grid.is-dense { gap: 0; }
 .gallery-grid-move { transition: transform .24s cubic-bezier(.2,.75,.25,1); }
 .gallery-side-nav { position: fixed; z-index: 35; top: 42%; right: 4px; width: 28px; height: 132px; border-radius: 999px; background: color-mix(in srgb, var(--ink) 22%, transparent); opacity: .25; touch-action: none; transition: width .16s ease, height .16s ease, opacity .18s; cursor: grab; }
 .gallery-side-nav::before { position: absolute; top: 13px; right: 12px; bottom: 13px; left: 12px; border-radius: 999px; background: color-mix(in srgb, var(--ink) 18%, transparent); content: ''; }
@@ -506,6 +507,7 @@ onBeforeUnmount(() => { alive = false; inspirationDetails.clear(); openVersion +
 .inspiration-card img { -webkit-user-drag: none; }
 .inspiration-card:focus-visible { outline: none; }
 .inspiration-card :deep(.thumbnail-frame) { aspect-ratio: 2 / 3; border: 0 !important; background: transparent !important; box-shadow: none !important; }
+.inspiration-grid.is-dense .inspiration-card :deep(.thumbnail-frame), .inspiration-grid.is-dense .inspiration-card :deep(.thumbnail-image), .inspiration-grid.is-dense .gallery-image-frame { border-radius: 0 !important; }
 .inspiration-card:hover :deep(.thumbnail-frame), .inspiration-card:focus-within :deep(.thumbnail-frame) { border: 0 !important; box-shadow: none !important; }
 .inspiration-card:focus-visible :deep(.thumbnail-frame) { outline: 3px solid var(--focus); outline-offset: 3px; }
 .gallery-image-frame { position: relative; border: 0 !important; border-radius: var(--radius-card); background: transparent !important; box-shadow: none !important; }
@@ -518,6 +520,7 @@ onBeforeUnmount(() => { alive = false; inspirationDetails.clear(); openVersion +
   .gallery-meta { margin: 8px 0 10px; }
   .gallery-sort-button { min-height: 44px; padding-inline: 5px; }
   .inspiration-grid { gap: 8px; }
+  .inspiration-grid.is-dense { gap: 0; }
   .gallery-side-nav { right: 2px; }
   .inspiration-card :deep(.thumbnail-frame) { border-radius: 14px; }
 }
