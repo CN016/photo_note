@@ -415,7 +415,7 @@ onBeforeUnmount(() => { alive = false; inspirationDetails.clear(); openVersion +
 
 <template>
   <div ref="galleryRoot" class="workspace-page gallery-workspace" @touchstart="touchStart" @touchmove="touchMove" @touchend="gesture.cancel(); galleryTouchEnd($event)" @touchcancel="gesture.cancel(); galleryTouchEnd($event)" @click.capture="interceptClick">
-    <ContentZoom ref="contentZoom"><main id="main-content" class="gallery-main">
+    <main id="main-content" class="gallery-main">
       <section class="gallery-intro">
         <div><h1>{{ t('gallery.title') }}</h1></div>
       </section>
@@ -447,14 +447,14 @@ onBeforeUnmount(() => { alive = false; inspirationDetails.clear(); openVersion +
 
       <div v-if="error" class="inline-error" role="alert"><span>{{ error }}</span><el-button text :disabled="loading" @click="loadPage(page)">{{ t('gallery.retry') }}</el-button></div>
 
-      <TransitionGroup v-if="items.length" tag="section" name="gallery-grid" move-class="gallery-grid-move" class="inspiration-grid" :class="{ 'is-dense': gridColumns > 5 }" data-content-zoom-ignore :style="{ '--grid-columns': gridColumns }" :aria-label="t('gallery.title')">
+      <ContentZoom v-if="items.length" ref="contentZoom" class="gallery-grid-zoom"><TransitionGroup tag="section" name="gallery-grid" move-class="gallery-grid-move" class="inspiration-grid" :class="{ 'is-dense': gridColumns > 5 }" data-content-zoom-ignore :style="{ '--grid-columns': gridColumns }" :aria-label="t('gallery.title')">
         <article v-for="(item, index) in items" :key="item.business_id" class="inspiration-card" :class="{ 'is-zoom-focus': focusedRowStart >= 0 && index >= focusedRowStart && index < focusedRowStart + 5 }" tabindex="0" :data-inspiration-card="item.business_id" :style="{ '--card-index': index % 8 }">
           <RouterLink class="inspiration-link" @click.capture="handleGalleryImageClick($event, item)" :data-shared-transition="item.business_id" :to="`/inspirations/${item.business_id}`" :aria-label="t('gallery.openImage', { name: item.file_name || t('gallery.untitled') })">
             <div class="gallery-image-frame"><InspirationThumbnail :record="item" show-anchors detail-transition /></div>
             <p v-if="imageNote(item.data)" class="gallery-image-note" :title="imageNote(item.data)">{{ imageNote(item.data) }}</p>
           </RouterLink>
         </article>
-      </TransitionGroup>
+      </TransitionGroup></ContentZoom>
 
       <section v-else-if="!loading && !error && filtersActive" class="gallery-empty gallery-filter-empty">
         <div class="empty-art" aria-hidden="true"><el-icon><Search /></el-icon></div>
@@ -471,7 +471,7 @@ onBeforeUnmount(() => { alive = false; inspirationDetails.clear(); openVersion +
       <div v-if="hasMore" class="load-more-wrap"><el-button :disabled="loading" @click="loadPage(page + 1)">{{ loading ? t('common.loading') : t('gallery.loadMore') }}</el-button></div>
 
       <InspirationLibraryTools ref="libraryTools" v-model:filters="libraryFilters" :revision="libraryRevision" />
-    </main></ContentZoom>
+    </main>
     <CreateFab class="gallery-create-fab" :label="t('gallery.newImage')" to="/inspirations/new" />
     <div v-if="items.length > 5" ref="gridNavTrack" class="gallery-side-nav" :class="{ visible: gridNavVisible, dragging: gridNavDragging }" role="slider" tabindex="0" :aria-label="t('gallery.listPosition')" aria-valuemin="0" aria-valuemax="100" :aria-valuenow="Math.round(gridNavTop * 100)" @pointerdown="startGridNavigation" @pointermove="moveGridNavigation" @pointerup="endGridNavigation" @pointercancel="endGridNavigation" @lostpointercapture="endGridNavigation" @keydown.home.prevent="seekGalleryEdge(0)" @keydown.end.prevent="seekGalleryEdge(1)">
       <span ref="gridNavThumb" class="gallery-side-nav-thumb" :style="{ top: `${gridNavThumbTop}px` }" />
@@ -483,6 +483,10 @@ onBeforeUnmount(() => { alive = false; inspirationDetails.clear(); openVersion +
 /* 手机优先露出搜索与图片；桌面按可用区域增加列数，卡片本身不增加外框。 */
 .gallery-main { padding-top: 14px; }
 .gallery-workspace { --gallery-grid-zoom: 1; }
+.gallery-grid-zoom { display: block; }
+.gallery-main :deep(.load-more-wrap) { margin: 16px 0 8px; }
+.gallery-main :deep(.library-board) { margin-top: 12px; margin-bottom: 10px; }
+.gallery-workspace > .workspace-footer { padding-top: 10px; padding-bottom: 12px; }
 .gallery-create-fab :deep(.create-fab) { bottom: calc(86px + env(safe-area-inset-bottom)); }
 .gallery-subnav { margin-top: 0; }
 .gallery-meta { justify-content: space-between; margin: 10px 0 12px; }
@@ -516,9 +520,13 @@ onBeforeUnmount(() => { alive = false; inspirationDetails.clear(); openVersion +
 .gallery-image-note { overflow: hidden; margin: 0; padding: 7px 2px 2px; color: var(--ink); font-size: 13px; line-height: 1.5; white-space: nowrap; text-overflow: ellipsis; }
 @media (max-width: 768px) {
   .gallery-main { width: calc(100% - 20px); padding: 8px 0 calc(112px + env(safe-area-inset-bottom)) !important; }
+  .gallery-main { padding-bottom: 16px !important; }
   .gallery-create-fab :deep(.create-fab) { bottom: calc(78px + env(safe-area-inset-bottom)); }
   .gallery-subnav { gap: 24px; padding-inline: 4px; }
   .gallery-meta { margin: 8px 0 10px; }
+  .gallery-main :deep(.load-more-wrap) { margin: 10px 0 4px; }
+  .gallery-main :deep(.library-board) { margin-top: 8px; margin-bottom: 6px; }
+  .gallery-workspace > .workspace-footer { padding-top: 8px; padding-bottom: 8px; }
   .gallery-sort-button { min-height: 44px; padding-inline: 5px; }
   .inspiration-grid { gap: 8px; }
   .inspiration-grid.is-dense { gap: 0; }
