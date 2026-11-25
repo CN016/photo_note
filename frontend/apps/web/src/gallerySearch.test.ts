@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   applyGalleryPeoplePreset,
   createGallerySearchState,
+  gallerySearchFromTagQuery,
   galleryPeoplePreset,
   gallerySearchHasValue,
   inspirationRequestOptions,
@@ -9,6 +10,14 @@ import {
 } from './gallerySearch'
 
 describe('gallery search criteria', () => {
+  it('标签胶囊路由参数生成标签交集筛选并去重', () => {
+    const state = gallerySearchFromTagQuery(['tag-a', 'tag-b', 'tag-a', ''], 'all')
+    expect(state.kind).toBe('tags')
+    expect(state.tagIds).toEqual(['tag-a', 'tag-b'])
+    expect(state.tagMatch).toBe('all')
+    expect(gallerySearchFromTagQuery(undefined)).toMatchObject({ kind: 'text', tagIds: [] })
+  })
+
   it('切换条件时清除上一种搜索输入', () => {
     const text = { ...createGallerySearchState('text'), query: '海边' }
     const tags = switchGallerySearchKind(text, 'tags')

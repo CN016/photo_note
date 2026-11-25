@@ -2,7 +2,7 @@
 import ContentZoom from '../components/ContentZoom.vue'
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { onBeforeRouteLeave, useRouter } from 'vue-router'
+import { onBeforeRouteLeave, useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { ArrowLeft, ArrowRight, Calendar, Delete, Files, More, Search, UploadFilled } from '@element-plus/icons-vue'
 import CreateFab from '../components/CreateFab.vue'
@@ -15,6 +15,7 @@ import { PROJECT_STATUS_ORDER, projectNextActionKey, scheduleTitlePreview, shoot
 
 const { t, locale } = useI18n({ useScope: 'global' })
 const router = useRouter()
+const route = useRoute()
 const records = ref<ProjectSummary[]>([])
 const query = ref('')
 const activeStatus = ref<ProjectStatus | ''>('')
@@ -28,7 +29,7 @@ const failed = ref(false)
 const dialogOpen = ref(false)
 const saving = ref(false)
 const title = ref('')
-const shooting = ref<ProjectShooting>({ start_at: null, end_at: null, location: '', person: '', kind: '' })
+const shooting = ref<ProjectShooting>({ start_at: null, end_at: null, location: '', person: '', kind: '', keywords: [] })
 const shootingError = ref('')
 const coverEmoji = ref('')
 const coverKey = ref('')
@@ -55,9 +56,9 @@ const schedulePreview = computed(() => scheduleTitlePreview(
 const emptyDocument = { type: 'doc', content: [{ type: 'paragraph' }] }
 
 /** 每次新建自动从精选 emoji 中选一项，用户上传封面后才清空该字段。 */
-function openCreate() {
+function openCreate(keywords: string[] = []) {
   title.value = ''
-  shooting.value = { start_at: null, end_at: null, location: '', person: '', kind: '' }
+  shooting.value = { start_at: null, end_at: null, location: '', person: '', kind: '', keywords: [...keywords] }
   shootingError.value = ''
   coverEmoji.value = emojiPool[Math.floor(Math.random() * emojiPool.length)]
   coverKey.value = ''
@@ -161,7 +162,16 @@ watch(query, () => {
 })
 watch(page, () => { void loadProjects() })
 watch(activeStatus, () => { if (page.value !== 1) page.value = 1; else void loadProjects() })
-onMounted(() => { void loadProjects(); void projectUploadLimit().then(value => { maxUploadBytes.value = value }) })
+onMounted(() => {
+  void loadProjects()
+  void projectUploadLimit().then(value => { maxUploadBytes.value = value })
+  if (route.query.create === '1') {
+    const raw = Array.isArray(route.query.keywords) ? route.query.keywords : [route.query.keywords]
+    const keywords = raw.map(value => String(value ?? '').trim()).filter(Boolean).slice(0, 20)
+    openCreate(keywords)
+    void router.replace({ path: '/projects' })
+  }
+})
 onBeforeUnmount(() => {
   loadGeneration++
   if (searchTimer) window.clearTimeout(searchTimer)

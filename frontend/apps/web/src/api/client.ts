@@ -358,6 +358,10 @@ export const api = {
   retryInspirationProcessing(id: string) { return request<{queued:boolean}>(`/inspirations/${encodeURIComponent(id)}/processing/retry`,{method:'POST'}) },
   /** 在当前空间中创建可供作品集和灵感库共用的标签。 */
   createTag(content: string) { return request<TagRecord>('/tags', {method:'POST', body:JSON.stringify({content})}) },
+  /** 重命名当前用户自己的自定义标签；系统预设不能通过此接口修改。 */
+  updateTag(id: string, content: string) { return request<TagRecord>(`/tags/${encodeURIComponent(id)}`, {method:'PATCH', body:JSON.stringify({content})}) },
+  /** 删除自定义标签并从当前用户绑定的灵感图和作品集中同步清理引用。 */
+  deleteTag(id: string) { return request<void>(`/tags/${encodeURIComponent(id)}`, {method:'DELETE'}) },
   /** 按当前用户和可选名称搜索分页标签；page_size 最大为服务端允许的 100 条。 */
   tags(page = 1, pageSize = 20, query = '') {
     const params = new URLSearchParams({ page: String(page), page_size: String(pageSize) })
@@ -406,6 +410,11 @@ export const api = {
     return request<PageResult<ConsoleInspirationRecord>>(`${organizationOnly ? '/organization' : '/atelier-7f3c9a2e'}/inspirations?${params.toString()}`)
   },
   managementInspiration(id: string, orgid?: number) { return request<InspirationRecord>(managementPath(id, orgid)) },
+  managementInspirationTags(id: string, orgid?: number, page = 1, pageSize = 100, query = '') {
+    const params = new URLSearchParams({ page: String(page), page_size: String(pageSize) })
+    if (query.trim()) params.set('q', query.trim())
+    return request<PageResult<TagRecord>>(managementPath(id, orgid, `/tags?${params.toString()}`))
+  },
   managementSaveInspiration(id: string, patch: Record<string, unknown>, orgid?: number) { return request<InspirationRecord>(managementPath(id, orgid), { method: 'PATCH', body: JSON.stringify(patch) }) },
   managementDeleteInspiration(id: string, orgid?: number) { return request<void>(managementPath(id, orgid), { method: 'DELETE' }) },
   managementImage(id: string, key: string, orgid?: number) { const path = managementPath(id, orgid, '/file'); return requestBlob(`${path}${path.includes('?') ? '&' : '?'}storekey=${encodeURIComponent(key)}`) },
@@ -573,11 +582,16 @@ export const api = {
   updateInspirationTags(id: string, tagNames: string[]) {
     return request<InspirationRecord>(`/inspirations/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify({ tag_names: tagNames }) })
   },
+  /** 使用系统或自定义标签业务 UUID 替换单张灵感图标签，避免旧名称接口重新创建私有系统标签。 */
+  updateInspirationTagIDs(id: string, tagIDs: string[]) {
+    return request<InspirationRecord>(`/inspirations/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify({ tag_ids: tagIDs }) })
+  },
 }
 
 /** 平台图库必须明确选择组织；组织管理员仅使用当前已验证会话的组织。 */
 function managementPath(id: string, orgid?: number, suffix = ''): string {
-  return `${orgid === undefined ? '/organization' : '/atelier-7f3c9a2e'}/inspirations/${encodeURIComponent(id)}${suffix}${orgid === undefined ? '' : `?orgid=${orgid}`}`
+  const separator = suffix.includes('?') ? '&' : '?'
+  return `${orgid === undefined ? '/organization' : '/atelier-7f3c9a2e'}/inspirations/${encodeURIComponent(id)}${suffix}${orgid === undefined ? '' : `${separator}orgid=${orgid}`}`
 }
 
 /** 初始化流程中写入登录签发的 Refresh Token，并只把 Access Token 留在内存。 */

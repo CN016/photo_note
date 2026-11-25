@@ -1035,16 +1035,24 @@ func patchCurrentUserHandler(users *service.UserService) gin.HandlerFunc {
 
 // tagResponse 是不包含 user_id 与数据库 id 的标签公开 DTO。
 type tagResponse struct {
-	BusinessID uuid.UUID `json:"business_id"`
-	Content    string    `json:"content"`
-	Source     string    `json:"source,omitempty"`
-	CreatedAt  time.Time `json:"created_at"`
-	UpdatedAt  time.Time `json:"updated_at"`
+	BusinessID uuid.UUID  `json:"business_id"`
+	Content    string     `json:"content"`
+	Source     string     `json:"source,omitempty"`
+	TagType    string     `json:"tag_type"`
+	Category   string     `json:"category"`
+	UsageCount int64      `json:"usage_count"`
+	LastUsedAt *time.Time `json:"last_used_at,omitempty"`
+	CreatedAt  time.Time  `json:"created_at"`
+	UpdatedAt  time.Time  `json:"updated_at"`
 }
 
 // tagDTO 映射标签公开字段，不暴露标签所属用户字段或数据库自增 ID。
 func tagDTO(tag model.Tag) tagResponse {
-	return tagResponse{BusinessID: tag.BusinessID, Content: tag.Content, Source: tag.Source, CreatedAt: tag.CreatedAt, UpdatedAt: tag.UpdatedAt}
+	return tagResponse{
+		BusinessID: tag.BusinessID, Content: tag.Content, Source: tag.Source,
+		TagType: tag.TagType, Category: tag.Category, UsageCount: tag.UsageCount, LastUsedAt: tag.LastUsedAt,
+		CreatedAt: tag.CreatedAt, UpdatedAt: tag.UpdatedAt,
+	}
 }
 
 // pageResponse 统一输出分页项目、页号、页大小与总记录数。

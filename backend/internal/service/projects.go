@@ -185,6 +185,7 @@ func (service *ProjectService) Update(ctx context.Context, userID, projectID uui
 	if input.Shooting != nil {
 		updates["shoot_start_at"], updates["shoot_end_at"] = input.Shooting.StartAt, input.Shooting.EndAt
 		updates["shoot_location"], updates["shoot_person"], updates["shoot_kind"] = input.Shooting.Location, input.Shooting.Person, input.Shooting.Kind
+		updates["shoot_keywords"] = input.Shooting.Keywords
 	}
 	if input.AIAnalysis != nil {
 		updates["ai_analysis"] = *input.AIAnalysis

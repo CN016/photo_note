@@ -25,6 +25,7 @@ function timeInput(key: 'start_at' | 'end_at', event: Event) {
       <label for="shoot-location">{{ t('projects.shooting.location') }}<el-input id="shoot-location" :model-value="modelValue.location" maxlength="240" :disabled="readOnly" @update:model-value="update('location', $event)" /></label>
       <label for="shoot-person">{{ t('projects.shooting.person') }}<el-input id="shoot-person" :model-value="modelValue.person" maxlength="120" :disabled="readOnly" @update:model-value="update('person', $event)" /></label>
       <div class="shoot-kind"><span id="shoot-kind-label">{{ t('projects.shooting.kind') }}</span><el-radio-group :model-value="modelValue.kind" :disabled="readOnly" aria-labelledby="shoot-kind-label" @update:model-value="update('kind', $event as ProjectShooting['kind'])"><el-radio-button value="photo">{{ t('projects.shooting.photo') }}</el-radio-button><el-radio-button value="video">{{ t('projects.shooting.video') }}</el-radio-button></el-radio-group></div>
+      <label class="shoot-keywords" for="shoot-keywords">{{ t('projects.shooting.keywords') }}<el-select id="shoot-keywords" :model-value="modelValue.keywords" multiple filterable allow-create default-first-option :multiple-limit="20" :disabled="readOnly" :placeholder="t('projects.shooting.keywordsPlaceholder')" @update:model-value="update('keywords', $event as string[])"><el-option v-for="keyword in modelValue.keywords" :key="keyword" :label="keyword" :value="keyword" /></el-select></label>
     </div>
     <p v-if="error" class="shooting-error" role="alert">{{ error }}</p>
     <slot />
@@ -42,6 +43,8 @@ input { width: 100%; min-width: 0; min-height: 44px; border: 1px solid var(--lin
 input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .shooting-fields :deep(.el-input__wrapper) { min-height: 44px; box-sizing: border-box; }
 .shoot-kind { grid-column: 1 / -1; }
+.shoot-keywords { grid-column: 1 / -1; }
+.shoot-keywords :deep(.el-select) { width: 100%; }
 .shoot-kind :deep(.el-radio-button__inner) { min-height: 44px; display: flex; align-items: center; }
 .shoot-kind :deep(.el-radio-button.is-active .el-radio-button__inner) { color: var(--on-accent); }
 @media (max-width: 640px) { .shooting-details { padding: 16px; } .shooting-fields { grid-template-columns: minmax(0,1fr); gap: 16px; } }

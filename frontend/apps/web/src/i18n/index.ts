@@ -57,6 +57,8 @@ import organizationConsoleZh from './organization-console.zh-CN.json'
 import organizationConsoleEn from './organization-console.en-US.json'
 import collageZh from './collage.zh-CN.json'
 import collageEn from './collage.en-US.json'
+import tagPickerZh from './tag-picker.zh-CN.json'
+import tagPickerEn from './tag-picker.en-US.json'
 
 /** 每个页面独立维护语言 JSON，统一在此处装配为 Vue I18n 命名空间。 */
 export const i18n = createI18n({
@@ -64,8 +66,8 @@ export const i18n = createI18n({
   locale: localStorage.getItem('photo-nini.locale') === 'en-US' ? 'en-US' : 'zh-CN',
   fallbackLocale: 'zh-CN',
   messages: {
-    'zh-CN': { startup: startupZh, delivery: deliveryZh, publicDelivery: publicDeliveryZh, reviews: reviewsZh, reviewEditor: reviewEditorZh, contextMenu: contextMenuZh, portfolio: portfolioZh, publicPortfolio: publicPortfolioZh, common: commonZh, login: loginZh, register: registerZh, gallery: galleryZh, statistics: statisticsZh, editor: editorZh, inspirationUpload: inspirationUploadZh, maintenance: maintenanceZh, profile: profileZh, feedback: feedbackZh, ledger: ledgerZh, schedule: scheduleZh, plans: plansZh, projects: projectsZh, workbench: workbenchZh, collage: collageZh, messages: messagesZh, console: consoleZh, spaces: spacesZh, organizations: organizationsZh, organizationConsole: organizationConsoleZh },
-    'en-US': { startup: startupEn, delivery: deliveryEn, publicDelivery: publicDeliveryEn, reviews: reviewsEn, reviewEditor: reviewEditorEn, contextMenu: contextMenuEn, portfolio: portfolioEn, publicPortfolio: publicPortfolioEn, common: commonEn, login: loginEn, register: registerEn, gallery: galleryEn, statistics: statisticsEn, editor: editorEn, inspirationUpload: inspirationUploadEn, maintenance: maintenanceEn, profile: profileEn, feedback: feedbackEn, ledger: ledgerEn, schedule: scheduleEn, plans: plansEn, projects: projectsEn, workbench: workbenchEn, collage: collageEn, messages: messagesEn, console: consoleEn, spaces: spacesEn, organizations: organizationsEn, organizationConsole: organizationConsoleEn },
+    'zh-CN': { startup: startupZh, delivery: deliveryZh, publicDelivery: publicDeliveryZh, reviews: reviewsZh, reviewEditor: reviewEditorZh, contextMenu: contextMenuZh, portfolio: portfolioZh, publicPortfolio: publicPortfolioZh, common: commonZh, login: loginZh, register: registerZh, gallery: galleryZh, statistics: statisticsZh, editor: editorZh, inspirationUpload: inspirationUploadZh, maintenance: maintenanceZh, profile: profileZh, feedback: feedbackZh, ledger: ledgerZh, schedule: scheduleZh, plans: plansZh, projects: projectsZh, workbench: workbenchZh, collage: collageZh, messages: messagesZh, console: consoleZh, spaces: spacesZh, organizations: organizationsZh, organizationConsole: organizationConsoleZh, tagPicker: tagPickerZh },
+    'en-US': { startup: startupEn, delivery: deliveryEn, publicDelivery: publicDeliveryEn, reviews: reviewsEn, reviewEditor: reviewEditorEn, contextMenu: contextMenuEn, portfolio: portfolioEn, publicPortfolio: publicPortfolioEn, common: commonEn, login: loginEn, register: registerEn, gallery: galleryEn, statistics: statisticsEn, editor: editorEn, inspirationUpload: inspirationUploadEn, maintenance: maintenanceEn, profile: profileEn, feedback: feedbackEn, ledger: ledgerEn, schedule: scheduleEn, plans: plansEn, projects: projectsEn, workbench: workbenchEn, collage: collageEn, messages: messagesEn, console: consoleEn, spaces: spacesEn, organizations: organizationsEn, organizationConsole: organizationConsoleEn, tagPicker: tagPickerEn },
   },
 })
 

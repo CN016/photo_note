@@ -213,6 +213,10 @@ func (service *InspirationService) Create(ctx context.Context, userID uuid.UUID,
 	if err := validateEditorData(input.Data); err != nil {
 		return model.Inspiration{}, err
 	}
+	input.TagIDs = normalizeTagIDs(input.TagIDs)
+	if err := validateInspirationTagLimit(len(input.TagIDs)); err != nil {
+		return model.Inspiration{}, err
+	}
 	if err := service.inspirations.ValidateTagOwnership(ctx, userID, input.TagIDs); err != nil {
 		return model.Inspiration{}, err
 	}
@@ -257,6 +261,9 @@ func (service *InspirationService) Update(ctx context.Context, userID, inspirati
 		if err != nil {
 			return model.Inspiration{}, err
 		}
+		if err := validateInspirationTagLimit(len(tagNames)); err != nil {
+			return model.Inspiration{}, err
+		}
 	}
 	if imageKeySet {
 		input.ImageKey = strings.TrimSpace(input.ImageKey)
@@ -274,6 +281,10 @@ func (service *InspirationService) Update(ctx context.Context, userID, inspirati
 		}
 	}
 	if tagIDsSet {
+		input.TagIDs = normalizeTagIDs(input.TagIDs)
+		if err := validateInspirationTagLimit(len(input.TagIDs)); err != nil {
+			return model.Inspiration{}, err
+		}
 		if err := service.inspirations.ValidateTagOwnership(ctx, userID, input.TagIDs); err != nil {
 			return model.Inspiration{}, err
 		}

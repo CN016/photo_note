@@ -1,6 +1,8 @@
-# 灵感库存图 API 与处理约定（4.13.0）
+# 灵感库存图 API 与处理约定（4.14.0）
 
 所有以下接口位于 `/api/v1`，要求现有 Access Token 与可信 tenant.Scope；个人空间 orgid=-1，组织内仍只访问创建者数据。不接受请求指定 user_id/orgid，响应不返回内部自增 ID。现有图库接口保持兼容。
+
+4.14.0 起，`GET /tags` 同时返回全局系统标签和当前用户自定义标签。每个标签新增 `tag_type`（`system/custom`）、`category`（`subject/composition/lighting/style/custom`）、`usage_count` 和可空 `last_used_at`。系统标签使用 `orgid=-1`、全零 `user_id` 与全局业务 UUID，普通用户不能重命名或删除；自定义标签继续按组织和用户隔离。单张灵感图最多绑定 8 个标签，`tag_ids` 和 `tag_names` 更新均由服务端校验；同名名称优先复用系统预设。迁移见 `backend/migrations/000031_inspiration_tag_taxonomy.sql`。
 
 | 接口 | 参数/结果 |
 | --- | --- |

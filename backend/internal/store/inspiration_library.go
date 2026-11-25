@@ -275,7 +275,14 @@ func (store *PostgresStore) InspirationBrowseSummary(ctx context.Context, userID
 	}
 	result["days"] = days
 	tags := make([]InspirationFacet, 0)
-	if err := store.db.WithContext(ctx).Raw(`SELECT t.business_id::text AS key,t.content AS name,count(i.id) AS count FROM tags t LEFT JOIN inspirations i ON i.orgid=t.orgid AND i.user_id=t.user_id AND t.business_id=ANY(i.tag_ids) WHERE t.orgid=? AND t.user_id=? GROUP BY t.business_id,t.content ORDER BY t.content`, scope.OrgID, userID).Scan(&tags).Error; err != nil {
+	if err := store.db.WithContext(ctx).Raw(`
+		SELECT t.business_id::text AS key,t.content AS name,count(DISTINCT i.business_id) AS count
+		FROM tags t
+		JOIN inspirations i ON i.orgid=? AND i.user_id=? AND t.business_id=ANY(i.tag_ids)
+		WHERE (t.orgid=-1 AND t.user_id=? AND t.tag_type='system')
+		   OR (t.orgid=? AND t.user_id=? AND t.tag_type='custom')
+		GROUP BY t.business_id,t.content
+		ORDER BY t.content`, scope.OrgID, userID, uuid.Nil, scope.OrgID, userID).Scan(&tags).Error; err != nil {
 		return nil, persistenceError(err)
 	}
 	result["tags"] = tags
@@ -428,16 +435,37 @@ func (store *PostgresStore) FinishInspirationProcessing(ctx context.Context, job
 	}))
 }
 
-// persistAutoTags 复用当前用户的同名标签，并与手工标签求并集；自动标签完成态单独保存在 auto_tags。
+const maxInspirationTagBindings = 8
+
+// persistAutoTags 复用系统预设或当前用户的同名标签，并与手工标签求并集；自动标签完成态单独保存在 auto_tags。
 func (store *PostgresStore) persistAutoTags(tx *gorm.DB, item model.Inspiration, tags []model.InspirationAutoTag, algorithm string) (model.JSONB, pq.StringArray, error) {
+	ctx := tx.Statement.Context
+	systemNames := make(map[string]struct{})
+	if len(tags) > 0 {
+		names := make([]string, 0, len(tags))
+		for _, tag := range tags {
+			names = append(names, strings.TrimSpace(tag.Name))
+		}
+		var systemTags []model.Tag
+		if err := tx.WithContext(tenant.System(ctx)).Select("content").Where("user_id = ? AND tag_type = 'system' AND content IN ?", uuid.Nil, names).Find(&systemTags).Error; err != nil {
+			return nil, nil, persistenceError(err)
+		}
+		for _, tag := range systemTags {
+			systemNames[tag.Content] = struct{}{}
+		}
+	}
 	rows := make([]model.Tag, 0, len(tags))
 	for index, tag := range tags {
 		name := strings.TrimSpace(tag.Name)
-		rows = append(rows, model.Tag{
-			BaseModel: model.BaseModel{OrgID: item.OrgID, BusinessID: uuid.New(), CreatedAt: time.Now().UTC(), UpdatedAt: time.Now().UTC()},
-			UserID:    item.UserID,
-			Content:   name,
-		})
+		if _, system := systemNames[name]; !system {
+			rows = append(rows, model.Tag{
+				BaseModel: model.BaseModel{OrgID: item.OrgID, BusinessID: uuid.New(), CreatedAt: time.Now().UTC(), UpdatedAt: time.Now().UTC()},
+				UserID:    item.UserID,
+				Content:   name,
+				TagType:   "custom",
+				Category:  "custom",
+			})
+		}
 		tags[index].Name = name
 	}
 	if len(rows) > 0 {
@@ -452,13 +480,24 @@ func (store *PostgresStore) persistAutoTags(tx *gorm.DB, item model.Inspiration,
 	for _, tag := range tags {
 		names = append(names, tag.Name)
 	}
-	var stored []model.Tag
-	if err := tx.Where("user_id=? AND content IN ?", item.UserID, names).Find(&stored).Error; err != nil {
+	var customStored, systemStored []model.Tag
+	if err := tx.Where("user_id = ? AND tag_type = 'custom' AND content IN ?", item.UserID, names).Find(&customStored).Error; err != nil {
 		return nil, nil, persistenceError(err)
 	}
+	if err := tx.WithContext(tenant.System(ctx)).Where("user_id = ? AND tag_type = 'system' AND content IN ?", uuid.Nil, names).Find(&systemStored).Error; err != nil {
+		return nil, nil, persistenceError(err)
+	}
+	stored := append(customStored, systemStored...)
 	byName := make(map[string]uuid.UUID, len(stored))
 	for _, tag := range stored {
-		byName[tag.Content] = tag.BusinessID
+		if tag.TagType == "custom" {
+			byName[tag.Content] = tag.BusinessID
+		}
+	}
+	for _, tag := range stored {
+		if tag.TagType == "system" {
+			byName[tag.Content] = tag.BusinessID
+		}
 	}
 	seen := make(map[string]struct{}, len(item.TagIDs)+len(names))
 	merged := make(pq.StringArray, 0, len(item.TagIDs)+len(names))
@@ -473,6 +512,9 @@ func (store *PostgresStore) persistAutoTags(tx *gorm.DB, item model.Inspiration,
 		id, exists := byName[name]
 		if !exists {
 			return nil, nil, fault.Internal(errors.New("自动标签创建后未能按用户读取"))
+		}
+		if len(merged) >= maxInspirationTagBindings {
+			break
 		}
 		key := id.String()
 		if _, exists := seen[key]; exists {

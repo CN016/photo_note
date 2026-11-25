@@ -41,6 +41,17 @@ export function createGallerySearchState(kind: GallerySearchKind = 'text'): Gall
   }
 }
 
+/** 将详情页标签胶囊传入的路由参数转换为图库标签交集筛选状态。 */
+export function gallerySearchFromTagQuery(rawIDs: unknown, rawMatch?: unknown): GallerySearchState {
+  const values = Array.isArray(rawIDs) ? rawIDs : [rawIDs]
+  const tagIds = Array.from(new Set(values.map(value => String(value ?? '').trim()).filter(Boolean)))
+  return {
+    ...createGallerySearchState(tagIds.length ? 'tags' : 'text'),
+    tagIds,
+    tagMatch: rawMatch === 'any' ? 'any' : 'all',
+  }
+}
+
 /** 切换搜索条件时清空其他条件，确保界面只显示且只提交当前一个搜索维度。 */
 export function switchGallerySearchKind(current: GallerySearchState, kind: GallerySearchKind): GallerySearchState {
   if (current.kind === kind) return current

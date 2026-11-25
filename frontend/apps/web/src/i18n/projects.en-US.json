@@ -148,6 +148,8 @@
     "location": "Location",
     "person": "Subject name",
     "kind": "Shoot type",
+    "keywords": "Shoot keywords",
+    "keywordsPlaceholder": "Enter keywords or carry them over from an inspiration",
     "photo": "Photo",
     "video": "Video",
     "schedulePreview": "Automatic schedule",

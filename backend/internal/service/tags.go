@@ -10,6 +10,9 @@ import (
 	"github.com/photo-nini/backend/internal/model"
 )
 
+// maxInspirationTags 是单张灵感图可绑定的系统与自定义标签总数上限。
+const maxInspirationTags = 8
+
 // TagRepository 定义标签 service 所需的用户隔离查询及引用清理操作。
 type TagRepository interface {
 	ListTags(context.Context, uuid.UUID, string, int, int) ([]model.Tag, int64, error)
@@ -48,7 +51,7 @@ func (service *TagService) Create(ctx context.Context, userID uuid.UUID, content
 	if err != nil {
 		return model.Tag{}, err
 	}
-	tag := model.Tag{BaseModel: model.BaseModel{BusinessID: uuid.New()}, UserID: userID, Content: content}
+	tag := model.Tag{BaseModel: model.BaseModel{BusinessID: uuid.New()}, UserID: userID, Content: content, TagType: "custom", Category: "custom"}
 	if err := service.tags.CreateTag(ctx, &tag); err != nil {
 		return model.Tag{}, err
 	}
@@ -99,4 +102,29 @@ func normalizeTagNames(names []string) ([]string, error) {
 		normalized = append(normalized, content)
 	}
 	return normalized, nil
+}
+
+// normalizeTagIDs 去除重复标签 UUID，保持客户端提交顺序。
+func normalizeTagIDs(ids []uuid.UUID) []uuid.UUID {
+	normalized := make([]uuid.UUID, 0, len(ids))
+	seen := make(map[uuid.UUID]struct{}, len(ids))
+	for _, id := range ids {
+		if id == uuid.Nil {
+			continue
+		}
+		if _, exists := seen[id]; exists {
+			continue
+		}
+		seen[id] = struct{}{}
+		normalized = append(normalized, id)
+	}
+	return normalized
+}
+
+// validateInspirationTagLimit 统一限制单张灵感图最多绑定 8 个标签。
+func validateInspirationTagLimit(count int) error {
+	if count > maxInspirationTags {
+		return fault.InvalidField("tag_ids", "单张图标签最多8个，请先移除旧标签")
+	}
+	return nil
 }
