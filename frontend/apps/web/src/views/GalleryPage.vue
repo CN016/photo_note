@@ -249,7 +249,6 @@ function resetFilters() {
   sort.value = 'created_desc'
 }
 
-/** 双指缩放按屏幕上可见宽度调整卡片列数，并在手势结束后收敛到最近的整列布局。 */
 /** 将双指距离映射为列数，并短暂显示位置滑块反馈缩放手势。 */
 function changeGridZoom(next: number) {
   const nextZoom = Math.max(.8, Math.min(2, next))
@@ -398,7 +397,7 @@ onBeforeUnmount(() => { alive = false; inspirationDetails.clear(); openVersion +
 
       <div v-if="error" class="inline-error" role="alert"><span>{{ error }}</span><el-button text :disabled="loading" @click="loadPage(page)">{{ t('gallery.retry') }}</el-button></div>
 
-      <section v-if="items.length" class="inspiration-grid" :style="{ '--grid-columns': gridColumns }" :aria-label="t('gallery.title')">
+      <section v-if="items.length" class="inspiration-grid" data-content-zoom-ignore :style="{ '--grid-columns': gridColumns }" :aria-label="t('gallery.title')">
         <article v-for="(item, index) in items" :key="item.business_id" class="inspiration-card" tabindex="0" :data-inspiration-card="item.business_id" :style="{ '--card-index': index % 8 }">
           <RouterLink class="inspiration-link" @click.capture="openDetail($event, item)" :data-shared-transition="item.business_id" :to="`/inspirations/${item.business_id}`" :aria-label="t('gallery.openImage', { name: item.file_name || t('gallery.untitled') })">
             <div class="gallery-image-frame"><InspirationThumbnail :record="item" show-anchors detail-transition /></div>

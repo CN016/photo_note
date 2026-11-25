@@ -98,6 +98,17 @@ function chooseKind(kind: GallerySearchKind) {
   if (kind !== props.modelValue.kind) emit('update:modelValue', switchGallerySearchKind(props.modelValue, kind))
 }
 
+/** 选择颜色条件时同步切换搜索类型并展开色环，避免只改展开状态却仍显示文本搜索。 */
+function selectCondition(kind: GallerySearchKind) {
+  if (kind === 'color') {
+    if (props.modelValue.kind !== 'color') chooseKind('color')
+    colorExpanded.value = true
+    return
+  }
+  colorExpanded.value = false
+  chooseKind(kind)
+}
+
 function setTagSource(source: GalleryTagSource) {
   const allowed = new Set(props.tags.filter(tag => source === 'all' || (source === 'manual' ? tag.source === 'manual' || tag.source === 'mixed' : tag.source === 'ai' || tag.source === 'mixed')).map(tag => tag.business_id))
   patch({ tagSource: source, tagIds: props.modelValue.tagIds.filter(id => allowed.has(id)) })
@@ -267,7 +278,7 @@ watch(() => props.modelValue.color, color => {
         :aria-selected="modelValue.kind === option.kind"
         :aria-label="t(option.label)"
         :title="t(option.label)"
-        @click="option.kind === 'color' ? (colorExpanded = !colorExpanded) : chooseKind(option.kind)"
+        @click="selectCondition(option.kind)"
       >
         <el-icon aria-hidden="true"><component :is="option.icon" /></el-icon>
         <span v-if="modelValue.kind === option.kind && hasValue" class="condition-active-dot" aria-hidden="true" />
@@ -295,7 +306,7 @@ watch(() => props.modelValue.color, color => {
       />
     </div>
 
-    <div v-else-if="modelValue.kind === 'color' && colorExpanded" class="gallery-condition-body color-condition">
+    <div v-if="modelValue.kind === 'color' && colorExpanded" class="gallery-condition-body color-condition">
       <button
         ref="wheel"
         type="button"
@@ -353,7 +364,7 @@ watch(() => props.modelValue.color, color => {
       </div>
     </div>
 
-    <div v-else-if="modelValue.kind === 'tags'" class="gallery-condition-body tag-condition">
+    <div v-if="modelValue.kind === 'tags'" class="gallery-condition-body tag-condition">
       <div class="tag-source-tabs" role="radiogroup" :aria-label="t('gallery.tagSource')">
         <button v-for="source in tagSources" :key="source.value" type="button" role="radio" :aria-checked="modelValue.tagSource === source.value" :class="{ active: modelValue.tagSource === source.value }" @click="setTagSource(source.value)">{{ t(source.label) }}</button>
       </div>
@@ -374,7 +385,7 @@ watch(() => props.modelValue.color, color => {
       </div>
     </div>
 
-    <div v-else class="gallery-condition-body people-condition">
+    <div v-if="modelValue.kind === 'people'" class="gallery-condition-body people-condition">
       <div class="people-quick-grid" role="radiogroup" :aria-label="t('gallery.peopleMode')">
         <button
           v-for="preset in peoplePresets"

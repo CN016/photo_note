@@ -21,7 +21,7 @@ const distance = (touches: TouchList) => Math.hypot(touches[0]!.clientX - touche
 function start(event: TouchEvent) {
   if (!enabled.value || event.touches.length !== 2 || !container) return
   // 裁剪、标注和资源手柄拥有独立坐标与拖动状态，不能被页面手势抢占。
-  if ((event.target as Element | null)?.closest('[data-content-zoom-ignore], .resource-resize-handle, .resource-drag-handle, .image-anchor')) return
+  if ((event.target as Element | null)?.closest('[data-content-zoom-ignore], .inspiration-grid, .resource-resize-handle, .resource-drag-handle, .image-anchor')) return
   const rect = container.getBoundingClientRect()
   const x = (event.touches[0]!.clientX + event.touches[1]!.clientX) / 2
   const y = (event.touches[0]!.clientY + event.touches[1]!.clientY) / 2
