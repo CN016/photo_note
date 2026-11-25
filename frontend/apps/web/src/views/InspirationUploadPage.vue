@@ -263,7 +263,7 @@ onBeforeUnmount(() => {
 .back-link { display: inline-flex; align-items: center; gap: 8px; color: var(--muted); font-size: 13px; text-decoration: none; margin-bottom: 24px; }
 .back-link:hover { color: var(--accent-hover); }
 .upload-heading > .eyebrow { margin: 0 0 8px; color: var(--muted); font-size: 12px; font-weight: 600; letter-spacing: 0; text-transform: none; }
-h1 { margin: 0; color: var(--ink); font-family: 'Manrope', sans-serif; font-size: clamp(30px, 4vw, 42px); font-weight: 600; line-height: 1.15; letter-spacing: 0; }
+h1 { margin: 0; color: var(--ink); font-family: var(--font-ui); font-size: clamp(30px, 4vw, 42px); font-weight: 600; line-height: 1.15; letter-spacing: 0; }
 .upload-subtitle { max-width: 600px; margin: 12px 0 0; color: var(--ink-soft); font-size: 15px; line-height: 1.7; }
 .file-input-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; clip-path: inset(50%); }
 .upload-panel { overflow: hidden; border: 1px solid var(--line); border-radius: var(--radius-card); background: var(--surface); box-shadow: var(--soft-shadow); }

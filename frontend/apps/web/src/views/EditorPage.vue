@@ -20,7 +20,8 @@ import { api as baseApi } from '../api/client'
 import { ApiError, type InspirationImageMetadata, type InspirationRecord } from '../api/types'
 import { useAnchorDisplayStore } from '../stores/anchorDisplay'
 import { exportFile, FileExportError } from '../platform'
-import { anchorLabelMaxWidth, anchorNoteLongestLine, anchorNoteTitle, splitAnchorNote, ANCHOR_LABEL_MARKER_OFFSET } from './editorAnchorLayout'
+import { anchorLabelMaxWidth, anchorNoteLongestLine, anchorNoteTitle, hasAnchorNoteContent, splitAnchorNote, ANCHOR_LABEL_MARKER_OFFSET } from './editorAnchorLayout'
+import { UI_FONT_STACK } from '../uiFont'
 import {
   DEFAULT_WATERMARK_SCALE, MAX_WATERMARK_SCALE, MIN_WATERMARK_SCALE,
   clampWatermarkPlacement, clampWatermarkScale, drawWatermark, watermarkPreviewFontSize, type WatermarkPlacement,
@@ -383,7 +384,8 @@ const visibleAnchors = computed(() => documentData.value.anchors.flatMap((anchor
 }))
 const draftAnchorPosition = computed(() => {
   const draft = anchorDraft.value
-  if (!draft || draft.id) return null
+  // 新建草稿在输入有效文字前不显示黄色落点，避免空格或未输入内容留下标记。
+  if (!draft || draft.id || !hasAnchorNoteContent(draft.note)) return null
   const position = anchorToView(draft, documentData.value)
   return position.visible ? { left: `${position.x * 100}%`, top: `${position.y * 100}%` } : null
 })
@@ -1558,11 +1560,18 @@ function deleteCurrentAnchor(): void {
 
 /** 新增或更新锚点；文字为空时不自动删除，必须使用显式删除按钮。 */
 async function saveAnchor(): Promise<void> {
-  if (!anchorDraft.value?.note.trim()) {
-    error.value = t(anchorDraft.value?.id ? 'editor.anchorNoteRequired' : 'editor.anchorRequired')
+  if (!anchorDraft.value) return
+  const note = anchorDraft.value.note.trim()
+  if (!note) {
+    // 新建时直接完成空白草稿；已有锚点仍保留显式删除语义，避免误删用户内容。
+    if (!anchorDraft.value.id) {
+      closeAnchorEditor()
+      return
+    }
+    error.value = t('editor.anchorNoteRequired')
     return
   }
-  const draft = { ...anchorDraft.value, note: anchorDraft.value.note.trim() }
+  const draft = { ...anchorDraft.value, note }
   const next = { ...documentData.value, anchors: [...documentData.value.anchors] }
   const existingId = draft.id
   if (existingId) next.anchors = next.anchors.map(anchor => anchor.id === existingId ? { ...draft, id: existingId } : anchor)
@@ -1609,7 +1618,7 @@ function watermarkHalfRatios(scale: number): { halfWidth: number; halfHeight: nu
   const fontSize = watermarkPreviewFontSize(displayHeight, scale)
   watermarkMeasureContext ??= document.createElement('canvas').getContext('2d')
   if (!watermarkMeasureContext) return { halfWidth: 0, halfHeight: 0 }
-  watermarkMeasureContext.font = `700 ${fontSize}px "Manrope", "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif`
+  watermarkMeasureContext.font = `700 ${fontSize}px ${UI_FONT_STACK}`
   const textWidth = watermarkMeasureContext.measureText(t('common.brand')).width
   return { halfWidth: textWidth / displayWidth / 2, halfHeight: (fontSize * 0.6) / displayHeight }
 }
@@ -2245,6 +2254,12 @@ onBeforeUnmount(() => {
     </el-dialog>
 
     <Teleport to="body">
+      <div
+        v-if="anchorEditorOpen && anchorDraft"
+        class="anchor-editor-dismiss-layer"
+        aria-hidden="true"
+        @pointerdown.stop.prevent="closeAnchorEditor"
+      ></div>
       <Transition name="anchor-editor">
         <section
           v-if="anchorEditorOpen && anchorDraft"
@@ -2285,7 +2300,7 @@ onBeforeUnmount(() => {
             type="primary"
             native-type="button"
             :loading="anchorSaving"
-            :disabled="!anchorDraft.note.trim()"
+            :disabled="anchorSaving"
             @click="saveAnchor"
           >
             <el-icon aria-hidden="true"><Check /></el-icon>
@@ -2484,8 +2499,8 @@ onBeforeUnmount(() => {
   .preview-ready .editor-canvas { cursor: crosshair; -webkit-touch-callout: none; }
   .editor-page.is-editing .canvas-stage { height: calc(100dvh - 280px); }
   .detail-caption { gap: 12px; margin: 0; padding: 18px 18px 28px; }
-  .detail-note-trigger { min-height: 48px; padding: 2px 0 6px; font-size: 16px; letter-spacing: -.012em; line-height: 1.72; }
-  .detail-note-editor :deep(.el-textarea__inner) { min-height: 34px !important; padding: 2px 0 6px; font-size: 16px; letter-spacing: -.012em; line-height: 1.72; }
+  .detail-note-trigger { min-height: 44px; padding: 2px 0 4px; font-size: 15px; letter-spacing: -.006em; line-height: 1.65; }
+  .detail-note-editor :deep(.el-textarea__inner) { min-height: 32px !important; padding: 2px 0 4px; font-size: 15px; letter-spacing: -.006em; line-height: 1.65; }
   .detail-tag-row { flex-wrap: nowrap; gap: 8px; overflow-x: auto; padding: 1px 0 4px; scrollbar-width: none; overscroll-behavior-inline: contain; }
   .detail-tag-row::-webkit-scrollbar { display: none; }
   .detail-tag-pill, .detail-tag-more { min-height: 38px; flex: 0 0 auto; padding: 8px 14px; font-size: 13px; }
@@ -2505,12 +2520,12 @@ onBeforeUnmount(() => {
 }
 
 .image-anchor.is-draft { pointer-events: none; opacity: .9; }
-/* 正在编辑的锚点右下角提供文字缩放手柄；手柄可独立接收指针和键盘事件。 */
-.image-anchor-resize { position: absolute; top: -10px; left: calc(var(--anchor-marker-rule-width) + 10px); width: 20px; height: 20px; border: 2px solid #fff; border-radius: 50%; background: #f3e600; box-shadow: 0 2px 8px rgb(0 0 0 / 28%); cursor: nwse-resize; pointer-events: auto; touch-action: none; }
+/* 正在编辑的锚点标题左侧提供文字缩放手柄；手柄可独立接收指针和键盘事件。 */
+.image-anchor-resize { position: absolute; top: -10px; left: 8px; width: 18px; height: 18px; border: 2px solid #fff; border-radius: 50%; background: #f3e600; box-shadow: 0 2px 8px rgb(0 0 0 / 28%); cursor: nwse-resize; pointer-events: auto; touch-action: none; }
 .image-anchor-resize::after { position: absolute; right: 4px; bottom: 4px; width: 7px; height: 7px; border-right: 1.5px solid rgb(23 23 23 / 60%); border-bottom: 1.5px solid rgb(23 23 23 / 60%); content: ''; }
 .image-anchor-resize:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
 /* 水印预览保持与导出一致的字体、颜色和阴影；拖动和放置都不会改写图片文档。 */
-.image-watermark { position: absolute; z-index: 6; display: block; color: rgb(255 255 255 / 86%); font-family: 'Manrope', 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif; font-weight: 700; line-height: 1; text-shadow: 0 2px 8px rgb(0 0 0 / 45%); white-space: nowrap; cursor: move; user-select: none; touch-action: none; transform: translate(-50%, -50%); }
+.image-watermark { position: absolute; z-index: 6; display: block; color: rgb(255 255 255 / 86%); font-family: var(--font-ui); font-weight: 700; line-height: 1; text-shadow: 0 2px 8px rgb(0 0 0 / 45%); white-space: nowrap; cursor: move; user-select: none; touch-action: none; transform: translate(-50%, -50%); }
 .watermark-mode .image-anchor { opacity: .5; pointer-events: none; }
 .canvas-stage.watermark-active .editor-canvas { cursor: crosshair; }
 .watermark-dock { position: fixed; z-index: 60; right: 16px; bottom: calc(16px + env(safe-area-inset-bottom)); left: 16px; display: flex; width: min(720px, calc(100% - 32px)); flex-wrap: wrap; align-items: center; gap: 10px 14px; margin: 0 auto; padding: 10px 14px; border: 1px solid color-mix(in srgb, var(--ink) 12%, transparent); border-radius: 22px; background: radial-gradient(140% 180% at 8% 0%, color-mix(in srgb, var(--detail-ambient, var(--accent)) 20%, transparent), transparent 58%), linear-gradient(180deg, rgb(255 255 255 / 24%), rgb(255 255 255 / 4%)), color-mix(in srgb, var(--ink) 8%, transparent); box-shadow: inset 0 1px 0 rgb(255 255 255 / 58%), 0 16px 42px rgb(0 0 0 / 18%); backdrop-filter: blur(30px) saturate(190%); -webkit-backdrop-filter: blur(30px) saturate(190%); }
@@ -2522,15 +2537,16 @@ onBeforeUnmount(() => {
 .watermark-size-control output { min-width: 38px; color: var(--ink); font-variant-numeric: tabular-nums; text-align: right; }
 .watermark-dock-actions { display: flex; flex: 0 0 auto; gap: 8px; margin-left: auto; }
 .watermark-dock-actions .el-button { margin: 0; min-height: 40px; }
-.anchor-inline-editor { position: fixed; z-index: 2500; right: 0; bottom: var(--anchor-keyboard-bottom, 0px); left: 0; display: flex; min-height: 68px; align-items: center; gap: 10px; padding: 9px max(14px, env(safe-area-inset-right)) max(9px, env(safe-area-inset-bottom)) max(14px, env(safe-area-inset-left)); border: 0; background: rgb(12 13 15 / 92%); color: #fff; box-shadow: none; backdrop-filter: blur(18px) saturate(140%); -webkit-backdrop-filter: blur(18px) saturate(140%); }
+.anchor-editor-dismiss-layer { position: fixed; z-index: 2499; inset: 0; background: transparent; touch-action: none; }
+.anchor-inline-editor { position: fixed; z-index: 2500; right: 0; bottom: var(--anchor-keyboard-bottom, 0px); left: 0; display: flex; min-height: 52px; align-items: center; gap: 8px; padding: 6px max(12px, env(safe-area-inset-right)) max(6px, env(safe-area-inset-bottom)) max(12px, env(safe-area-inset-left)); border: 0; background: rgb(12 13 15 / 94%); color: #fff; box-shadow: none; backdrop-filter: blur(18px) saturate(140%); -webkit-backdrop-filter: blur(18px) saturate(140%); }
 .anchor-editor-input { min-width: 0; flex: 1; }
-.anchor-editor-input :deep(.el-textarea__inner) { min-height: 44px !important; max-height: 104px; padding: 9px 2px 8px; border: 0; border-radius: 0; background: transparent !important; background-image: none !important; box-shadow: none !important; color: #fff; font-size: 17px; line-height: 1.45; resize: none; }
+.anchor-editor-input :deep(.el-textarea__inner) { min-height: 38px !important; max-height: 92px; padding: 6px 2px; border: 0; border-radius: 0; background: transparent !important; background-image: none !important; box-shadow: none !important; color: #fff; font-size: 15px; line-height: 1.4; resize: none; }
 .anchor-editor-input :deep(.el-textarea__inner::placeholder) { color: rgb(255 255 255 / 52%); }
 .anchor-editor-input :deep(.el-textarea__inner:focus) { box-shadow: none; }
-.anchor-editor-delete.el-button { min-height: 44px; flex: 0 0 auto; margin: 0; padding: 0 8px; color: #ffb4ac !important; font-weight: 600; }
+.anchor-editor-delete.el-button { min-height: 38px; flex: 0 0 auto; margin: 0; padding: 0 5px; color: #ffb4ac !important; font-size: 13px; font-weight: 600; }
 .anchor-editor-delete.el-button:hover, .anchor-editor-delete.el-button:focus { color: #fff !important; }
-.anchor-editor-delete .el-icon { margin-right: 3px; }
-.anchor-editor-confirm.el-button { min-width: 88px; min-height: 48px; flex: 0 0 auto; margin: 0; padding: 0 18px; border: 0; border-radius: 999px; background: #f3e600 !important; background-image: none !important; box-shadow: none !important; color: #171717 !important; font-weight: 700; opacity: 1; }
+.anchor-editor-delete .el-icon { margin-right: 2px; font-size: 15px; }
+.anchor-editor-confirm.el-button { min-width: 76px; min-height: 38px; flex: 0 0 auto; margin: 0; padding: 0 13px; border: 0; border-radius: 14px; background: #f3e600 !important; background-image: none !important; box-shadow: none !important; color: #171717 !important; font-size: 13px; font-weight: 700; opacity: 1; }
 .anchor-editor-confirm.el-button:hover, .anchor-editor-confirm.el-button:focus { border: 0; background: #fff33d !important; color: #171717 !important; }
 .anchor-editor-confirm.el-button.is-disabled { background: #f3e600 !important; color: rgb(23 23 23 / 46%) !important; opacity: 1; }
 .anchor-editor-confirm:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
@@ -2546,8 +2562,7 @@ onBeforeUnmount(() => {
 .inspiration-zoom-anchors { position: absolute; z-index: 1; inset: 0; pointer-events: none; }
 .inspiration-zoom-anchor {
   --anchor-marker-dot-size: calc(var(--anchor-title-font-size, 14px) * var(--anchor-label-scale, 1) * .56);
-  --anchor-marker-rule-width: calc(var(--anchor-title-font-size, 14px) * var(--anchor-label-scale, 1) * 3);
-  --anchor-marker-gap: calc(var(--anchor-title-font-size, 14px) * var(--anchor-label-scale, 1) * .36);
+  --anchor-marker-description-gap: calc(var(--anchor-title-font-size, 14px) * var(--anchor-label-scale, 1) * .08);
   position: absolute;
   width: 0;
   height: 0;
@@ -2557,8 +2572,9 @@ onBeforeUnmount(() => {
 }
 /* 全屏层沿用详情页的黄色落点与上下文字布局，并用反向缩放保持屏幕字号稳定。 */
 .inspiration-zoom-anchor-body { position: absolute; top: 0; left: 0; width: min(260px, 52vw); text-shadow: 0 1px 3px rgb(0 0 0 / 55%); }
-.inspiration-zoom-anchor-title { position: absolute; bottom: calc(var(--anchor-marker-dot-size) / 2 + var(--anchor-marker-gap)); left: 0; display: block; width: max-content; max-width: 100%; color: #fff; font-size: calc(var(--anchor-title-font-size, 14px) * var(--anchor-label-scale, 1)); font-weight: 600; line-height: 1.3; overflow-wrap: anywhere; }
-.inspiration-zoom-anchor-description { position: absolute; top: calc(var(--anchor-marker-dot-size) / 2 + var(--anchor-marker-gap)); left: 0; display: block; width: max-content; max-width: 100%; color: rgb(255 255 255 / 80%); font-size: calc(var(--anchor-desc-font-size, 11px) * var(--anchor-label-scale, 1)); line-height: 1.55; overflow-wrap: anywhere; white-space: pre-wrap; }
+.inspiration-zoom-anchor-title { position: absolute; bottom: 0; left: 0; display: block; width: max-content; max-width: 100%; color: #fff; font-size: calc(var(--anchor-title-font-size, 14px) * var(--anchor-label-scale, 1)); font-weight: 600; line-height: 1.3; overflow-wrap: anywhere; }
+.inspiration-zoom-anchor-title::after { position: absolute; right: 0; bottom: -1px; left: 0; height: max(2px, calc(var(--anchor-title-font-size, 14px) * var(--anchor-label-scale, 1) * .14)); border-radius: 999px; background: #f3e600; box-shadow: 0 1px 3px rgb(0 0 0 / 28%); content: ''; }
+.inspiration-zoom-anchor-description { position: absolute; top: calc(var(--anchor-marker-dot-size) / 2 + var(--anchor-marker-description-gap)); left: 0; display: block; width: max-content; max-width: 100%; color: rgb(255 255 255 / 80%); font-size: calc(var(--anchor-desc-font-size, 11px) * var(--anchor-label-scale, 1)); line-height: 1.45; overflow-wrap: anywhere; white-space: pre-wrap; }
 .inspiration-zoom-close { position: absolute; z-index: 2; top: max(12px, env(safe-area-inset-top)); right: max(12px, env(safe-area-inset-right)); display: grid; width: 48px; height: 48px; place-items: center; border: 1px solid rgb(255 255 255 / 30%); border-radius: 50%; background: rgb(255 255 255 / 12%); color: #fff; cursor: pointer; font-size: 22px; backdrop-filter: blur(24px) saturate(180%); -webkit-backdrop-filter: blur(24px) saturate(180%); box-shadow: inset 0 1px 0 rgb(255 255 255 / 34%), 0 8px 26px rgb(0 0 0 / 28%); }
 .inspiration-zoom-close:active { transform: scale(.94); }
 .inspiration-zoom-close:focus-visible { outline: 2px solid #fff; outline-offset: 3px; }

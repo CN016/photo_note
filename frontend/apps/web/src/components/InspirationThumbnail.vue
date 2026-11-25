@@ -75,8 +75,6 @@ const anchors = computed(() => {
         '--anchor-title-font-size': `${14 * imageTextScale}px`,
         '--anchor-label-scale': `${labelScale}`,
         '--anchor-marker-dot-size': `${14 * visualScale * .56}px`,
-        '--anchor-marker-rule-width': `${14 * visualScale * 3}px`,
-        '--anchor-marker-gap': `${14 * visualScale * .36}px`,
         '--thumbnail-anchor-note-width': `${Math.max(36 * visualScale, Math.min(width - x - 8, 160 * visualScale))}px`,
       },
     }]
@@ -231,7 +229,7 @@ onBeforeUnmount(() => {
 .thumbnail-anchor { position: absolute; z-index: 3; width: 0; height: 0; pointer-events: none; }
 .thumbnail-anchor-title {
   position: absolute;
-  bottom: calc(var(--anchor-marker-dot-size, 8px) / 2 + var(--anchor-marker-gap, 5px));
+  bottom: 0;
   left: 0;
   width: max-content;
   max-width: var(--thumbnail-anchor-note-width, 120px);
@@ -241,6 +239,17 @@ onBeforeUnmount(() => {
   line-height: 1.2;
   overflow-wrap: anywhere;
   text-shadow: 0 1px 3px rgb(0 0 0 / 68%);
+}
+.thumbnail-anchor-title::after {
+  position: absolute;
+  right: 0;
+  bottom: -1px;
+  left: 0;
+  height: max(2px, calc(var(--anchor-title-font-size, 14px) * var(--anchor-label-scale, 1) * .14));
+  border-radius: 999px;
+  background: #f3e600;
+  box-shadow: 0 1px 3px rgb(0 0 0 / 28%);
+  content: '';
 }
 @media (prefers-reduced-motion: reduce) {
   .thumbnail-preview, .thumbnail-detail { transition: none; }

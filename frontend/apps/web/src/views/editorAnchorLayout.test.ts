@@ -4,6 +4,7 @@ import {
   ANCHOR_LABEL_MIN_WIDTH,
   anchorLabelMaxWidth,
   anchorNoteTitle,
+  hasAnchorNoteContent,
   splitAnchorNote,
   thumbnailAnchorTextScale,
 } from './editorAnchorLayout'
@@ -42,6 +43,12 @@ describe('锚点标题与详细描述', () => {
       description: '留出人物到树顶的整段高度',
     })
     expect(splitAnchorNote('')).toEqual({ title: '', description: '' })
+  })
+
+  it('空内容和纯空格不生成可见文字', () => {
+    expect(hasAnchorNoteContent('')).toBe(false)
+    expect(hasAnchorNoteContent('  \n\t  ')).toBe(false)
+    expect(hasAnchorNoteContent('\n标题')).toBe(true)
   })
 })
 

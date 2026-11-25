@@ -45,6 +45,16 @@ export function anchorNoteTitle(note: string): string {
   return splitAnchorNote(note).title
 }
 
+/**
+ * 判断锚点是否包含有效文字。
+ *
+ * 纯空格、纯换行不产生可见标题或下划线，也不能被保存为新锚点；
+ * 编辑草稿是否显示黄色落点统一使用此判断。
+ */
+export function hasAnchorNoteContent(note: string): boolean {
+  return String(note ?? '').trim().length > 0
+}
+
 /** 文字块宽度按最长一行估算，避免多行描述把短标题撑得过宽。 */
 export function anchorNoteLongestLine(note: string): string {
   return String(note ?? '').split(/\r?\n/).reduce((longest, line) => (Array.from(line).length > Array.from(longest).length ? line : longest), '')

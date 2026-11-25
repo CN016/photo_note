@@ -5,6 +5,8 @@
  * 倍率只影响字号。预览层和最终导出都调用同一组计算，保证所见即所得。
  */
 
+import { UI_FONT_STACK } from '../uiFont'
+
 /** 水印相对位置与字号倍率；位置按旋转、裁切后的图片归一化坐标保存。 */
 export interface WatermarkPlacement {
   x: number
@@ -72,7 +74,7 @@ export function drawWatermark(
 ): void {
   const fontSize = watermarkFontSize(height, placement.scale)
   context.save()
-  context.font = `700 ${fontSize}px "Manrope", "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif`
+  context.font = `700 ${fontSize}px ${UI_FONT_STACK}`
   context.textAlign = 'center'
   context.textBaseline = 'middle'
   // 半透明白字配合轻微阴影，既能压在浅色天空上，也不会像实心贴纸一样遮住主体。
