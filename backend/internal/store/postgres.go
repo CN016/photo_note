@@ -372,7 +372,7 @@ func (store *PostgresStore) ListInspirations(ctx context.Context, userID uuid.UU
 	items := make([]model.Inspiration, 0)
 	if sort == "color_match" {
 		if expression, ok := inspirationColorDistance(filters.Color); ok {
-			query = query.Order(expression).Order("created_at DESC, business_id DESC")
+			query = query.Order(expression + " DESC").Order("created_at DESC, business_id DESC")
 		} else {
 			query = query.Order("created_at DESC, business_id DESC")
 		}
@@ -429,7 +429,7 @@ func applyInspirationTagSource(query *gorm.DB, ctx context.Context, userID uuid.
 	)`, scope.OrgID, userID, tagIDs)
 }
 
-// inspirationColorDistance 生成前三种代表色的加权 RGB 距离排序表达式；色值在服务层已验证。
+// inspirationColorDistance 按相近颜色在全图中的占比汇总匹配度；色值在服务层已验证。
 func inspirationColorDistance(value string) (string, bool) {
 	if len(value) != 7 || value[0] != '#' {
 		return "", false
@@ -448,14 +448,17 @@ func inspirationColorDistance(value string) (string, bool) {
 	}
 	return fmt.Sprintf(`CASE
 		WHEN jsonb_typeof(color_palette->'palette') = 'array' THEN COALESCE((
-			SELECT MIN(
-				2 * POWER((('x'||substr(color_item->>'hex',2,2))::bit(8)::integer - %d),2) +
-				4 * POWER((('x'||substr(color_item->>'hex',4,2))::bit(8)::integer - %d),2) +
-				3 * POWER((('x'||substr(color_item->>'hex',6,2))::bit(8)::integer - %d),2)
+			SELECT SUM(
+				GREATEST(0, COALESCE((CASE WHEN color_item->>'percentage' ~ '^\d+(\.\d+)?$' THEN (color_item->>'percentage')::numeric END), 0)) *
+				GREATEST(0, 1 - (
+					2 * POWER((('x'||substr(color_item->>'hex',2,2))::bit(8)::integer - %d),2) +
+					4 * POWER((('x'||substr(color_item->>'hex',4,2))::bit(8)::integer - %d),2) +
+					3 * POWER((('x'||substr(color_item->>'hex',6,2))::bit(8)::integer - %d),2)
+				) / 585225.0)
 			)
-			FROM jsonb_array_elements(color_palette->'palette') WITH ORDINALITY palette(color_item,position)
-			WHERE position <= 3 AND color_item->>'hex' ~ '^#[0-9a-fA-F]{6}$'
-		),1000000000)
+			FROM jsonb_array_elements(color_palette->'palette') palette(color_item)
+			WHERE color_item->>'hex' ~ '^#[0-9a-fA-F]{6}$'
+		),0)
 		ELSE 1000000000
 	END`, red, green, blue), true
 }

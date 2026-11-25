@@ -233,12 +233,22 @@ func TestInspirationLibraryPostgres(t *testing.T) {
 		return row
 	}
 	blue := seedSearchable(4, "#2255ee", "h08", `{"version":1,"palette":[{"hex":"#2255ee","percentage":75},{"hex":"#a9c8ff","percentage":20},{"hex":"#071b46","percentage":5}],"other_percentage":0}`, "AI蓝色场景")
+	_ = seedSearchable(2, "#888888", "h00", `{"version":1,"palette":[{"hex":"#888888","percentage":95},{"hex":"#2266f0","percentage":5}],"other_percentage":0}`, "灰色主体仅含少量蓝色")
 	_ = seedSearchable(7, "#e53935", "h00", `{"version":1,"palette":[{"hex":"#e53935","percentage":80},{"hex":"#ffb4a8","percentage":15},{"hex":"#4d0905","percentage":5}],"other_percentage":0}`, "AI红色场景")
 	colorFiltered := model.WithInspirationFilters(ctx, model.InspirationFilters{Color: "#2266f0"})
 	colorMatches, colorTotal, e := r.ListInspirations(colorFiltered, uid, nil, "any", "", "color_match", 0, 20)
 	must(e)
-	if colorTotal < 3 || len(colorMatches) == 0 || colorMatches[0].BusinessID != blue.BusinessID {
-		t.Fatalf("任意色值未按前三代表色排序: total=%d items=%+v", colorTotal, colorMatches)
+	blueIndex, grayIndex := -1, -1
+	for index, item := range colorMatches {
+		if item.BusinessID == blue.BusinessID {
+			blueIndex = index
+		}
+		if item.FileName == "灰色主体仅含少量蓝色" {
+			grayIndex = index
+		}
+	}
+	if colorTotal < 4 || blueIndex < 0 || grayIndex <= blueIndex {
+		t.Fatalf("任意色值未优先排序全图相近颜色占比: total=%d items=%+v", colorTotal, colorMatches)
 	}
 	rangeFiltered := model.WithInspirationFilters(ctx, model.InspirationFilters{PeopleMode: "range", PeopleMin: "3", PeopleMax: "5"})
 	rangeMatches, rangeTotal, e := r.ListInspirations(rangeFiltered, uid, nil, "any", "", "created_desc", 0, 20)
