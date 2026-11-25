@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { Aim, CollectionTag, Document, Operation, User } from '@element-plus/icons-vue'
+import { Aim, CollectionTag, Search, Operation, User } from '@element-plus/icons-vue'
 import type { TagRecord } from '../api/types'
 import {
   applyGalleryPeoplePreset,
@@ -33,12 +33,13 @@ const wheelBrightness = ref(1)
 const rememberedHue = ref(0)
 const rememberedSaturation = ref(1)
 const peopleAdvanced = ref(false)
+const colorExpanded = ref(false)
 let wheelPointerID: number | null = null
 let brightnessPointerID: number | null = null
 
 const conditionOptions = [
   { kind: 'color' as const, icon: Aim, label: 'gallery.conditionColor' },
-  { kind: 'text' as const, icon: Document, label: 'gallery.conditionText' },
+  { kind: 'text' as const, icon: Search, label: 'gallery.conditionText' },
   { kind: 'tags' as const, icon: CollectionTag, label: 'gallery.conditionTags' },
   { kind: 'people' as const, icon: User, label: 'gallery.conditionPeople' },
 ]
@@ -266,12 +267,22 @@ watch(() => props.modelValue.color, color => {
         :aria-selected="modelValue.kind === option.kind"
         :aria-label="t(option.label)"
         :title="t(option.label)"
-        @click="chooseKind(option.kind)"
+        @click="option.kind === 'color' ? (colorExpanded = !colorExpanded) : chooseKind(option.kind)"
       >
         <el-icon aria-hidden="true"><component :is="option.icon" /></el-icon>
         <span v-if="modelValue.kind === option.kind && hasValue" class="condition-active-dot" aria-hidden="true" />
       </button>
     </nav>
+
+    <div v-if="modelValue.kind === 'color'" class="color-filter-row">
+      <button type="button" class="color-filter-toggle" :aria-expanded="colorExpanded" @click="colorExpanded = !colorExpanded">
+        <span>{{ t('gallery.colorFilter') }}</span>
+        <span v-if="modelValue.color" class="color-filter-current"><i :style="{ background: modelValue.color }" />{{ modelValue.color }}</span>
+        <span v-else class="color-filter-current">{{ t('gallery.noColorSelected') }}</span>
+        <el-icon aria-hidden="true"><Operation /></el-icon>
+      </button>
+      <button v-if="modelValue.color" type="button" class="color-filter-clear" @click="chooseColor('')">{{ t('gallery.clearCondition') }}</button>
+    </div>
 
     <div v-if="modelValue.kind === 'text'" class="gallery-condition-body text-condition">
       <el-input
@@ -282,10 +293,9 @@ watch(() => props.modelValue.color, color => {
         clearable
         @update:model-value="setQuery"
       />
-      <p>{{ t('gallery.textSearchHint') }}</p>
     </div>
 
-    <div v-else-if="modelValue.kind === 'color'" class="gallery-condition-body color-condition">
+    <div v-else-if="modelValue.kind === 'color' && colorExpanded" class="gallery-condition-body color-condition">
       <button
         ref="wheel"
         type="button"
@@ -333,12 +343,12 @@ watch(() => props.modelValue.color, color => {
         <span class="color-brightness-track" aria-hidden="true"><span class="color-brightness-thumb" :style="{ bottom: `${brightnessPercent}%` }" /></span>
       </button>
       <div class="color-condition-copy">
-        <span class="condition-kicker">{{ t('gallery.colorInteractionHint') }}</span>
+        <span class="condition-kicker">{{ t('gallery.colorShortHint') }}</span>
         <strong class="selected-color">
           <i :style="{ background: wheelDisplayColor || 'transparent' }" aria-hidden="true" />
-          {{ wheelDisplayColor || t('gallery.chooseColor') }}
+          {{ wheelDisplayColor || t('gallery.noColorSelected') }}
         </strong>
-        <small class="brightness-value">{{ t('gallery.brightnessValue', { value: brightnessPercent }) }}</small>
+        <small class="brightness-value"><span>{{ t('gallery.brightness') }}</span><span>{{ t('gallery.brightnessValue', { value: brightnessPercent }) }}</span></small>
         <button v-if="modelValue.color" type="button" class="condition-clear" @click="chooseColor('')">{{ t('gallery.clearCondition') }}</button>
       </div>
     </div>
@@ -400,6 +410,12 @@ watch(() => props.modelValue.color, color => {
 
 <style scoped>
 .gallery-search-panel { display: grid; width: 100%; max-width: 720px; gap: 10px; margin-top: 12px; }
+.color-filter-row { display: flex; align-items: center; gap: 10px; }
+.color-filter-toggle { display: flex; min-width: 0; flex: 1; min-height: 42px; align-items: center; gap: 9px; padding: 0 12px; border: 1px solid var(--line); border-radius: 14px; background: var(--surface-overlay); color: var(--ink); font: inherit; font-size: 13px; text-align: left; cursor: pointer; }
+.color-filter-current { display: inline-flex; align-items: center; gap: 6px; color: var(--muted); }
+.color-filter-current i { width: 18px; height: 18px; border: 1px solid var(--line); border-radius: 50%; }
+.color-filter-clear { padding: 8px 0; border: 0; background: transparent; color: var(--accent); font: inherit; font-size: 12px; cursor: pointer; }
+.color-filter-toggle > .el-icon { margin-left: auto; color: var(--muted); }
 .gallery-condition-tabs { display: grid; width: max-content; grid-template-columns: repeat(4, 48px); gap: 6px; padding: 4px; border: 1px solid color-mix(in srgb, var(--line) 82%, transparent); border-radius: 18px; background: color-mix(in srgb, var(--surface-overlay) 78%, transparent); box-shadow: inset 0 1px 0 var(--glass-edge); }
 .gallery-condition-tab { position: relative; display: grid; width: 48px; height: 46px; place-items: center; border: 0; border-radius: 14px; background: transparent; color: var(--muted); cursor: pointer; transition: color .16s ease, background-color .16s ease, transform .16s ease; }
 .gallery-condition-tab > .el-icon { font-size: 21px; }
@@ -428,7 +444,7 @@ watch(() => props.modelValue.color, color => {
 .condition-kicker { color: var(--muted); font-size: 12px; line-height: 1.55; }
 .selected-color { display: flex; align-items: center; gap: 8px; color: var(--ink); font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: 13px; font-weight: 600; }
 .selected-color i { width: 22px; height: 22px; border: 1px solid var(--line); border-radius: 50%; }
-.brightness-value { color: var(--muted); font-size: 11px; line-height: 1.4; }
+.brightness-value { display: flex; gap: 8px; color: var(--muted); font-size: 11px; line-height: 1.4; }
 .tag-condition { display: grid; gap: 10px; }
 .tag-source-tabs, .tag-match, .people-modes { display: flex; align-items: center; gap: 6px; overflow-x: auto; scrollbar-width: none; }
 .tag-source-tabs::-webkit-scrollbar, .tag-match::-webkit-scrollbar, .people-modes::-webkit-scrollbar, .tag-scroll::-webkit-scrollbar { display: none; }

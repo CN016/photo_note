@@ -59,6 +59,15 @@ const galleryRoot = ref<HTMLElement>()
 useGallerySectionSwipe(galleryRoot, 'list')
 const libraryTools = ref<InstanceType<typeof InspirationLibraryTools>>()
 const contentZoom = ref<InstanceType<typeof ContentZoom>>()
+const gridColumns = ref(2)
+const gridZoom = ref(1)
+const gridNavTop = ref(0)
+const gridNavVisible = ref(false)
+let gridNavFrame = 0
+let gridTouchDistance = 0
+let gridTouchZoom = 1
+let gridBaseColumns = 2
+let gridNavDragging = false
 const scopeKey = () => `${auth.sessionID}:${auth.orgid}:${auth.sessionVersion}:${auth.user?.business_id ?? ''}`
 let restoring = false
 let alive = true
@@ -117,12 +126,14 @@ function openRelated(projectID: string, x: number, y: number) {
   void router.push({ path: `/projects/${projectID}`, query: { from: 'gallery', returnKey: key, mode: 'read' } })
 }
 function touchStart(event: TouchEvent) {
+  galleryTouchStart(event)
   if (event.touches.length !== 1) { gesture.cancel(); return }
   touchedCard = (event.target as Element).closest<HTMLElement>('[data-inspiration-card]')
   const touch = event.touches[0]
   if (touchedCard && touch) gesture.start(touch.clientX, touch.clientY)
 }
 function touchMove(event: TouchEvent) {
+  galleryTouchMove(event)
   const touch = event.touches[0]
   if (event.touches.length !== 1 || !touch) gesture.cancel()
   else gesture.move(touch.clientX, touch.clientY)
@@ -171,6 +182,7 @@ const libraryFilters = ref<InspirationLibraryFilters>({})
 const libraryRevision = ref(0)
 const hasMore = computed(() => items.value.length < total.value)
 const filtersActive = computed(() => gallerySearchHasValue(gallerySearch.value) || Object.values(libraryFilters.value).some(Boolean))
+const hasAnyFilters = filtersActive
 const sortLabel = computed(() => gallerySearch.value.kind === 'color'
   ? t('gallery.sortColorMatch')
   : t(sort.value === 'created_desc' ? 'gallery.sortNewest' : sort.value === 'created_asc' ? 'gallery.sortOldest' : 'gallery.sortEdited'))
@@ -237,6 +249,60 @@ function resetFilters() {
   sort.value = 'created_desc'
 }
 
+/** 双指缩放按屏幕上可见宽度调整卡片列数，并在手势结束后收敛到最近的整列布局。 */
+/** 将双指距离映射为列数，并短暂显示位置滑块反馈缩放手势。 */
+function changeGridZoom(next: number) {
+  const nextZoom = Math.max(.8, Math.min(2, next))
+  gridZoom.value = nextZoom
+  gridColumns.value = Math.max(1, Math.min(6, Math.round(gridBaseColumns * nextZoom)))
+  gridNavVisible.value = true
+  window.clearTimeout(gridNavFrame)
+  gridNavFrame = window.setTimeout(() => { gridNavVisible.value = false }, 1400)
+}
+/** 计算图库两指间距，用于保持相对缩放比例。 */
+function distanceBetweenTouches(event: TouchEvent) {
+  const a = event.touches[0], b = event.touches[1]
+  return a && b ? Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY) : 0
+}
+/** 只在图片网格内启动双指缩放，不干扰筛选控件和普通页面手势。 */
+function galleryTouchStart(event: TouchEvent) {
+  if (event.touches.length === 2) {
+    const target = event.target as Element
+    if (!target.closest('.inspiration-grid')) return
+    gridTouchDistance = distanceBetweenTouches(event); gridTouchZoom = gridZoom.value
+  }
+}
+/** 缩放时阻止浏览器页面缩放，并按比例更新卡片列数。 */
+function galleryTouchMove(event: TouchEvent) {
+  if (event.touches.length !== 2 || !gridTouchDistance || !(event.target as Element).closest('.inspiration-grid')) return
+  event.preventDefault()
+  changeGridZoom(gridTouchZoom * distanceBetweenTouches(event) / gridTouchDistance)
+}
+/** 所有手指离开后结束本次网格缩放。 */
+function galleryTouchEnd(event: TouchEvent) { if (!event.touches.length) gridTouchDistance = 0 }
+/** 依据页面相对视口的位置更新右侧快速定位滑块。 */
+function updateGridNavigation() {
+  const root = galleryRoot.value
+  if (!root) return
+  const max = Math.max(1, root.scrollHeight - window.innerHeight)
+  gridNavTop.value = Math.max(0, Math.min(1, -root.getBoundingClientRect().top / max))
+}
+/** 屏幕旋转或窗口尺寸变化后，以当前平台默认列数重新计算网格。 */
+function resizeGrid() { gridBaseColumns = window.innerWidth <= 768 ? 2 : 4; gridColumns.value = Math.max(1, Math.min(6, Math.round(gridBaseColumns * gridZoom.value))) }
+/** 将右侧导航轨道上的点击或拖动位置映射为图库垂直滚动位置。 */
+function seekGridPosition(event: PointerEvent) {
+  const track = event.currentTarget as HTMLElement
+  const bounds = track.getBoundingClientRect()
+  const ratio = Math.max(0, Math.min(1, (event.clientY - bounds.top) / bounds.height))
+  gridNavTop.value = ratio
+  seekGalleryEdge(ratio)
+}
+/** 跳转到图库内容范围内的相对位置。 */
+function seekGalleryEdge(ratio: number) { const root = galleryRoot.value; if (root) window.scrollTo({ top: window.scrollY + root.getBoundingClientRect().top + ratio * Math.max(0, root.scrollHeight - window.innerHeight), behavior: 'instant' as ScrollBehavior }) }
+function startGridNavigation(event: PointerEvent) { gridNavDragging = true; (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId); seekGridPosition(event) }
+function moveGridNavigation(event: PointerEvent) { if (gridNavDragging) seekGridPosition(event) }
+function endGridNavigation() { gridNavDragging = false }
+
 /** 色系搜索固定按距离排序，其余条件允许用户选择收藏或编辑时间。 */
 function setSort(value: string) {
   if (value === 'created_desc' || value === 'created_asc' || value === 'updated_desc') sort.value = value
@@ -258,7 +324,11 @@ onMounted(async () => {
     if (!item || !card) return false
     gesture.cancel(); showProjects(item, card, event.clientX, event.clientY); return true
   })
+  resizeGrid()
+  window.addEventListener('resize', resizeGrid, { passive: true })
   window.addEventListener('scroll', gesture.cancel, true)
+  window.addEventListener('scroll', updateGridNavigation, { passive: true })
+  updateGridNavigation()
   void loadTags()
   const saved = gallerySnapshot(scopeKey(), history.state.galleryReturnKey)
   if (!saved || saved.key !== history.state.galleryReturnKey || saved.position !== history.state.position) { void loadPage(); return }
@@ -291,11 +361,11 @@ onMounted(async () => {
   const item = items.value.find(item => item.business_id === saved.imageID)
   if (item && card) showProjects(item, card, saved.x, saved.y, saved.menuPage, saved.menuScroll)
 })
-onBeforeUnmount(() => { alive = false; inspirationDetails.clear(); openVersion += 1; disposeMenu?.(); gesture.cancel(); associationVersion += 1; window.removeEventListener('scroll', gesture.cancel, true); tagsVersion += 1; window.clearInterval(processingTimer); if (searchTimer !== undefined) window.clearTimeout(searchTimer); requestVersion += 1 })
+onBeforeUnmount(() => { alive = false; inspirationDetails.clear(); openVersion += 1; disposeMenu?.(); gesture.cancel(); associationVersion += 1; window.removeEventListener('resize', resizeGrid); window.removeEventListener('scroll', gesture.cancel, true); window.removeEventListener('scroll', updateGridNavigation); window.clearTimeout(gridNavFrame); tagsVersion += 1; window.clearInterval(processingTimer); if (searchTimer !== undefined) window.clearTimeout(searchTimer); requestVersion += 1 })
 </script>
 
 <template>
-  <div ref="galleryRoot" class="workspace-page" @touchstart.passive="touchStart" @touchmove.passive="touchMove" @touchend="gesture.cancel" @touchcancel="gesture.cancel" @click.capture="interceptClick">
+  <div ref="galleryRoot" class="workspace-page gallery-workspace" @touchstart="touchStart" @touchmove="touchMove" @touchend="gesture.cancel(); galleryTouchEnd($event)" @touchcancel="gesture.cancel(); galleryTouchEnd($event)" @click.capture="interceptClick">
     <ContentZoom ref="contentZoom"><main id="main-content" class="gallery-main">
       <section class="gallery-intro">
         <div><h1>{{ t('gallery.title') }}</h1></div>
@@ -309,7 +379,7 @@ onBeforeUnmount(() => { alive = false; inspirationDetails.clear(); openVersion +
       <GallerySearchPanel v-model="gallerySearch" :tags="tags" :tags-loading="tagsLoading" />
 
       <div v-if="items.length" class="gallery-meta">
-        <span>{{ t('gallery.count', { count: total }) }}</span>
+        <div class="gallery-result-summary"><span>{{ filtersActive ? t('gallery.foundCount', { count: total }) : t('gallery.count', { count: total }) }}</span><button v-if="hasAnyFilters" type="button" @click="resetFilters">{{ t('gallery.clearFilters') }}</button></div>
         <el-dropdown trigger="click" :disabled="gallerySearch.kind === 'color'" @command="setSort">
           <button type="button" class="gallery-sort-button" :disabled="gallerySearch.kind === 'color'" :aria-label="t('gallery.sort')">
             <el-icon aria-hidden="true"><Sort /></el-icon>
@@ -328,7 +398,7 @@ onBeforeUnmount(() => { alive = false; inspirationDetails.clear(); openVersion +
 
       <div v-if="error" class="inline-error" role="alert"><span>{{ error }}</span><el-button text :disabled="loading" @click="loadPage(page)">{{ t('gallery.retry') }}</el-button></div>
 
-      <section v-if="items.length" class="inspiration-grid" :aria-label="t('gallery.title')">
+      <section v-if="items.length" class="inspiration-grid" :style="{ '--grid-columns': gridColumns }" :aria-label="t('gallery.title')">
         <article v-for="(item, index) in items" :key="item.business_id" class="inspiration-card" tabindex="0" :data-inspiration-card="item.business_id" :style="{ '--card-index': index % 8 }">
           <RouterLink class="inspiration-link" @click.capture="openDetail($event, item)" :data-shared-transition="item.business_id" :to="`/inspirations/${item.business_id}`" :aria-label="t('gallery.openImage', { name: item.file_name || t('gallery.untitled') })">
             <div class="gallery-image-frame"><InspirationThumbnail :record="item" show-anchors detail-transition /></div>
@@ -353,20 +423,30 @@ onBeforeUnmount(() => { alive = false; inspirationDetails.clear(); openVersion +
 
       <InspirationLibraryTools ref="libraryTools" v-model:filters="libraryFilters" :revision="libraryRevision" />
     </main></ContentZoom>
-    <CreateFab :label="t('gallery.newImage')" to="/inspirations/new" />
+    <CreateFab class="gallery-create-fab" :label="t('gallery.newImage')" to="/inspirations/new" />
+    <div v-if="items.length > 5" class="gallery-side-nav" :class="{ visible: gridNavVisible }" role="slider" tabindex="0" :aria-label="t('gallery.listPosition')" aria-valuemin="0" aria-valuemax="100" :aria-valuenow="Math.round(gridNavTop * 100)" @pointerdown="startGridNavigation" @pointermove="moveGridNavigation" @pointerup="endGridNavigation" @pointercancel="endGridNavigation" @lostpointercapture="endGridNavigation" @keydown.home.prevent="seekGalleryEdge(0)" @keydown.end.prevent="seekGalleryEdge(1)">
+      <span class="gallery-side-nav-thumb" :style="{ top: `${gridNavTop * 100}%` }" />
+    </div>
     <footer class="workspace-footer"><span>{{ t('common.brand') }}</span><span>{{ t('common.footer') }}</span></footer>
   </div>
 </template>
 <style scoped>
 /* 手机优先露出搜索与图片；桌面按可用区域增加列数，卡片本身不增加外框。 */
 .gallery-main { padding-top: 14px; }
+.gallery-workspace { --gallery-grid-zoom: 1; }
+.gallery-create-fab :deep(.create-fab) { bottom: calc(86px + env(safe-area-inset-bottom)); }
 .gallery-subnav { margin-top: 0; }
 .gallery-meta { justify-content: space-between; margin: 10px 0 12px; }
+.gallery-result-summary { display: flex; align-items: center; gap: 10px; }
+.gallery-result-summary button { padding: 4px 0; border: 0; background: transparent; color: var(--accent); font: inherit; font-size: 12px; cursor: pointer; }
 .gallery-sort-button { display: inline-flex; min-height: 38px; align-items: center; gap: 6px; padding: 0 8px; border: 0; border-radius: 999px; background: transparent; color: var(--muted); font: inherit; font-size: 12px; cursor: pointer; }
 .gallery-sort-button:hover:not(:disabled), .gallery-sort-button:focus-visible { background: var(--surface-soft); color: var(--ink); outline: none; }
 .gallery-sort-button:disabled { cursor: default; opacity: .72; }
 .sort-chevron { font-size: 11px; }
-.inspiration-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.inspiration-grid { grid-template-columns: repeat(var(--grid-columns, 2), minmax(0, 1fr)); gap: 12px; touch-action: pan-y; }
+.gallery-side-nav { position: fixed; z-index: 35; top: 42%; right: 4px; width: 20px; height: 112px; border-radius: 999px; background: color-mix(in srgb, var(--ink) 22%, transparent); opacity: .25; touch-action: none; transition: opacity .18s; }
+.gallery-side-nav:hover, .gallery-side-nav:focus-visible, .gallery-side-nav.visible { opacity: .8; outline: none; }
+.gallery-side-nav-thumb { position: absolute; left: 3px; width: 14px; height: 26px; border-radius: 999px; background: var(--surface-overlay); box-shadow: 0 1px 4px rgb(0 0 0 / 20%); transform: translateY(-50%); }
 .inspiration-card { position: relative; border-radius: var(--radius-card); -webkit-touch-callout: none; }
 .inspiration-card img { -webkit-user-drag: none; }
 .inspiration-card:focus-visible { outline: none; }
@@ -377,15 +457,17 @@ onBeforeUnmount(() => { alive = false; inspirationDetails.clear(); openVersion +
 .inspiration-card:hover .gallery-image-frame, .inspiration-card:focus-within .gallery-image-frame { box-shadow: none !important; }
 .gallery-image-note { overflow: hidden; margin: 0; padding: 7px 2px 2px; color: var(--ink); font-size: 13px; line-height: 1.5; white-space: nowrap; text-overflow: ellipsis; }
 @media (max-width: 768px) {
-  .gallery-main { width: calc(100% - 20px); padding-top: 8px !important; }
+  .gallery-main { width: calc(100% - 20px); padding: 8px 0 calc(112px + env(safe-area-inset-bottom)) !important; }
+  .gallery-create-fab :deep(.create-fab) { bottom: calc(78px + env(safe-area-inset-bottom)); }
   .gallery-subnav { gap: 24px; padding-inline: 4px; }
   .gallery-meta { margin: 8px 0 10px; }
   .gallery-sort-button { min-height: 44px; padding-inline: 5px; }
   .inspiration-grid { gap: 8px; }
+  .gallery-side-nav { right: 3px; }
   .inspiration-card :deep(.thumbnail-frame) { border-radius: 14px; }
 }
 @media (min-width: 769px) {
-  .inspiration-grid { grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 16px; }
+  .inspiration-grid { grid-template-columns: repeat(var(--grid-columns, 3), minmax(0, 1fr)); gap: 16px; }
 }
 @media (min-width: 1600px) { .gallery-main { max-width: none; } }
 </style>

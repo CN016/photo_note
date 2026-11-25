@@ -1084,7 +1084,7 @@ p { line-height: 1.55; }
 }
 
 /* 灵感图二级导航及拍摄统计卡片沿用工作台的表面、描边和强调色。 */
-.gallery-subnav { display: flex; align-items: center; gap: 24px; margin: 28px 0 0; border-bottom: 1px solid var(--line); }
+  .gallery-subnav { display: flex; align-items: center; gap: 24px; margin: 16px 0 0; border-bottom: 1px solid var(--line); }
 .gallery-subnav-link { position: relative; display: inline-flex; min-height: 43px; align-items: center; color: var(--muted); font-size: 12px; font-weight: 500; text-decoration: none; transition: color .16s cubic-bezier(0.22, 1, 0.36, 1); }
 .gallery-subnav-link:hover, .gallery-subnav-link.is-current { color: var(--accent-hover); }
 .gallery-subnav-link:focus-visible { border-radius: 3px; outline: 2px solid var(--accent); outline-offset: 2px; }

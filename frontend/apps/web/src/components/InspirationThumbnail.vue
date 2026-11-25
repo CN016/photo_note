@@ -72,9 +72,9 @@ const anchors = computed(() => {
       style: {
         left: `${x}px`,
         top: `${y}px`,
-        '--anchor-title-font-size': `${14 * imageTextScale}px`,
+        '--anchor-title-font-size': `${11 * imageTextScale}px`,
         '--anchor-label-scale': `${labelScale}`,
-        '--anchor-marker-dot-size': `${14 * visualScale * .56}px`,
+        '--anchor-marker-dot-size': `${10 * visualScale * .56}px`,
         '--thumbnail-anchor-note-width': `${Math.max(36 * visualScale, Math.min(width - x - 8, 160 * visualScale))}px`,
       },
     }]
