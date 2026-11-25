@@ -219,6 +219,7 @@ const sortLabel = computed(() => gallerySearch.value.kind === 'color'
   : t(sort.value === 'created_desc' ? 'gallery.sortNewest' : sort.value === 'created_asc' ? 'gallery.sortOldest' : 'gallery.sortEdited'))
 let requestVersion = 0
 let searchTimer: number | undefined
+let colorSearchQueued = false
 let tagsVersion = 0
 
 /** 保留当前分页的详情任务，筛选移除的条目释放对象地址；高清图由缩略图接近视口时再预取。 */
@@ -244,7 +245,15 @@ async function loadPage(nextPage = 1) {
     page.value = result.page
     total.value = result.total
   } catch (cause) { if (version === requestVersion) error.value = errorText(cause) }
-  finally { if (version === requestVersion) loading.value = false }
+  finally {
+    if (version === requestVersion) {
+      loading.value = false
+      if (colorSearchQueued) {
+        colorSearchQueued = false
+        void loadPage(1)
+      }
+    }
+  }
 }
 
 /** 标签获取失败不影响图库浏览；筛选请求始终由后端分页执行。 */
@@ -269,6 +278,17 @@ async function loadTags() {
 /** 筛选条件变化后短暂合并连续输入，并从第一页重新查询。 */
 watch([gallerySearch, sort, libraryFilters], () => {
   if (restoring || !active.value) return
+  if (gallerySearch.value.kind === 'color') {
+    // 色环拖动期间按固定间隔刷新，未完成请求时只保留最新颜色，避免请求堆积。
+    if (searchTimer !== undefined) return
+    searchTimer = window.setTimeout(() => {
+      searchTimer = undefined
+      if (loading.value) colorSearchQueued = true
+      else void loadPage(1)
+    }, 160)
+    return
+  }
+  colorSearchQueued = false
   if (searchTimer !== undefined) window.clearTimeout(searchTimer)
   searchTimer = window.setTimeout(() => { void loadPage(1) }, 220)
 }, { deep: true })

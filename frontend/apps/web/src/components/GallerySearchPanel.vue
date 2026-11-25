@@ -156,6 +156,7 @@ function updateWheelPreview(event: PointerEvent): void {
   wheelPreviewPoint.value = { x: result.x, y: result.y }
   rememberedHue.value = result.hue
   rememberedSaturation.value = result.saturation
+  chooseColor(result.color)
 }
 
 /** 按住色环只移动放大色块，不向图库提交请求；手指或鼠标松开后才写入并触发检索。 */
@@ -214,6 +215,7 @@ function updateBrightnessPreview(event: PointerEvent): void {
   const value = Math.max(0, Math.min(1, 1 - (event.clientY - bounds.top) / Math.max(1, bounds.height)))
   wheelBrightness.value = value
   wheelPreviewColor.value = galleryHsvToHex(rememberedHue.value, rememberedSaturation.value, value)
+  chooseColor(wheelPreviewColor.value)
 }
 
 function beginBrightness(event: PointerEvent): void {
