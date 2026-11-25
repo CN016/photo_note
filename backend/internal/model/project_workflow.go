@@ -7,17 +7,15 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/lib/pq"
 )
 
 // ProjectShooting 保存可逐步填写的拍摄信息；空值表示尚未确定，完整后才能同步档期。
 type ProjectShooting struct {
-	StartAt  *time.Time     `json:"start_at" gorm:"column:shoot_start_at;type:timestamptz"`
-	EndAt    *time.Time     `json:"end_at" gorm:"column:shoot_end_at;type:timestamptz"`
-	Location string         `json:"location" gorm:"column:shoot_location;type:varchar(240);not null;default:''"`
-	Person   string         `json:"person" gorm:"column:shoot_person;type:varchar(120);not null;default:''"`
-	Kind     string         `json:"kind" gorm:"column:shoot_kind;type:varchar(8);not null;default:''"`
-	Keywords pq.StringArray `json:"keywords" gorm:"column:shoot_keywords;type:text[];not null;default:ARRAY[]::text[]"`
+	StartAt  *time.Time `json:"start_at" gorm:"column:shoot_start_at;type:timestamptz"`
+	EndAt    *time.Time `json:"end_at" gorm:"column:shoot_end_at;type:timestamptz"`
+	Location string     `json:"location" gorm:"column:shoot_location;type:varchar(240);not null;default:''"`
+	Person   string     `json:"person" gorm:"column:shoot_person;type:varchar(120);not null;default:''"`
+	Kind     string     `json:"kind" gorm:"column:shoot_kind;type:varchar(8);not null;default:''"`
 }
 
 // Complete 判断能否创建有明确时间、地点和人物的拍摄档期。
@@ -36,13 +34,7 @@ func (s ProjectShooting) Fingerprint() string {
 		value := s.EndAt.UTC()
 		s.EndAt = &value
 	}
-	data, _ := json.Marshal(struct {
-		StartAt  *time.Time `json:"start_at"`
-		EndAt    *time.Time `json:"end_at"`
-		Location string     `json:"location"`
-		Person   string     `json:"person"`
-		Kind     string     `json:"kind"`
-	}{s.StartAt, s.EndAt, s.Location, s.Person, s.Kind})
+	data, _ := json.Marshal(s)
 	digest := sha256.Sum256(data)
 	return hex.EncodeToString(digest[:])
 }

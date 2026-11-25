@@ -60,8 +60,7 @@ func TestTenantStorePostgres(t *testing.T) {
 			t.Fatalf("跨空间同名唯一索引错误: %v", err)
 		}
 	}
-	items, _, err := repository.ListTags(ctxA, users[0].BusinessID, "", 0, 100)
-	items = customTagsOnly(items)
+	items, _, err := repository.ListTags(ctxA, users[0].BusinessID, "", 0, 20)
 	if err != nil || len(items) != 1 || items[0].OrgID != orgA.OrgID {
 		t.Fatalf("组织标签串租户: %#v %v", items, err)
 	}
@@ -75,8 +74,7 @@ func TestTenantStorePostgres(t *testing.T) {
 	if err := repository.CreateTag(ctxA, &other); err != nil {
 		t.Fatal(err)
 	}
-	items, _, err = repository.ListTags(ctxA, users[0].BusinessID, "", 0, 100)
-	items = customTagsOnly(items)
+	items, _, err = repository.ListTags(ctxA, users[0].BusinessID, "", 0, 20)
 	if err != nil || len(items) != 1 {
 		t.Fatalf("同组织其他成员资料可见: count=%d err=%v", len(items), err)
 	}
@@ -84,9 +82,7 @@ func TestTenantStorePostgres(t *testing.T) {
 	if err := repository.CreateTag(tenant.Personal(context.Background(), users[1].BusinessID), &otherPersonal); err != nil {
 		t.Fatal(err)
 	}
-	personalItems, _, err := repository.ListTags(personal, users[0].BusinessID, "", 0, 100)
-	personalItems = customTagsOnly(personalItems)
-	if err != nil || len(personalItems) != 1 {
+	if personalItems, _, err := repository.ListTags(personal, users[0].BusinessID, "", 0, 20); err != nil || len(personalItems) != 1 {
 		t.Fatalf("个人-1域跨用户可见: %#v %v", personalItems, err)
 	}
 	imageA := model.Inspiration{BaseModel: model.BaseModel{BusinessID: uuid.New()}, UserID: users[0].BusinessID, TagIDs: pq.StringArray{items[0].BusinessID.String()}, ImageKey: "https://example.invalid/a.png", Data: model.JSONB(`{"schema_version":1}`)}
@@ -165,17 +161,6 @@ func TestTenantStorePostgres(t *testing.T) {
 }
 
 // TestTenantLegacyMigration 用独立随机 schema 运行已发布迁移，验证旧文件授权回填与冲突隔离。
-/** customTagsOnly 忽略全局系统预设，仅保留租户隔离测试中的用户自定义标签。 */
-func customTagsOnly(items []model.Tag) []model.Tag {
-	result := make([]model.Tag, 0, len(items))
-	for _, item := range items {
-		if item.TagType == "custom" {
-			result = append(result, item)
-		}
-	}
-	return result
-}
-
 func TestTenantLegacyMigration(t *testing.T) {
 	dsn := os.Getenv("PHOTO_NINI_TENANT_TEST_DSN")
 	if dsn == "" {

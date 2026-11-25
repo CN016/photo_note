@@ -28,7 +28,7 @@ const project = ref<ProjectRecord | null>(null)
 const title = ref('')
 const manualSummary = ref('')
 const aiAnalysis = ref('')
-const shooting = ref<ProjectShooting>({ start_at: null, end_at: null, location: '', person: '', kind: '', keywords: [] })
+const shooting = ref<ProjectShooting>({ start_at: null, end_at: null, location: '', person: '', kind: '' })
 const workflowBusy = ref(false)
 const shootingError = ref('')
 const workflowInputFocused = ref(false)
@@ -129,7 +129,7 @@ async function loadProject() {
     title.value = result.title
     manualSummary.value = result.manual_summary ?? ''
     aiAnalysis.value = result.ai_analysis ?? ''
-    shooting.value = result.shooting ? { ...result.shooting, keywords: [...(result.shooting.keywords ?? [])] } : { start_at: null, end_at: null, location: '', person: '', kind: '', keywords: [] }
+    shooting.value = result.shooting ? { ...result.shooting } : { start_at: null, end_at: null, location: '', person: '', kind: '' }
     coverEmoji.value = result.cover_emoji
     coverImageKey.value = result.cover_image_key
     coverFileName.value = result.cover_file_name

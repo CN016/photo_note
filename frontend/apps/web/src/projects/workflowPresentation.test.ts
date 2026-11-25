@@ -14,7 +14,6 @@ const shooting: ProjectShooting = {
   location: ' 江边公园 ',
   person: ' 九九 ',
   kind: 'photo',
-  keywords: ['侧逆光'],
 }
 
 describe('策划工作流展示', () => {

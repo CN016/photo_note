@@ -145,16 +145,9 @@ func checkSchema(ctx context.Context, connection *gorm.DB) error {
 			return fmt.Errorf("PostgreSQL schema 缺少 projects.manual_summary，请先执行 backend/migrations/000027_project_summary.sql")
 		}
 		if name == "projects" {
-			for _, column := range []string{"status", "shoot_start_at", "shoot_end_at", "shoot_location", "shoot_person", "shoot_kind", "shoot_keywords", "schedule_id", "schedule_owned", "schedule_fingerprint", "ai_analysis"} {
+			for _, column := range []string{"status", "shoot_start_at", "shoot_end_at", "shoot_location", "shoot_person", "shoot_kind", "schedule_id", "schedule_owned", "schedule_fingerprint", "ai_analysis"} {
 				if !connection.WithContext(ctx).Migrator().HasColumn(table, column) {
-					return fmt.Errorf("PostgreSQL schema 缺少策划流程字段，请按顺序执行 backend/migrations/000028_project_workflow.sql 和 backend/migrations/000031_inspiration_tag_taxonomy.sql")
-				}
-			}
-		}
-		if name == "tags" {
-			for _, column := range []string{"tag_type", "category"} {
-				if !connection.WithContext(ctx).Migrator().HasColumn(table, column) {
-					return fmt.Errorf("PostgreSQL schema 缺少标签分类字段，请先执行 backend/migrations/000031_inspiration_tag_taxonomy.sql")
+					return fmt.Errorf("PostgreSQL schema 缺少策划流程字段，请先执行 backend/migrations/000028_project_workflow.sql")
 				}
 			}
 		}

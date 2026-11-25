@@ -23,14 +23,10 @@ export interface UserProfile {
   updated_at: string
 }
 
-/** 灵感标签：系统预设全局共享，自定义标签归属当前用户；仅暴露业务 UUID 与展示数据。 */
+/** 当前账号可维护的灵感标签，只含业务 UUID 和展示名称。 */
 export interface TagRecord {
   business_id: string
   content: string
-  tag_type: 'system' | 'custom'
-  category: 'subject' | 'composition' | 'lighting' | 'style' | 'custom'
-  usage_count: number
-  last_used_at?: string | null
   /** 根据自动标签记录推导的来源；旧服务端可能不返回。 */
   source?: 'manual' | 'ai' | 'mixed' | 'unused'
   created_at: string
@@ -316,7 +312,6 @@ export interface ProjectShooting {
   location: string
   person: string
   kind: '' | 'photo' | 'video'
-  keywords: string[]
 }
 export type ProjectStatus = 'unfinished' | 'executed' | 'completed'
 export type ProjectStatusCounts = Record<ProjectStatus, number>

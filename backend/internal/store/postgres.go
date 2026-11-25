@@ -164,50 +164,41 @@ func (store *PostgresStore) UpdateStatisticsChartMode(ctx context.Context, userI
 	return store.FindUserByBusinessID(ctx, userID)
 }
 
-// ListTags 返回全局系统预设和当前用户私有自定义标签，并统计当前用户的实际引用频次。
+// ListTags 按当前用户隔离地分页查询标签，并单独统计匹配总数用于稳定分页响应。
 func (store *PostgresStore) ListTags(ctx context.Context, userID uuid.UUID, search string, offset, limit int) ([]model.Tag, int64, error) {
 	scope, err := tenant.Require(ctx)
 	if err != nil {
 		return nil, 0, err
 	}
-	systemOwner := uuid.Nil.String()
-	visible := `((t.orgid = -1 AND t.user_id = ?::uuid AND t.tag_type = 'system') OR (t.orgid = ? AND t.user_id = ? AND t.tag_type = 'custom'))`
-	countArgs := []any{systemOwner, scope.OrgID, userID}
-	countSQL := `SELECT count(*) FROM tags t WHERE ` + visible
+	query := store.db.WithContext(ctx).Model(&model.Tag{}).Where("user_id = ?", userID)
 	if search != "" {
 		pattern := "%" + strings.NewReplacer("\\", "\\\\", "%", "\\%", "_", "\\_").Replace(search) + "%"
-		countSQL += " AND t.content ILIKE ? ESCAPE E'\\\\'"
-		countArgs = append(countArgs, pattern)
+		query = query.Where("content ILIKE ? ESCAPE E'\\\\'", pattern)
 	}
 	var total int64
-	if err := store.db.WithContext(ctx).Raw(countSQL, countArgs...).Scan(&total).Error; err != nil {
+	if err := query.Count(&total).Error; err != nil {
 		return nil, 0, persistenceError(err)
 	}
 	type tagUsageRow struct {
-		ID         int        `gorm:"column:id"`
-		OrgID      int64      `gorm:"column:orgid"`
-		BusinessID uuid.UUID  `gorm:"column:business_id"`
-		CreatedAt  time.Time  `gorm:"column:created_at"`
-		UpdatedAt  time.Time  `gorm:"column:updated_at"`
-		UserID     uuid.UUID  `gorm:"column:user_id"`
-		Content    string     `gorm:"column:content"`
-		TagType    string     `gorm:"column:tag_type"`
-		Category   string     `gorm:"column:category"`
-		Source     string     `gorm:"column:source"`
-		UsageCount int64      `gorm:"column:usage_count"`
-		LastUsedAt *time.Time `gorm:"column:last_used_at"`
+		ID         int       `gorm:"column:id"`
+		OrgID      int64     `gorm:"column:orgid"`
+		BusinessID uuid.UUID `gorm:"column:business_id"`
+		CreatedAt  time.Time `gorm:"column:created_at"`
+		UpdatedAt  time.Time `gorm:"column:updated_at"`
+		UserID     uuid.UUID `gorm:"column:user_id"`
+		Content    string    `gorm:"column:content"`
+		Source     string    `gorm:"column:source"`
 	}
 	rows := make([]tagUsageRow, 0)
-	searchSQL, args := "", []any{scope.OrgID, userID, systemOwner, scope.OrgID, userID}
+	searchSQL, args := "", []any{scope.OrgID, userID}
 	if search != "" {
 		searchSQL = " AND t.content ILIKE ? ESCAPE E'\\\\'"
 		args = append(args, search)
 	}
 	args = append(args, offset, limit)
-	// 系统标签固定使用 orgid=-1 和全零 user_id；用户自定义标签仍按组织与创建者隔离。
+	// 自动标签记录与 tag_ids 分离保存，因此可按标签内容推导 AI、人工和混合来源，不新增标签来源列。
 	if err := store.db.WithContext(ctx).Raw(`
 		SELECT t.id,t.orgid,t.business_id,t.created_at,t.updated_at,t.user_id,t.content,
-		       t.tag_type,t.category,COALESCE(usage.usage_count,0) AS usage_count,usage.last_used_at,
 		       CASE
 		         WHEN usage.has_ai AND usage.has_manual THEN 'mixed'
 		         WHEN usage.has_ai THEN 'ai'
@@ -216,9 +207,7 @@ func (store *PostgresStore) ListTags(ctx context.Context, userID uuid.UUID, sear
 		       END AS source
 		FROM tags t
 		LEFT JOIN LATERAL (
-		    SELECT count(DISTINCT i.business_id) AS usage_count,
-		           max(i.updated_at) AS last_used_at,
-		           bool_or(assignment.auto_assigned) AS has_ai,
+		    SELECT bool_or(assignment.auto_assigned) AS has_ai,
 		           bool_or(NOT assignment.auto_assigned) AS has_manual
 		    FROM inspirations i
 		    CROSS JOIN LATERAL (
@@ -228,26 +217,18 @@ func (store *PostgresStore) ListTags(ctx context.Context, userID uuid.UUID, sear
 		            WHERE auto_tag->>'name' = t.content
 		        ) AS auto_assigned
 		    ) assignment
-		    WHERE i.orgid = ? AND i.user_id = ? AND t.business_id = ANY(i.tag_ids)
+		    WHERE i.orgid = t.orgid AND i.user_id = t.user_id AND t.business_id = ANY(i.tag_ids)
 		) usage ON TRUE
-		WHERE ((t.orgid = -1 AND t.user_id = ?::uuid AND t.tag_type = 'system') OR (t.orgid = ? AND t.user_id = ? AND t.tag_type = 'custom'))`+searchSQL+`
-		ORDER BY CASE WHEN t.tag_type = 'system' THEN 0 ELSE 1 END,
-		         CASE t.category WHEN 'subject' THEN 0 WHEN 'composition' THEN 1 WHEN 'lighting' THEN 2 WHEN 'style' THEN 3 ELSE 4 END,
-		         usage.usage_count DESC,usage.last_used_at DESC NULLS LAST,t.created_at ASC,t.business_id ASC
+		WHERE t.orgid = ? AND t.user_id = ?`+searchSQL+`
+		ORDER BY t.created_at DESC,t.business_id DESC
 		OFFSET ? LIMIT ?`, args...).Scan(&rows).Error; err != nil {
 		return nil, 0, persistenceError(err)
 	}
 	items := make([]model.Tag, 0, len(rows))
 	for _, row := range rows {
 		items = append(items, model.Tag{
-			BaseModel:  model.BaseModel{ID: row.ID, OrgID: row.OrgID, BusinessID: row.BusinessID, CreatedAt: row.CreatedAt, UpdatedAt: row.UpdatedAt},
-			UserID:     row.UserID,
-			Content:    row.Content,
-			TagType:    row.TagType,
-			Category:   row.Category,
-			Source:     row.Source,
-			UsageCount: row.UsageCount,
-			LastUsedAt: row.LastUsedAt,
+			BaseModel: model.BaseModel{ID: row.ID, OrgID: row.OrgID, BusinessID: row.BusinessID, CreatedAt: row.CreatedAt, UpdatedAt: row.UpdatedAt},
+			UserID:    row.UserID, Content: row.Content, Source: row.Source,
 		})
 	}
 	return items, total, nil
@@ -255,12 +236,6 @@ func (store *PostgresStore) ListTags(ctx context.Context, userID uuid.UUID, sear
 
 // CreateTag 保存归属于当前用户业务 UUID 的标签。
 func (store *PostgresStore) CreateTag(ctx context.Context, tag *model.Tag) error {
-	if tag.TagType == "" {
-		tag.TagType = "custom"
-	}
-	if tag.Category == "" {
-		tag.Category = "custom"
-	}
 	if err := store.db.WithContext(ctx).Create(tag).Error; err != nil {
 		return persistenceError(err)
 	}
@@ -319,27 +294,18 @@ func (store *PostgresStore) DeleteTagAndCleanInspirations(ctx context.Context, u
 	})
 }
 
-// ValidateTagOwnership 确认标签是全局系统预设或属于当前用户，不创建数据库外键。
+// ValidateTagOwnership 确认所有标签业务 UUID 均存在且属于同一当前用户，不创建数据库外键。
 func (store *PostgresStore) ValidateTagOwnership(ctx context.Context, userID uuid.UUID, tagIDs []uuid.UUID) error {
 	if len(tagIDs) == 0 {
 		return nil
 	}
-	if _, err := tenant.Require(ctx); err != nil {
-		return err
-	}
-	var customCount, systemCount int64
+	var count int64
 	if err := store.db.WithContext(ctx).Model(&model.Tag{}).
-		Where("business_id IN ? AND user_id = ? AND tag_type = 'custom'", tagIDs, userID).
-		Distinct("business_id").Count(&customCount).Error; err != nil {
+		Where("user_id = ? AND business_id IN ?", userID, tagIDs).Count(&count).Error; err != nil {
 		return persistenceError(err)
 	}
-	if err := store.db.WithContext(tenant.System(ctx)).Model(&model.Tag{}).
-		Where("business_id IN ? AND user_id = ? AND tag_type = 'system'", tagIDs, uuid.Nil).
-		Distinct("business_id").Count(&systemCount).Error; err != nil {
-		return persistenceError(err)
-	}
-	if customCount+systemCount != int64(len(tagIDs)) {
-		return fault.InvalidField("tag_ids", "存在无效、重复或无权使用的标签")
+	if count != int64(len(tagIDs)) {
+		return fault.InvalidField("tag_ids", "存在不存在或不属于当前用户的标签")
 	}
 	return nil
 }
@@ -749,9 +715,6 @@ func (store *PostgresStore) FindInspirationByBusinessID(ctx context.Context, use
 
 // populateInspirationTagNames 批量读取当前用户标签名称，并按灵感图 tag_ids 的顺序填充展示字段。
 func populateInspirationTagNames(ctx context.Context, db *gorm.DB, userID uuid.UUID, items []model.Inspiration) error {
-	if _, err := tenant.Require(ctx); err != nil {
-		return err
-	}
 	ids := make([]uuid.UUID, 0)
 	seen := make(map[uuid.UUID]struct{})
 	for index := range items {
@@ -771,16 +734,11 @@ func populateInspirationTagNames(ctx context.Context, db *gorm.DB, userID uuid.U
 	if len(ids) == 0 {
 		return nil
 	}
-	var customTags, systemTags []model.Tag
-	if err := db.WithContext(ctx).Select("business_id", "content", "tag_type", "category").
-		Where("business_id IN ? AND user_id = ? AND tag_type = 'custom'", ids, userID).Find(&customTags).Error; err != nil {
+	var tags []model.Tag
+	if err := db.WithContext(ctx).Select("business_id", "content").
+		Where("user_id = ? AND business_id IN ?", userID, ids).Find(&tags).Error; err != nil {
 		return persistenceError(err)
 	}
-	if err := db.WithContext(tenant.System(ctx)).Select("business_id", "content", "tag_type", "category").
-		Where("business_id IN ? AND user_id = ? AND tag_type = 'system'", ids, uuid.Nil).Find(&systemTags).Error; err != nil {
-		return persistenceError(err)
-	}
-	tags := append(customTags, systemTags...)
 	namesByID := make(map[uuid.UUID]string, len(tags))
 	for _, tag := range tags {
 		namesByID[tag.BusinessID] = tag.Content
@@ -848,22 +806,9 @@ func (store *PostgresStore) UpdateInspirationWithTagNames(ctx context.Context, u
 		for key, value := range updates {
 			writeFields[key] = value
 		}
-		systemByName := make(map[string]uuid.UUID)
-		if len(names) > 0 {
-			var systemTags []model.Tag
-			if err := tx.WithContext(tenant.System(ctx)).Where("user_id = ? AND tag_type = 'system' AND content IN ?", uuid.Nil, names).Find(&systemTags).Error; err != nil {
-				return persistenceError(err)
-			}
-			for _, tag := range systemTags {
-				systemByName[tag.Content] = tag.BusinessID
-			}
-		}
 		newTags := make([]model.Tag, 0, len(names))
 		for _, name := range names {
-			if _, system := systemByName[name]; system {
-				continue
-			}
-			newTags = append(newTags, model.Tag{BaseModel: model.BaseModel{BusinessID: uuid.New()}, UserID: userID, Content: name, TagType: "custom", Category: "custom"})
+			newTags = append(newTags, model.Tag{BaseModel: model.BaseModel{BusinessID: uuid.New()}, UserID: userID, Content: name})
 		}
 		if len(newTags) > 0 {
 			if err := tx.Clauses(clause.OnConflict{
@@ -876,19 +821,12 @@ func (store *PostgresStore) UpdateInspirationWithTagNames(ctx context.Context, u
 
 		nameIDs := make(map[string]uuid.UUID, len(names))
 		if len(names) > 0 {
-			var customTags, systemTags []model.Tag
+			var tags []model.Tag
 			if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).
-				Where("user_id = ? AND tag_type = 'custom' AND content IN ?", userID, names).Find(&customTags).Error; err != nil {
+				Where("user_id = ? AND content IN ?", userID, names).Find(&tags).Error; err != nil {
 				return persistenceError(err)
 			}
-			if err := tx.WithContext(tenant.System(ctx)).Clauses(clause.Locking{Strength: "UPDATE"}).
-				Where("user_id = ? AND tag_type = 'system' AND content IN ?", uuid.Nil, names).Find(&systemTags).Error; err != nil {
-				return persistenceError(err)
-			}
-			for _, tag := range customTags {
-				nameIDs[tag.Content] = tag.BusinessID
-			}
-			for _, tag := range systemTags {
+			for _, tag := range tags {
 				nameIDs[tag.Content] = tag.BusinessID
 			}
 		}

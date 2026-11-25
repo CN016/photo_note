@@ -194,12 +194,6 @@ GORM 关联迁移默认可能创建外键；配置 `DisableForeignKeyConstraintW
 
 灵感图列表的 `q` 对原始文件名做不区分大小写的包含匹配；`sort` 支持 `created_desc`（默认）、`created_asc`、`updated_desc`，并与标签筛选及分页在服务端组合执行。`tag_match=any` 命中任一标签，`tag_match=all` 要求同时包含全部标签；未传 `tag_ids` 时不应用标签筛选。
 
-### 灵感图标签分类（4.14.0）
-
-`tags` 增加 `tag_type` 与 `category`。系统标签固定保存在 `orgid=-1`、全零 `user_id`，业务 UUID 与名称全局共享；自定义标签仍保存当前组织和用户 UUID。灵感图标签数组可以同时引用两类标签，服务端按可见范围校验，单图最多 8 个。`GET /tags` 返回 `tag_type`、`category`、`usage_count` 和 `last_used_at`；自定义标签按使用次数和最近使用时间排序。旧 `tag_names` 接口优先复用系统预设，再复用或创建当前用户自定义标签。
-
-策划 `projects.shoot_keywords` 保存拍摄关键词，最多 20 项；它不参与档期同步指纹。迁移为 `000031_inspiration_tag_taxonomy.sql`。
-
 ### 5.3 管理工作台
 
 管理页面使用 `/atelier-7f3c9a2e` 路由；以下接口均要求有效 Access Token，并在每次请求时从数据库重新读取当前用户的管理员标记。普通用户返回 `403`；撤销角色后下一次请求即拒绝。管理员只能通过用户角色接口调整管理员标记；注册和个人资料更新不能授予权限。管理接口只返回必要字段，密钥配置只返回 `is_configured`，不回显密钥原值。秘密配置不得设为公开；数据库保护最后一位管理员不被降权。

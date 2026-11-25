@@ -14,19 +14,16 @@ import { createLongPress } from '../context-menu/longPress'
 import { gallerySnapshot, saveGallerySnapshot, clearGallerySnapshot } from '../context-menu/galleryNavigation'
 import type { InspirationProjectSummary } from '../api/types'
 import { useI18n } from 'vue-i18n'
-import { ElMessage } from 'element-plus'
-import { ArrowDown, Check, PictureFilled, Search, Sort } from '@element-plus/icons-vue'
+import { ArrowDown, PictureFilled, Search, Sort } from '@element-plus/icons-vue'
 import CreateFab from '../components/CreateFab.vue'
 import InspirationThumbnail from '../components/InspirationThumbnail.vue'
 import InspirationLibraryTools from '../components/InspirationLibraryTools.vue'
 import GallerySearchPanel from '../components/GallerySearchPanel.vue'
-import InspirationTagPicker from '../components/InspirationTagPicker.vue'
 import { useAuthStore } from '../stores/auth'
 import type { InspirationLibraryFilters } from '../api/types'
 import { api } from '../api/client'
 import { ApiError, type InspirationRecord, type TagRecord } from '../api/types'
-import { createGallerySearchState, gallerySearchFromTagQuery, gallerySearchHasValue, inspirationRequestOptions, type GallerySort, type GallerySearchState } from '../gallerySearch'
-import { mergeTagIDs } from '../tags/tagSelection'
+import { createGallerySearchState, gallerySearchHasValue, inspirationRequestOptions, type GallerySort, type GallerySearchState } from '../gallerySearch'
 
 const { t, locale } = useI18n()
 const router = useRouter()
@@ -39,11 +36,6 @@ onBeforeRouteLeave(to => { savedScroll = window.scrollY; openedImageID = to.name
 onDeactivated(() => { active.value = false; openVersion += 1; openingID.value = ''; gesture.cancel(); associationVersion += 1 })
 onActivated(() => {
   active.value = true
-  if (consumeRouteTagFilter()) {
-    window.scrollTo({ top: 0, behavior: 'instant' as ScrollBehavior })
-    void loadPage(1)
-    return
-  }
   window.scrollTo({ top: savedScroll, behavior: 'instant' as ScrollBehavior })
   // 详情可能保存了图片或标签，只更新对应记录；不清空列表、不重置分页或重新下载未变化的缩略图。
   if (openedImageID) {
@@ -125,7 +117,7 @@ function openRelated(projectID: string, x: number, y: number) {
   void router.push({ path: `/projects/${projectID}`, query: { from: 'gallery', returnKey: key, mode: 'read' } })
 }
 function touchStart(event: TouchEvent) {
-  if (batchMode.value || event.touches.length !== 1) { gesture.cancel(); return }
+  if (event.touches.length !== 1) { gesture.cancel(); return }
   touchedCard = (event.target as Element).closest<HTMLElement>('[data-inspiration-card]')
   const touch = event.touches[0]
   if (touchedCard && touch) gesture.start(touch.clientX, touch.clientY)
@@ -138,48 +130,7 @@ function touchMove(event: TouchEvent) {
 function interceptClick(event: MouseEvent) { if (gesture.consumeClick()) { event.preventDefault(); event.stopPropagation() } }
 
 const openingID = ref('')
-const batchMode = ref(false)
-const batchSelectedIDs = ref<string[]>([])
-const batchPickerOpen = ref(false)
-const batchSaving = ref(false)
-const batchError = ref('')
 let openVersion = 0
-
-function toggleBatchMode(): void {
-  batchMode.value = !batchMode.value
-  batchSelectedIDs.value = []
-  batchPickerOpen.value = false
-  batchError.value = ''
-}
-
-function toggleBatchSelection(id: string): void {
-  batchSelectedIDs.value = batchSelectedIDs.value.includes(id)
-    ? batchSelectedIDs.value.filter(item => item !== id)
-    : [...batchSelectedIDs.value, id]
-}
-
-function toggleAllVisible(): void {
-  batchSelectedIDs.value = batchSelectedIDs.value.length === items.value.length
-    ? []
-    : items.value.map(item => item.business_id)
-}
-
-function openBatchTagPicker(): void {
-  batchError.value = ''
-  batchPickerOpen.value = true
-}
-
-/** 多选模式拦截卡片导航，普通模式继续复用原有详情预加载交接。 */
-function handleCardClick(event: MouseEvent, item: InspirationRecord): void {
-  if (!batchMode.value) {
-    void openDetail(event, item)
-    return
-  }
-  event.preventDefault()
-  event.stopPropagation()
-  toggleBatchSelection(item.business_id)
-}
-
 /** 点击只复用列表已发起的后台任务，不创建详情接口、下载或解码任务；未完成时等待同一 promise。 */
 async function openDetail(event: MouseEvent, item: InspirationRecord) {
   if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return
@@ -204,27 +155,7 @@ async function openDetail(event: MouseEvent, item: InspirationRecord) {
 }
 const items = ref<InspirationRecord[]>([])
 const tags = ref<TagRecord[]>([])
-
-/** 从标签胶囊进入图库时读取重复 tag_ids，并默认使用交集筛选。 */
-function initialGallerySearch(): GallerySearchState {
-  return gallerySearchFromTagQuery(route.query.tag_ids, route.query.tag_match)
-}
-
-/** 消费详情页标签胶囊的筛选参数；筛选已进入页面状态后清理 URL，后续条件由面板维护。 */
-function consumeRouteTagFilter(): boolean {
-  const state = initialGallerySearch()
-  if (!state.tagIds.length) return false
-  gallerySearch.value = state
-  libraryFilters.value = {}
-  sort.value = 'created_desc'
-  batchMode.value = false
-  batchSelectedIDs.value = []
-  batchPickerOpen.value = false
-  void router.replace({ path: '/inspirations' })
-  return true
-}
-
-const gallerySearch = ref<GallerySearchState>(initialGallerySearch())
+const gallerySearch = ref<GallerySearchState>(createGallerySearchState())
 const searchQuery = computed({ get: () => gallerySearch.value.query, set: value => { gallerySearch.value = { ...gallerySearch.value, query: value } } })
 const selectedTagIDs = computed({ get: () => gallerySearch.value.tagIds, set: value => { gallerySearch.value = { ...gallerySearch.value, tagIds: value } } })
 const tagMatch = computed({ get: () => gallerySearch.value.tagMatch, set: value => { gallerySearch.value = { ...gallerySearch.value, tagMatch: value } } })
@@ -292,94 +223,6 @@ async function loadTags() {
   finally { if(version === tagsVersion) tagsLoading.value = false }
 }
 
-/** 批量选择弹窗创建自定义标签，仅写入当前用户个人标签池。 */
-async function createBatchCustomTag(name: string): Promise<TagRecord | null> {
-  const normalized = name.trim()
-  const existing = tags.value.find(tag => tag.content === normalized)
-  if (existing) return existing
-  try {
-    const created = await api.createTag(normalized)
-    tags.value = [...tags.value, created]
-    return created
-  } catch {
-    batchError.value = t('gallery.batchTagSaveError')
-    return null
-  }
-}
-
-/** 重命名个人标签后同步列表卡片中已显示的标签名称。 */
-async function renameBatchCustomTag(tag: TagRecord, name: string): Promise<boolean> {
-  if (tag.tag_type !== 'custom') return false
-  try {
-    const updated = await api.updateTag(tag.business_id, name.trim())
-    tags.value = tags.value.map(item => item.business_id === updated.business_id ? updated : item)
-    items.value = items.value.map(item => {
-      const index = item.tag_ids.indexOf(updated.business_id)
-      if (index < 0) return item
-      const names = [...(item.tag_names ?? [])]
-      names[index] = updated.content
-      return { ...item, tag_names: names }
-    })
-    return true
-  } catch {
-    batchError.value = t('gallery.batchTagSaveError')
-    return false
-  }
-}
-
-/** 删除个人标签时由后端清理所有资源引用，再刷新当前标签池和可见列表。 */
-async function deleteBatchCustomTag(tag: TagRecord): Promise<boolean> {
-  if (tag.tag_type !== 'custom') return false
-  try {
-    await api.deleteTag(tag.business_id)
-    tags.value = tags.value.filter(item => item.business_id !== tag.business_id)
-    await loadPage(1)
-    return true
-  } catch {
-    batchError.value = t('gallery.batchTagSaveError')
-    return false
-  }
-}
-
-/** 将勾选标签追加到所有选中图片；超过 8 个上限的图片跳过，失败项保留选中供重试。 */
-async function confirmBatchTags(ids: string[]): Promise<void> {
-  if (!ids.length || batchSaving.value) {
-    batchPickerOpen.value = false
-    return
-  }
-  const selected = items.value.filter(item => batchSelectedIDs.value.includes(item.business_id))
-  batchSaving.value = true
-  batchError.value = ''
-  let saved = 0
-  let skipped = 0
-  let failed = 0
-  for (const item of selected) {
-    const merged = mergeTagIDs(item.tag_ids, ids, tags.value)
-    if (merged.overflow) {
-      skipped += 1
-      continue
-    }
-    try {
-      const updated = await api.updateInspirationTagIDs(item.business_id, merged.ids)
-      const index = items.value.findIndex(current => current.business_id === item.business_id)
-      if (index >= 0) items.value[index] = { ...items.value[index]!, tag_ids: updated.tag_ids, tag_names: updated.tag_names, updated_at: updated.updated_at }
-      saved += 1
-    } catch {
-      failed += 1
-    }
-  }
-  batchSaving.value = false
-  batchPickerOpen.value = false
-  if (saved) ElMessage({ message: t('gallery.batchTagSaved', { count: saved }), type: 'success', grouping: true, customClass: 'editor-glass-message' })
-  if (skipped) ElMessage({ message: t('gallery.batchTagSkipped', { count: skipped }), type: 'warning', grouping: true, customClass: 'editor-glass-message' })
-  if (failed) {
-    batchError.value = t('gallery.batchTagSaveError')
-    ElMessage({ message: batchError.value, type: 'error', grouping: true, customClass: 'editor-glass-message' })
-    return
-  }
-  if (saved && !skipped) toggleBatchMode()
-}
-
 /** 筛选条件变化后短暂合并连续输入，并从第一页重新查询。 */
 watch([gallerySearch, sort, libraryFilters], () => {
   if (restoring || !active.value) return
@@ -402,7 +245,7 @@ function setSort(value: string) {
 /** 重试只提交当前图片任务，等待后端确认后刷新列表，防止重复点击。 */
 
 watch(() => [auth.orgid, auth.user?.business_id, auth.sessionVersion], () => {
-  openVersion += 1; openingID.value = ''; clearGallerySnapshot(); associationVersion += 1; requestVersion += 1; items.value = []; total.value = 0; libraryFilters.value = {}; gallerySearch.value = initialGallerySearch(); tags.value = []; batchMode.value = false; batchSelectedIDs.value = []; batchPickerOpen.value = false
+  openVersion += 1; openingID.value = ''; clearGallerySnapshot(); associationVersion += 1; requestVersion += 1; items.value = []; total.value = 0; libraryFilters.value = {}; gallerySearch.value = createGallerySearchState(); tags.value = []
   if (active.value && route.name === 'gallery') { void loadPage(); void loadTags() }
 })
 
@@ -417,7 +260,6 @@ onMounted(async () => {
   })
   window.addEventListener('scroll', gesture.cancel, true)
   void loadTags()
-  if (consumeRouteTagFilter()) { void loadPage(1); return }
   const saved = gallerySnapshot(scopeKey(), history.state.galleryReturnKey)
   if (!saved || saved.key !== history.state.galleryReturnKey || saved.position !== history.state.position) { void loadPage(); return }
   restoring = true
@@ -466,15 +308,6 @@ onBeforeUnmount(() => { alive = false; inspirationDetails.clear(); openVersion +
 
       <GallerySearchPanel v-model="gallerySearch" :tags="tags" :tags-loading="tagsLoading" />
 
-      <section v-if="items.length" class="batch-toolbar" :aria-label="t('gallery.batchSelection')">
-        <button type="button" class="batch-mode-toggle" :class="{ active: batchMode }" @click="toggleBatchMode">{{ batchMode ? t('gallery.exitBatch') : t('gallery.enterBatch') }}</button>
-        <template v-if="batchMode">
-          <span>{{ t('gallery.batchSelected', { count: batchSelectedIDs.length }) }}</span>
-          <button type="button" class="batch-secondary" @click="toggleAllVisible">{{ batchSelectedIDs.length === items.length ? t('gallery.batchClearAll') : t('gallery.batchSelectAll') }}</button>
-          <button type="button" class="batch-primary" :disabled="!batchSelectedIDs.length || batchSaving" @click="openBatchTagPicker">{{ t('gallery.batchAddTags') }}</button>
-        </template>
-      </section>
-
       <div v-if="items.length" class="gallery-meta">
         <span>{{ t('gallery.count', { count: total }) }}</span>
         <el-dropdown trigger="click" :disabled="gallerySearch.kind === 'color'" @command="setSort">
@@ -496,11 +329,8 @@ onBeforeUnmount(() => { alive = false; inspirationDetails.clear(); openVersion +
       <div v-if="error" class="inline-error" role="alert"><span>{{ error }}</span><el-button text :disabled="loading" @click="loadPage(page)">{{ t('gallery.retry') }}</el-button></div>
 
       <section v-if="items.length" class="inspiration-grid" :aria-label="t('gallery.title')">
-        <article v-for="(item, index) in items" :key="item.business_id" class="inspiration-card" :class="{ 'is-batch': batchMode, 'is-batch-selected': batchSelectedIDs.includes(item.business_id) }" tabindex="0" :data-inspiration-card="item.business_id" :style="{ '--card-index': index % 8 }">
-          <button v-if="batchMode" type="button" class="batch-check" :class="{ selected: batchSelectedIDs.includes(item.business_id) }" :aria-pressed="batchSelectedIDs.includes(item.business_id)" :aria-label="t('gallery.batchChoose', { name: item.file_name || t('gallery.untitled') })" @click.stop.prevent="toggleBatchSelection(item.business_id)">
-            <el-icon v-if="batchSelectedIDs.includes(item.business_id)"><Check /></el-icon>
-          </button>
-          <RouterLink class="inspiration-link" @click.capture="handleCardClick($event, item)" :data-shared-transition="item.business_id" :to="`/inspirations/${item.business_id}`" :aria-label="t('gallery.openImage', { name: item.file_name || t('gallery.untitled') })">
+        <article v-for="(item, index) in items" :key="item.business_id" class="inspiration-card" tabindex="0" :data-inspiration-card="item.business_id" :style="{ '--card-index': index % 8 }">
+          <RouterLink class="inspiration-link" @click.capture="openDetail($event, item)" :data-shared-transition="item.business_id" :to="`/inspirations/${item.business_id}`" :aria-label="t('gallery.openImage', { name: item.file_name || t('gallery.untitled') })">
             <div class="gallery-image-frame"><InspirationThumbnail :record="item" show-anchors detail-transition /></div>
             <p v-if="imageNote(item.data)" class="gallery-image-note" :title="imageNote(item.data)">{{ imageNote(item.data) }}</p>
           </RouterLink>
@@ -523,17 +353,6 @@ onBeforeUnmount(() => { alive = false; inspirationDetails.clear(); openVersion +
 
       <InspirationLibraryTools ref="libraryTools" v-model:filters="libraryFilters" :revision="libraryRevision" />
     </main></ContentZoom>
-    <InspirationTagPicker
-      v-model="batchPickerOpen"
-      :selected-ids="[]"
-      :tags="tags"
-      :busy="batchSaving"
-      :error="batchError"
-      :on-create-custom="createBatchCustomTag"
-      :on-rename-custom="renameBatchCustomTag"
-      :on-delete-custom="deleteBatchCustomTag"
-      @confirm="confirmBatchTags"
-    />
     <CreateFab :label="t('gallery.newImage')" to="/inspirations/new" />
     <footer class="workspace-footer"><span>{{ t('common.brand') }}</span><span>{{ t('common.footer') }}</span></footer>
   </div>
@@ -542,15 +361,6 @@ onBeforeUnmount(() => { alive = false; inspirationDetails.clear(); openVersion +
 /* 手机优先露出搜索与图片；桌面按可用区域增加列数，卡片本身不增加外框。 */
 .gallery-main { padding-top: 14px; }
 .gallery-subnav { margin-top: 0; }
-.batch-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 16px 0 4px; color: var(--muted); font-size: 12px; }
-.batch-toolbar button { min-height: 38px; padding: 0 14px; border: 1px solid color-mix(in srgb, var(--ink) 10%, transparent); border-radius: 999px; background: color-mix(in srgb, var(--surface) 62%, transparent); color: var(--ink-soft); cursor: pointer; font: inherit; }
-.batch-toolbar button:hover:not(:disabled), .batch-toolbar button.active { border-color: color-mix(in srgb, var(--accent) 28%, var(--line)); color: var(--accent-hover); }
-.batch-toolbar .batch-primary { border-color: color-mix(in srgb, var(--accent) 32%, var(--line)); background: color-mix(in srgb, var(--accent) 12%, var(--surface)); color: var(--accent-hover); font-weight: 600; }
-.batch-toolbar button:disabled { cursor: not-allowed; opacity: .48; }
-.batch-toolbar span { margin-left: auto; }
-.batch-check { position: absolute; z-index: 4; top: 10px; right: 10px; display: grid; width: 28px; height: 28px; place-items: center; padding: 0; border: 2px solid rgb(255 255 255 / 90%); border-radius: 50%; background: rgb(28 39 33 / 34%); color: #fff; cursor: pointer; box-shadow: 0 3px 12px rgb(0 0 0 / 20%); }
-.batch-check.selected { border-color: #fff; background: var(--accent); }
-.inspiration-card.is-batch-selected :deep(.thumbnail-frame) { outline: 3px solid var(--accent); outline-offset: -3px; }
 .gallery-meta { justify-content: space-between; margin: 10px 0 12px; }
 .gallery-sort-button { display: inline-flex; min-height: 38px; align-items: center; gap: 6px; padding: 0 8px; border: 0; border-radius: 999px; background: transparent; color: var(--muted); font: inherit; font-size: 12px; cursor: pointer; }
 .gallery-sort-button:hover:not(:disabled), .gallery-sort-button:focus-visible { background: var(--surface-soft); color: var(--ink); outline: none; }

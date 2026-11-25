@@ -66,7 +66,6 @@ declare module 'vue' {
     ImageAnchorMarker: typeof import('./src/components/ImageAnchorMarker.vue')['default']
     InspirationGoalReminder: typeof import('./src/components/InspirationGoalReminder.vue')['default']
     InspirationLibraryTools: typeof import('./src/components/InspirationLibraryTools.vue')['default']
-    InspirationTagPicker: typeof import('./src/components/InspirationTagPicker.vue')['default']
     InspirationThumbnail: typeof import('./src/components/InspirationThumbnail.vue')['default']
     LanguageSwitcher: typeof import('./src/components/LanguageSwitcher.vue')['default']
     PaletteSwitcher: typeof import('./src/components/PaletteSwitcher.vue')['default']

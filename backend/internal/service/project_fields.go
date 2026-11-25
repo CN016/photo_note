@@ -7,7 +7,6 @@ import (
 	"unicode/utf8"
 
 	"github.com/google/uuid"
-	"github.com/lib/pq"
 	"github.com/photo-nini/backend/internal/domain/fault"
 	"github.com/photo-nini/backend/internal/model"
 )
@@ -21,26 +20,6 @@ func validateProjectShooting(s *model.ProjectShooting) error {
 	if s.Kind != "" && s.Kind != "photo" && s.Kind != "video" {
 		return fault.InvalidField("shooting.kind", "拍摄类型只能为照片或视频")
 	}
-	keywords := make([]string, 0, len(s.Keywords))
-	seenKeywords := make(map[string]struct{}, len(s.Keywords))
-	for _, raw := range s.Keywords {
-		keyword := strings.TrimSpace(raw)
-		if keyword == "" {
-			continue
-		}
-		if utf8.RuneCountInString(keyword) > 64 {
-			return fault.InvalidField("shooting.keywords", "每个拍摄关键词最多 64 个字符")
-		}
-		if _, exists := seenKeywords[keyword]; exists {
-			continue
-		}
-		seenKeywords[keyword] = struct{}{}
-		keywords = append(keywords, keyword)
-	}
-	if len(keywords) > 20 {
-		return fault.InvalidField("shooting.keywords", "拍摄关键词最多 20 个")
-	}
-	s.Keywords = pq.StringArray(keywords)
 	for _, v := range []*time.Time{s.StartAt, s.EndAt} {
 		if v != nil && (v.IsZero() || v.Year() < 1970 || v.Year() > 9999) {
 			return fault.InvalidField("shooting", "拍摄时间无效")

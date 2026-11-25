@@ -75,15 +75,10 @@ func (User) TableName() string { return "users" }
 // Tag 映射标签表；UserID 保存 users.business_id，不声明 GORM 关系以避免外键生成。
 type Tag struct {
 	BaseModel
-	UserID   uuid.UUID `gorm:"column:user_id;type:uuid;not null;index"`
-	Content  string    `gorm:"column:content;type:varchar(64);not null"`
-	TagType  string    `gorm:"column:tag_type;type:varchar(16);not null;default:'custom'"`
-	Category string    `gorm:"column:category;type:varchar(32);not null;default:'custom'"`
+	UserID  uuid.UUID `gorm:"column:user_id;type:uuid;not null;index"`
+	Content string    `gorm:"column:content;type:varchar(64);not null"`
 	// Source 是查询时根据自动标签记录推导的来源，不持久化到 tags 表。
 	Source string `gorm:"-" json:"source,omitempty"`
-	// UsageCount 与 LastUsedAt 是当前用户引用统计，不持久化到 tags 表。
-	UsageCount int64      `gorm:"-" json:"-"`
-	LastUsedAt *time.Time `gorm:"-" json:"-"`
 }
 
 // TableName 固定标签模型使用与版本化建表 SQL 相同的表名。

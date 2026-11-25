@@ -148,8 +148,6 @@
     "location": "地点",
     "person": "人物称呼",
     "kind": "拍摄类型",
-    "keywords": "拍摄关键词",
-    "keywordsPlaceholder": "输入关键词或从灵感图自动带入",
     "photo": "照片",
     "video": "视频",
     "schedulePreview": "自动档期",

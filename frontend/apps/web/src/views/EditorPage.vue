@@ -2,13 +2,13 @@
 import { loadDetailImage, loadManagedDetailImage, takeDetailRecord } from '../images/detailImages'
 import EditorToolSurface from '../components/EditorToolSurface.vue'
 import ImageAnchorMarker from '../components/ImageAnchorMarker.vue'
-import InspirationTagPicker from '../components/InspirationTagPicker.vue'
 import { captureDetailImage, copyVisibleImage, detailImageReady } from '../motion/imageMotion'
 import {
   PINCH_FULLSCREEN_THRESHOLD, pinchReturnFrame, pinchTargetScale, pinchZoomFrame, pointDistance, shouldReturnFromPinch,
   type PinchFrame, type PinchPoints, type ZoomRect,
 } from '../images/pinchZoom'
 import ContentZoom from '../components/ContentZoom.vue'
+import { createLongPress } from '../context-menu/longPress'
 import { friendlyExtra, formatMetadataValue as formatImageMetadataValue, rawMetadataValue, gpsMapUrl } from './imageMetadataDisplay'
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue'
 import { gsap } from 'gsap'
@@ -17,12 +17,11 @@ import { onBeforeRouteLeave, useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox, type UploadFile } from 'element-plus'
 import { ArrowLeft, ArrowRight, Check, Close, Crop, Delete, Download, FullScreen, MagicStick, Plus, RefreshLeft, RefreshRight, UploadFilled, MoreFilled, Aim, Operation, Document } from '@element-plus/icons-vue'
 import { api as baseApi } from '../api/client'
-import { ApiError, type InspirationImageMetadata, type InspirationRecord, type TagRecord } from '../api/types'
+import { ApiError, type InspirationImageMetadata, type InspirationRecord } from '../api/types'
 import { useAnchorDisplayStore } from '../stores/anchorDisplay'
 import { exportFile, FileExportError } from '../platform'
 import { anchorLabelMaxWidth, anchorNoteLongestLine, anchorNoteTitle, hasAnchorNoteContent, splitAnchorNote, ANCHOR_LABEL_MARKER_OFFSET } from './editorAnchorLayout'
 import { UI_FONT_STACK } from '../uiFont'
-import { MAX_INSPIRATION_TAGS, orderTagIDs } from '../tags/tagSelection'
 import {
   DEFAULT_WATERMARK_SCALE, MAX_WATERMARK_SCALE, MIN_WATERMARK_SCALE,
   clampWatermarkPlacement, clampWatermarkScale, drawWatermark, watermarkPreviewFontSize, type WatermarkPlacement,
@@ -59,7 +58,6 @@ const api = {
     ? baseApi.managementSaveInspiration(id, { data, ...(imageMetadata ? { image_metadata: imageMetadata } : {}) }, managementOrgID.value)
     : baseApi.updateInspiration(id, data, imageMetadata),
   updateInspirationTags: (id: string, names: string[]) => managementMode.value ? baseApi.managementSaveInspiration(id, { tag_names: names }, managementOrgID.value) : baseApi.updateInspirationTags(id, names),
-  updateInspirationTagIDs: (id: string, ids: string[]) => managementMode.value ? baseApi.managementSaveInspiration(id, { tag_ids: ids }, managementOrgID.value) : baseApi.updateInspirationTagIDs(id, ids),
 }
 const isExisting = computed(() => itemId.value.length > 0)
 const isEditing = ref(false)
@@ -69,6 +67,7 @@ const toolPanel = ref<'properties' | 'anchors' | 'adjust' | 'note' | null>(
   route.query.panel === 'properties' && typeof route.params.id === 'string' ? 'properties' : null,
 )
 const tagPickerOpen = ref(false)
+const detailTagQuery = ref('')
 const toolAnchor = shallowRef<HTMLElement>()
 const noteText = computed(() => typeof documentData.value.image_note === 'string' ? documentData.value.image_note : '')
 const noteDraft = ref('')
@@ -231,10 +230,12 @@ const busyPhase = ref('')
 const error = ref('')
 const status = ref('')
 const tagNames = ref<string[]>([])
-const tagOptions = ref<TagRecord[]>([])
+const tagOptions = ref<string[]>([])
 const tagOptionsLoading = ref(false)
 const tagSaving = ref(false)
+const tagSearchError = ref('')
 const tagSaveError = ref('')
+const tagSaveStatus = ref('')
 const colorAnalysis = ref<ColorAnalysis | null>(null)
 const colorAnalysisError = ref('')
 const colorAnalysisSaving = ref(false)
@@ -253,6 +254,7 @@ const watermarkMode = ref(false)
 const watermarkDraft = ref<WatermarkPlacement | null>(null)
 const watermarkMoving = ref<WatermarkMoveDraft | null>(null)
 const exportingImage = ref(false)
+const pressedDetailTag = ref('')
 const historyRevision = ref(0)
 const cropSelection = ref<NormalizedRect | null>(null)
 const fitBox = ref({ width: 0, height: 0 })
@@ -266,7 +268,9 @@ let resizeObserver: ResizeObserver | null = null
 let selectionStart: { x: number; y: number } | null = null
 let colorWritePromise: Promise<void> | null = null
 let tagWritePromise: Promise<void> | null = null
+let tagSearchTimer: number | undefined
 let noteSaveTimer: number | undefined
+let tagSearchVersion = 0
 let suppressAnchorClick = false
 let suppressPreviewClick = false
 let noteSavePromise: Promise<boolean> | null = null
@@ -281,6 +285,10 @@ let zoomClosing = false
 let previousBodyOverflow = ''
 let anchorEditorTracking = false
 let anchorEditorViewportFrame = 0
+const detailTagLongPress = createLongPress(() => {
+  const name = pressedDetailTag.value
+  if (name) void removeDetailTag(name)
+})
 
 /** 详情页只展示已采集到的属性；元数据中的空值不会占据面板空间。 */
 const imageMetadataSections = computed(() => {
@@ -755,7 +763,8 @@ async function loadExisting(): Promise<void> {
     if (version !== decodeVersion) return
     record.value = loaded
     tagNames.value = [...(loaded.tag_names ?? [])]
-    void loadTagOptions()
+    tagOptions.value = [...tagNames.value]
+    searchTagOptions('')
     imageMetadata.value = loaded.image_metadata ?? null
     filename.value = loaded.file_name || t('gallery.untitled')
     documentData.value = parseEditorDocument(loaded.data)
@@ -795,81 +804,62 @@ async function loadExisting(): Promise<void> {
   finally { if (version === decodeVersion) loading.value = false }
 }
 
-/** 当前图片标签按 ID 映射到系统预设或自定义标签，名称接口缺失时使用响应中的名称兜底。 */
-const detailTags = computed<TagRecord[]>(() => {
-  const byID = new Map(tagOptions.value.map(tag => [tag.business_id, tag]))
-  const ids = orderTagIDs(record.value?.tag_ids ?? [], tagOptions.value)
-  return ids.map(id => byID.get(id) ?? {
-    business_id: id,
-    content: tagNames.value[(record.value?.tag_ids ?? []).indexOf(id)] || '',
-    tag_type: 'custom',
-    category: 'custom',
-    usage_count: 0,
-    created_at: '',
-    updated_at: '',
-  })
-})
-
-/** 读取全部系统预设和当前用户私有标签，分页读取避免个人标签池超过单页时缺失。 */
-async function loadTagOptions(): Promise<void> {
-  const current = record.value
-  if (!current) return
-  tagOptionsLoading.value = true
-  try {
-    const collected: TagRecord[] = []
-    let nextPage = 1
-    for (;;) {
-      const result = managementMode.value
-        ? await baseApi.managementInspirationTags(current.business_id, managementOrgID.value, nextPage, 100)
-        : await baseApi.tags(nextPage, 100)
-      collected.push(...result.items)
-      if (!result.items.length || collected.length >= result.total) break
-      nextPage += 1
+/** 通过带用户范围的分页接口远程检索标签名称，保留当前已选项供多选框稳定显示。 */
+function searchTagOptions(query: string): void {
+  if (managementMode.value) { tagOptions.value = [...tagNames.value]; return }
+  if (tagSearchTimer !== undefined) window.clearTimeout(tagSearchTimer)
+  const version = ++tagSearchVersion
+  tagSearchError.value = ''
+  tagSearchTimer = window.setTimeout(async () => {
+    tagOptionsLoading.value = true
+    try {
+      const result = await api.tags(1, 100, query)
+      if (version !== tagSearchVersion) return
+      tagOptions.value = [...new Set([...tagNames.value, ...result.items.map(tag => tag.content)])]
+    } catch (cause) {
+      if (version === tagSearchVersion) {
+        tagSearchError.value = localError(cause, t('editor.tagSearchFailed'))
+      }
+    } finally {
+      if (version === tagSearchVersion) {
+        tagOptionsLoading.value = false
+        tagSearchTimer = undefined
+      }
     }
-    const known = new Map(collected.map(tag => [tag.business_id, tag]))
-    for (const tag of detailTags.value) if (!known.has(tag.business_id)) known.set(tag.business_id, tag)
-    tagOptions.value = [...known.values()]
-  } catch (cause) {
-    tagSaveError.value = localError(cause, t('editor.tagSearchFailed'))
-  } finally {
-    tagOptionsLoading.value = false
-  }
+  }, 160)
 }
 
-/** 标签变更按业务 UUID 提交，系统预设保持全局 ID，自定义标签继续沿用当前用户私有记录。 */
-async function saveTagIDs(ids: string[]): Promise<boolean> {
+/** 标签变更立即提交完整名称集合；失败时恢复服务端确认过的选择，避免误显示未保存内容。 */
+async function saveTagNames(names: string[]): Promise<boolean> {
   const current = record.value
   if (!current || tagSaving.value) return false
-  const byTag = new Map(tagOptions.value.map(tag => [tag.business_id, tag]))
-  const nextIDs = orderTagIDs(ids, tagOptions.value)
-  if (nextIDs.length > MAX_INSPIRATION_TAGS) {
-    tagSaveError.value = t('editor.tagLimit')
-    return false
-  }
-  const previousIDs = [...current.tag_ids]
+  const nextNames = [...new Set(names.map(name => name.trim()).filter(Boolean))]
   const previousNames = [...(current.tag_names ?? [])]
-  if (nextIDs.length === previousIDs.length && nextIDs.every((id, index) => id === previousIDs[index])) {
+  if (nextNames.length === previousNames.length && nextNames.every((name, index) => name === previousNames[index])) {
     tagNames.value = previousNames
     return true
   }
 
-  tagNames.value = nextIDs.map(id => byTag.get(id)?.content ?? previousNames[previousIDs.indexOf(id)] ?? '')
+  tagNames.value = nextNames
+  tagOptions.value = [...new Set([...nextNames, ...tagOptions.value])]
   tagSaveError.value = ''
+  tagSaveStatus.value = ''
   tagSaving.value = true
   let saved = false
   const pending = (async () => {
     try {
-      const updated = await api.updateInspirationTagIDs(current.business_id, nextIDs)
+      const updated = await api.updateInspirationTags(current.business_id, nextNames)
       if (record.value?.business_id === current.business_id) {
-        const savedNames = updated.tag_names ?? tagNames.value
+        const savedNames = updated.tag_names ?? nextNames
         record.value = { ...record.value, tag_ids: updated.tag_ids, tag_names: savedNames, updated_at: updated.updated_at }
         tagNames.value = [...savedNames]
+        tagOptions.value = [...new Set([...savedNames, ...tagOptions.value])]
+        tagSaveStatus.value = t('editor.tagSaved')
       }
       saved = true
     } catch (cause) {
       if (record.value?.business_id === current.business_id) tagNames.value = [...(record.value.tag_names ?? previousNames)]
       tagSaveError.value = localError(cause, t('editor.tagSaveFailed'))
-      ElMessage({ message: tagSaveError.value, type: 'error', grouping: true, customClass: 'editor-glass-message' })
     } finally {
       tagSaving.value = false
     }
@@ -882,107 +872,76 @@ async function saveTagIDs(ids: string[]): Promise<boolean> {
   return saved
 }
 
-/** 点击胶囊旁的删除叉立即解除当前图片绑定，不删除标签池中的可复用标签。 */
-async function removeDetailTag(id: string): Promise<void> {
+/** 长按或键盘删除单个标签，成功后用短提示确认，失败沿用现有标签错误反馈。 */
+async function removeDetailTag(name: string): Promise<void> {
+  pressedDetailTag.value = ''
+  detailTagLongPress.cancel()
   if (tagSaving.value) return
-  const tag = tagOptions.value.find(item => item.business_id === id)
-  const saved = await saveTagIDs((record.value?.tag_ids ?? []).filter(tagID => tagID !== id))
-  if (saved) ElMessage({ message: t('editor.tagRemoved', { name: tag?.content ?? '' }), type: 'success', duration: 1600, grouping: true, customClass: 'editor-glass-message' })
+  const saved = await saveTagNames((record.value?.tag_names ?? []).filter(tag => tag !== name))
+  if (saved) ElMessage({ message: t('editor.tagRemoved', { name }), type: 'success', duration: 1600, grouping: true, customClass: 'editor-glass-message' })
   else if (tagSaveError.value) ElMessage({ message: tagSaveError.value, type: 'error', duration: 2400, grouping: true, customClass: 'editor-glass-message' })
 }
 
-/** 标签设置独立于底部操作栏，通过行尾“添加标签”打开分类选择弹窗。 */
+/** 标签设置独立于底部操作栏，通过行尾“更多”打开透明磨砂选择框。 */
 function toggleTagPicker(): void {
   syncPropertiesQuery(false)
   toolPanel.value = null
   tagPickerOpen.value = !tagPickerOpen.value
-  if (tagPickerOpen.value) {
-    tagSaveError.value = ''
-    void loadTagOptions()
-  }
 }
 
 function closeTagPicker(): void {
   tagPickerOpen.value = false
+  detailTagQuery.value = ''
+}
+
+/** 点击选项切换标签；选择结果立即写入服务端并同步当前详情。 */
+async function toggleDetailTag(name: string): Promise<void> {
+  if (tagSaving.value) return
+  const selected = tagNames.value.includes(name)
+  await saveTagNames(selected ? tagNames.value.filter(tag => tag !== name) : [...tagNames.value, name])
+}
+
+/** 输入新名称后回车或点击新增，空值和重复值不会产生额外请求。 */
+async function addTypedDetailTag(): Promise<void> {
+  const name = detailTagQuery.value.trim()
+  if (!name || tagSaving.value || tagNames.value.includes(name)) return
+  const saved = await saveTagNames([...tagNames.value, name])
+  if (saved) {
+    detailTagQuery.value = ''
+    searchTagOptions('')
+  }
+}
+
+function handleTagQueryInput(value: string | number): void {
+  detailTagQuery.value = String(value)
+  searchTagOptions(detailTagQuery.value)
+}
+
+/** 长按期间显示按压进度；移动超过容差即转为滚动并取消删除。 */
+function beginDetailTagPress(event: PointerEvent, name: string): void {
+  if (tagSaving.value) return
+  pressedDetailTag.value = name
+  detailTagLongPress.start(event.clientX, event.clientY)
+}
+
+function moveDetailTagPress(event: PointerEvent): void {
+  detailTagLongPress.move(event.clientX, event.clientY)
+}
+
+function endDetailTagPress(): void {
+  detailTagLongPress.cancel()
+  pressedDetailTag.value = ''
+}
+
+const detailTagOptions = computed(() => [...new Set([...tagNames.value, ...tagOptions.value])])
+
+watch(tagPickerOpen, async open => {
+  if (!open) return
   tagSaveError.value = ''
-}
-
-/** 确认弹窗时一次性提交系统与自定义标签的并集，重复 ID 已在保存函数中去重。 */
-async function confirmTagSelection(ids: string[]): Promise<void> {
-  if (await saveTagIDs(ids)) closeTagPicker()
-}
-
-/** 新建自定义标签只写入当前用户个人标签池，不自动绑定图片，由弹窗确认统一提交。 */
-async function createCustomTag(name: string): Promise<TagRecord | null> {
-  if (managementMode.value) {
-    tagSaveError.value = t('editor.tagSearchFailed')
-    return null
-  }
-  const normalized = name.trim()
-  const existing = tagOptions.value.find(tag => tag.content === normalized)
-  if (existing) return existing
-  try {
-    const created = await baseApi.createTag(normalized)
-    tagOptions.value = [...tagOptions.value, created]
-    return created
-  } catch (cause) {
-    tagSaveError.value = localError(cause, t('editor.tagSaveFailed'))
-    return null
-  }
-}
-
-/** 重命名自定义标签后同步当前图片展示名称；系统标签不能进入该流程。 */
-async function renameCustomTag(tag: TagRecord, name: string): Promise<boolean> {
-  if (managementMode.value || tag.tag_type !== 'custom') return false
-  try {
-    const updated = await baseApi.updateTag(tag.business_id, name.trim())
-    tagOptions.value = tagOptions.value.map(item => item.business_id === updated.business_id ? updated : item)
-    if (record.value?.tag_ids.includes(updated.business_id)) {
-      const names = [...(record.value.tag_names ?? [])]
-      const index = record.value.tag_ids.indexOf(updated.business_id)
-      if (index >= 0) names[index] = updated.content
-      record.value = { ...record.value, tag_names: names }
-      tagNames.value = names
-    }
-    return true
-  } catch (cause) {
-    tagSaveError.value = localError(cause, t('editor.tagSaveFailed'))
-    return false
-  }
-}
-
-/** 删除个人标签池中的自定义标签，后端同步清理所有图片和作品集引用。 */
-async function deleteCustomTag(tag: TagRecord): Promise<boolean> {
-  if (managementMode.value || tag.tag_type !== 'custom') return false
-  try {
-    await baseApi.deleteTag(tag.business_id)
-    tagOptions.value = tagOptions.value.filter(item => item.business_id !== tag.business_id)
-    if (record.value && record.value.tag_ids.includes(tag.business_id)) {
-      const index = record.value.tag_ids.indexOf(tag.business_id)
-      const ids = record.value.tag_ids.filter(id => id !== tag.business_id)
-      const names = [...(record.value.tag_names ?? [])]
-      if (index >= 0) names.splice(index, 1)
-      record.value = { ...record.value, tag_ids: ids, tag_names: names }
-      tagNames.value = names
-    }
-    return true
-  } catch (cause) {
-    tagSaveError.value = localError(cause, t('editor.tagSaveFailed'))
-    return false
-  }
-}
-
-/** 点击已添加标签进入图库并以该标签作为交集筛选的第一项。 */
-function openTagInGallery(id: string): void {
-  void router.push({ path: '/inspirations', query: { tag_ids: id, tag_match: 'all' } })
-}
-
-/** 将当前图片标签作为拍摄关键词带入策划创建页，正文仍由用户在独立编辑器中维护。 */
-function createProjectFromInspiration(): void {
-  if (!record.value) return
-  const keywords = tagNames.value.map(name => name.trim()).filter(Boolean)
-  void router.push({ path: '/projects', query: { create: '1', keywords } })
-}
+  searchTagOptions(detailTagQuery.value)
+  await nextTick()
+  document.querySelector<HTMLInputElement>('.detail-tag-picker input')?.focus()
+})
 
 watch(isEditing, editing => { if (editing) tagPickerOpen.value = false })
 watch(anchorEditorOpen, async open => {
@@ -1990,6 +1949,8 @@ onBeforeUnmount(() => {
   stopAnchorEditorViewportTracking()
   clearAnchorEditorScrollRestore()
   decodeVersion += 1
+  tagSearchVersion += 1
+  if (tagSearchTimer !== undefined) window.clearTimeout(tagSearchTimer)
   if (noteSaveTimer !== undefined) window.clearTimeout(noteSaveTimer)
   if (frameRequest) cancelAnimationFrame(frameRequest)
   resizeObserver?.disconnect()
@@ -2162,27 +2123,27 @@ onBeforeUnmount(() => {
           </button>
         </div>
         <div class="detail-tag-row" role="group" :aria-label="t('editor.tags')">
-          <div class="detail-tag-list">
-            <span
-              v-for="tag in detailTags"
-              :key="tag.business_id"
-              class="detail-tag-pill"
-              :class="tag.tag_type === 'system' ? 'is-system' : 'is-custom'"
-            >
-              <button type="button" class="detail-tag-open" :aria-label="t('editor.tagFilterHint', { name: tag.content })" @click="openTagInGallery(tag.business_id)">{{ tag.content }}</button>
-              <button type="button" class="detail-tag-remove" :disabled="tagSaving" :aria-label="t('editor.tagRemoveHint', { name: tag.content })" @click="removeDetailTag(tag.business_id)">×</button>
-            </span>
-          </div>
-          <div class="detail-tag-actions">
-            <button type="button" class="detail-tag-more" :aria-expanded="tagPickerOpen" @click="toggleTagPicker">
-              <el-icon aria-hidden="true"><Plus /></el-icon>
-              <span>{{ t('editor.tagMore') }}</span>
-            </button>
-            <button type="button" class="detail-tag-project" :disabled="tagSaving" @click="createProjectFromInspiration">
-              <el-icon aria-hidden="true"><Operation /></el-icon>
-              <span>{{ t('editor.createProjectFromInspiration') }}</span>
-            </button>
-          </div>
+          <button
+            v-for="name in record.tag_names ?? []"
+            :key="name"
+            type="button"
+            class="detail-tag-pill"
+            :class="{ 'is-pressing': pressedDetailTag === name }"
+            :disabled="tagSaving"
+            :aria-label="t('editor.tagDeleteHint', { name })"
+            @pointerdown="beginDetailTagPress($event, name)"
+            @pointermove="moveDetailTagPress"
+            @pointerup="endDetailTagPress"
+            @pointerleave="endDetailTagPress"
+            @pointercancel="endDetailTagPress"
+            @contextmenu.prevent="removeDetailTag(name)"
+            @keydown.delete.prevent="removeDetailTag(name)"
+            @keydown.backspace.prevent="removeDetailTag(name)"
+          >{{ name }}</button>
+          <button type="button" class="detail-tag-more" aria-controls="detail-tag-picker" :aria-expanded="tagPickerOpen" @click="toggleTagPicker">
+            <el-icon aria-hidden="true"><Plus /></el-icon>
+            <span>{{ t('editor.tagMore') }}</span>
+          </button>
         </div>
       </section>
 
@@ -2416,17 +2377,55 @@ onBeforeUnmount(() => {
       </Transition>
     </Teleport>
 
-    <InspirationTagPicker
-      v-model="tagPickerOpen"
-      :selected-ids="record?.tag_ids ?? []"
-      :tags="tagOptions"
-      :busy="tagSaving || tagOptionsLoading"
-      :error="tagSaveError"
-      :on-create-custom="createCustomTag"
-      :on-rename-custom="renameCustomTag"
-      :on-delete-custom="deleteCustomTag"
-      @confirm="confirmTagSelection"
-    />
+    <Teleport to="body">
+      <Transition name="detail-tag-picker">
+        <div v-if="tagPickerOpen" class="detail-tag-picker-layer" @click.self="closeTagPicker">
+          <section
+            id="detail-tag-picker"
+            class="detail-tag-picker"
+            role="dialog"
+            aria-modal="true"
+            :aria-label="t('editor.tags')"
+            :style="detailAmbientStyle"
+            @keydown.esc.prevent="closeTagPicker"
+          >
+            <header class="detail-tag-picker-header">
+              <h2>{{ t('editor.tags') }}</h2>
+              <button type="button" :aria-label="t('common.close')" @click="closeTagPicker"><el-icon aria-hidden="true"><Close /></el-icon></button>
+            </header>
+            <div class="detail-tag-picker-input">
+              <el-input
+                v-model="detailTagQuery"
+                :aria-label="t('editor.tagSearchPlaceholder')"
+                :placeholder="t('editor.tagSearchPlaceholder')"
+                maxlength="50"
+                @update:model-value="handleTagQueryInput"
+                @keyup.enter.prevent="addTypedDetailTag"
+              />
+              <el-button type="primary" :disabled="!detailTagQuery.trim() || tagSaving" :loading="tagSaving" @click="addTypedDetailTag">{{ t('editor.tagAdd') }}</el-button>
+            </div>
+            <p v-if="tagSearchError" class="profile-error" role="alert">{{ tagSearchError }}</p>
+            <p v-else-if="tagSaveError" class="profile-error" role="alert">{{ tagSaveError }}</p>
+            <p v-else-if="tagSaveStatus" class="tag-save-status" role="status">{{ tagSaveStatus }}</p>
+            <div class="detail-tag-picker-list">
+              <button
+                v-for="name in detailTagOptions"
+                :key="name"
+                type="button"
+                :class="{ selected: tagNames.includes(name) }"
+                :aria-pressed="tagNames.includes(name)"
+                :disabled="tagSaving"
+                @click="toggleDetailTag(name)"
+              >
+                <el-icon v-if="tagNames.includes(name)" aria-hidden="true"><Check /></el-icon>
+                <span>{{ name }}</span>
+              </button>
+              <p v-if="!detailTagOptions.length && !tagOptionsLoading">{{ t('editor.tagPickerEmpty') }}</p>
+            </div>
+          </section>
+        </div>
+      </Transition>
+    </Teleport>
 
     <Teleport to="body">
       <div
@@ -2499,21 +2498,34 @@ onBeforeUnmount(() => {
 .detail-note-trigger:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 12px; }
 .detail-note-editor :deep(.el-textarea__inner) { min-height: 32px !important; padding: 4px 0; border: 0; border-radius: 0; background: transparent; box-shadow: none; color: var(--ink); font: inherit; font-size: 14px; line-height: 1.72; }
 .detail-note-editor :deep(.el-textarea__inner:focus) { box-shadow: none; }
-.detail-tag-row { display: grid; gap: 9px; }
-.detail-tag-list { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
-.detail-tag-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
-.detail-tag-pill { display: inline-flex; min-height: 34px; align-items: center; overflow: hidden; border: 1px solid color-mix(in srgb, var(--ink) 10%, transparent); border-radius: 999px; color: var(--ink-soft); }
-.detail-tag-pill.is-system { border-color: color-mix(in srgb, #79a98c 24%, transparent); background: color-mix(in srgb, #dff1e7 74%, transparent); }
-.detail-tag-pill.is-custom { border-color: color-mix(in srgb, var(--ink) 10%, transparent); background: color-mix(in srgb, var(--surface-muted) 62%, transparent); }
-.detail-tag-open { min-height: 34px; padding: 6px 4px 6px 11px; border: 0; background: transparent; color: inherit; cursor: pointer; font: inherit; font-size: 12px; line-height: 1; }
-.detail-tag-remove { display: grid; width: 25px; min-height: 34px; place-items: center; padding: 0; border: 0; border-left: 1px solid color-mix(in srgb, var(--ink) 8%, transparent); background: transparent; color: var(--muted); cursor: pointer; font-size: 15px; line-height: 1; }
-.detail-tag-open:hover, .detail-tag-remove:hover { color: var(--ink); }
-.detail-tag-open:focus-visible, .detail-tag-remove:focus-visible, .detail-tag-more:focus-visible, .detail-tag-project:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-.detail-tag-more, .detail-tag-project { display: inline-flex; min-height: 34px; align-items: center; justify-content: center; gap: 5px; padding: 6px 12px; border: 1px solid color-mix(in srgb, var(--accent) 26%, var(--line)); border-radius: 999px; background: color-mix(in srgb, var(--surface) 58%, transparent); color: var(--ink-soft); cursor: pointer; font: inherit; font-size: 12px; line-height: 1; }
-.detail-tag-more { color: var(--accent-hover); }
-.detail-tag-project { border-color: color-mix(in srgb, var(--ink) 10%, transparent); }
-.detail-tag-more:hover, .detail-tag-project:hover { border-color: color-mix(in srgb, var(--accent) 34%, var(--line)); background: color-mix(in srgb, var(--surface-overlay) 74%, transparent); color: var(--ink); }
-.detail-tag-more .el-icon, .detail-tag-project .el-icon { font-size: 14px; }
+.detail-tag-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.detail-tag-pill, .detail-tag-more { position: relative; display: inline-flex; min-height: 34px; align-items: center; justify-content: center; gap: 4px; overflow: hidden; padding: 6px 12px; border: 1px solid color-mix(in srgb, var(--line) 78%, transparent); border-radius: 999px; background: color-mix(in srgb, var(--surface) 74%, transparent); color: var(--ink-soft); cursor: pointer; font: inherit; font-size: 12px; line-height: 1; white-space: nowrap; touch-action: manipulation; user-select: none; -webkit-touch-callout: none; }
+.detail-tag-pill:hover, .detail-tag-more:hover { border-color: color-mix(in srgb, var(--ink) 18%, transparent); color: var(--ink); }
+.detail-tag-pill:focus-visible, .detail-tag-more:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.detail-tag-pill.is-pressing { border-color: color-mix(in srgb, var(--accent) 46%, transparent); background: color-mix(in srgb, var(--accent) 16%, var(--surface)); color: var(--ink); transform: scale(.97); }
+.detail-tag-pill.is-pressing::after { position: absolute; right: 9px; bottom: 4px; left: 9px; height: 2px; border-radius: 99px; background: var(--accent); content: ''; transform-origin: left; animation: detail-tag-hold 500ms linear forwards; }
+.detail-tag-more { border-color: color-mix(in srgb, var(--accent) 30%, var(--line)); background: color-mix(in srgb, var(--accent) 10%, transparent); color: var(--accent-hover); }
+.detail-tag-more .el-icon { font-size: 14px; }
+@keyframes detail-tag-hold { from { transform: scaleX(0); } to { transform: scaleX(1); } }
+.detail-tag-picker-layer { position: fixed; z-index: 2003; inset: 0; display: flex; align-items: flex-end; justify-content: center; padding: 16px 12px calc(94px + env(safe-area-inset-bottom)); background: rgb(0 0 0 / 7%); }
+.detail-tag-picker { display: flex; width: min(420px, 100%); max-height: min(54dvh, 460px); flex-direction: column; gap: 14px; overflow: hidden; padding: 16px; border: 1px solid color-mix(in srgb, var(--ink) 12%, transparent); border-radius: 28px; background: radial-gradient(130% 180% at 8% 0%, color-mix(in srgb, var(--detail-ambient, var(--accent)) 24%, transparent), transparent 60%), radial-gradient(120% 170% at 92% 100%, rgb(255 255 255 / 16%), transparent 58%), linear-gradient(180deg, rgb(255 255 255 / 25%), rgb(255 255 255 / 4%)), color-mix(in srgb, var(--ink) 8%, transparent); box-shadow: inset 0 1px 0 rgb(255 255 255 / 62%), inset 0 -1px 0 rgb(0 0 0 / 9%), 0 24px 64px rgb(0 0 0 / 22%); backdrop-filter: blur(34px) saturate(200%); -webkit-backdrop-filter: blur(34px) saturate(200%); }
+.detail-tag-picker-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.detail-tag-picker-header h2 { margin: 0; color: var(--ink); font-size: 18px; font-weight: 600; letter-spacing: -.02em; }
+.detail-tag-picker-header button { display: grid; width: 40px; height: 40px; place-items: center; border: 1px solid color-mix(in srgb, var(--ink) 10%, transparent); border-radius: 50%; background: color-mix(in srgb, var(--surface) 28%, transparent); color: var(--ink-soft); cursor: pointer; font-size: 17px; }
+.detail-tag-picker-input { display: flex; align-items: center; gap: 8px; }
+.detail-tag-picker-input :deep(.el-input) { flex: 1; min-width: 0; }
+.detail-tag-picker-input :deep(.el-input__wrapper) { border-radius: 15px; background: color-mix(in srgb, var(--surface) 36%, transparent); box-shadow: inset 0 1px 0 rgb(255 255 255 / 52%), 0 0 0 1px color-mix(in srgb, var(--ink) 9%, transparent); }
+.detail-tag-picker-input .el-button { margin: 0; min-width: 72px; border-radius: 15px; }
+.detail-tag-picker-list { display: flex; min-height: 56px; flex-wrap: wrap; align-content: flex-start; gap: 8px; overflow-y: auto; padding: 2px; overscroll-behavior: contain; }
+.detail-tag-picker-list button { display: inline-flex; min-height: 38px; align-items: center; gap: 5px; padding: 8px 14px; border: 1px solid color-mix(in srgb, var(--ink) 10%, transparent); border-radius: 999px; background: color-mix(in srgb, var(--surface) 46%, transparent); color: var(--ink-soft); cursor: pointer; font: inherit; font-size: 13px; }
+.detail-tag-picker-list button.selected { border-color: color-mix(in srgb, var(--accent) 34%, transparent); background: color-mix(in srgb, var(--accent) 17%, transparent); color: var(--accent-hover); }
+.detail-tag-picker-list button:disabled { opacity: .52; cursor: wait; }
+.detail-tag-picker-list button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.detail-tag-picker-list p { margin: 8px 2px; color: var(--muted); font-size: 13px; }
+.detail-tag-picker-enter-active, .detail-tag-picker-leave-active { transition: opacity 180ms ease; }
+.detail-tag-picker-enter-active .detail-tag-picker, .detail-tag-picker-leave-active .detail-tag-picker { transition: transform 220ms cubic-bezier(0.22, 1, 0.36, 1), opacity 180ms ease; }
+.detail-tag-picker-enter-from, .detail-tag-picker-leave-to { opacity: 0; }
+.detail-tag-picker-enter-from .detail-tag-picker, .detail-tag-picker-leave-to .detail-tag-picker { opacity: 0; transform: translateY(16px) scale(.98); }
 .image-dock-tools { display: flex; gap: 4px; flex: 1; }
 .image-dock-tools button { display: flex; flex: 1; min-width: 70px; min-height: 56px; flex-direction: column; justify-content: center; align-items: center; gap: 5px; padding: 6px 12px; border: 0; border-radius: 16px; background: transparent; color: var(--ink-soft); cursor: pointer; white-space: nowrap; font: inherit; font-size: 12px; }
 .image-dock-tools button .el-icon { font-size: 22px; }
@@ -2555,12 +2567,10 @@ onBeforeUnmount(() => {
   .detail-caption { gap: 12px; margin: 0; padding: 18px 18px 28px; }
   .detail-note-trigger { min-height: 40px; padding: 2px 0 4px; font-size: 14px; letter-spacing: -.004em; line-height: 1.6; }
   .detail-note-editor :deep(.el-textarea__inner) { min-height: 32px !important; padding: 2px 0 4px; font-size: 15px; letter-spacing: -.006em; line-height: 1.65; }
-  .detail-tag-row { gap: 8px; padding: 1px 0 4px; }
-  .detail-tag-list { gap: 7px; }
-  .detail-tag-pill, .detail-tag-more, .detail-tag-project { min-height: 38px; }
-  .detail-tag-open, .detail-tag-remove { min-height: 38px; font-size: 13px; }
-  .detail-tag-remove { width: 27px; }
-  .detail-tag-more, .detail-tag-project { padding: 8px 13px; font-size: 12px; }
+  .detail-tag-row { flex-wrap: nowrap; gap: 8px; overflow-x: auto; padding: 1px 0 4px; scrollbar-width: none; overscroll-behavior-inline: contain; }
+  .detail-tag-row::-webkit-scrollbar { display: none; }
+  .detail-tag-pill, .detail-tag-more { min-height: 38px; flex: 0 0 auto; padding: 8px 14px; font-size: 13px; }
+  .detail-tag-more { position: sticky; right: 0; border-color: color-mix(in srgb, var(--accent) 28%, var(--line)); background: radial-gradient(120% 150% at 20% 0%, color-mix(in srgb, var(--detail-ambient, var(--accent)) 20%, transparent), transparent 64%), color-mix(in srgb, var(--surface) 45%, transparent); box-shadow: inset 0 1px 0 rgb(255 255 255 / 46%), 0 4px 14px rgb(0 0 0 / 7%); backdrop-filter: blur(18px) saturate(180%); -webkit-backdrop-filter: blur(18px) saturate(180%); }
   .image-edit-dock { right: 12px; bottom: calc(10px + env(safe-area-inset-bottom)); left: 12px; transform: none; max-width: none; overflow: hidden; padding: 7px; gap: 4px; border: 1px solid color-mix(in srgb, var(--ink) 12%, transparent); border-radius: 24px; background: radial-gradient(120% 180% at 10% 0%, color-mix(in srgb, var(--detail-ambient, var(--accent)) 24%, transparent), transparent 58%), radial-gradient(120% 170% at 90% 100%, rgb(255 255 255 / 16%), transparent 58%), linear-gradient(180deg, rgb(255 255 255 / 25%), rgb(255 255 255 / 4%)), color-mix(in srgb, var(--ink) 8%, transparent); box-shadow: inset 0 1px 0 rgb(255 255 255 / 62%), inset 0 -1px 0 rgb(0 0 0 / 9%), 0 14px 38px rgb(0 0 0 / 16%); backdrop-filter: blur(32px) saturate(200%); -webkit-backdrop-filter: blur(32px) saturate(200%); }
   .image-edit-dock::before { position: absolute; z-index: 0; inset: 0; border-radius: inherit; background: linear-gradient(118deg, rgb(255 255 255 / 18%), transparent 38%, rgb(255 255 255 / 5%) 76%, transparent); content: ''; pointer-events: none; }
   .image-dock-tools { flex-basis: 100%; }
@@ -2645,7 +2655,7 @@ onBeforeUnmount(() => {
 :global(.editor-glass-dialog .el-dialog__header), :global(.editor-glass-dialog .el-message-box__header) { border-bottom: 1px solid color-mix(in srgb, var(--ink) 8%, transparent); }
 :global(.editor-glass-message.el-message) { border: 1px solid color-mix(in srgb, var(--ink) 12%, transparent); background: linear-gradient(180deg, rgb(255 255 255 / 20%), rgb(255 255 255 / 3%)), color-mix(in srgb, var(--ink) 8%, transparent); backdrop-filter: blur(26px) saturate(180%); -webkit-backdrop-filter: blur(26px) saturate(180%); box-shadow: inset 0 1px 0 rgb(255 255 255 / 48%), 0 14px 38px rgb(0 0 0 / 18%); }
 @media (prefers-reduced-motion: reduce) {
-  .detail-back, .detail-more, .image-dock-tools button, .anchor-editor-enter-active, .anchor-editor-leave-active { transition: none; }
+  .detail-back, .detail-more, .image-dock-tools button, .detail-tag-picker, .detail-tag-picker-layer, .anchor-editor-enter-active, .anchor-editor-leave-active { transition: none; }
 }
 </style>
 
