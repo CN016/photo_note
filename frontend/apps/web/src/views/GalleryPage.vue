@@ -494,6 +494,7 @@ onBeforeUnmount(() => { alive = false; inspirationDetails.clear(); openVersion +
 .sort-chevron { font-size: 11px; }
 .inspiration-grid { grid-template-columns: repeat(var(--grid-columns, 2), minmax(0, 1fr)); gap: 12px; touch-action: pan-y; }
 .inspiration-grid.is-dense { gap: 0; }
+.inspiration-grid.is-dense .gallery-image-note, .inspiration-grid.is-dense .inspiration-card :deep(.thumbnail-anchor-title) { display: none !important; }
 .gallery-grid-move { transition: transform .24s cubic-bezier(.2,.75,.25,1); }
 .gallery-side-nav { position: fixed; z-index: 35; top: 42%; right: 4px; width: 28px; height: 132px; border-radius: 999px; background: color-mix(in srgb, var(--ink) 22%, transparent); opacity: .25; touch-action: none; transition: width .16s ease, height .16s ease, opacity .18s; cursor: grab; }
 .gallery-side-nav::before { position: absolute; top: 13px; right: 12px; bottom: 13px; left: 12px; border-radius: 999px; background: color-mix(in srgb, var(--ink) 18%, transparent); content: ''; }
