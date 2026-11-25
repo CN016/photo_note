@@ -66,7 +66,10 @@ const gridNavThumbTop = ref(0)
 const gridNavVisible = ref(false)
 const gridNavTrack = ref<HTMLElement>()
 const gridNavThumb = ref<HTMLElement>()
+const focusedRowStart = ref(-1)
+const gridColumnSteps = [1, 2, 3, 4, 5, 10, 15, 20, 25, 30] as const
 let gridNavFrame = 0
+let gridFocusFrame = 0
 let gridTouchDistance = 0
 let gridTouchZoom = 1
 let gridBaseColumns = 2
@@ -145,6 +148,31 @@ function interceptClick(event: MouseEvent) { if (gesture.consumeClick()) { event
 
 const openingID = ref('')
 let openVersion = 0
+let denseGridClickPending = false
+/** 超过五列时先收敛到可点击尺寸，并将用户点中的同一张图滚到前排供下一次点击。 */
+async function handleGalleryImageClick(event: MouseEvent, item: InspirationRecord) {
+  if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return
+  if (gridColumns.value <= 5) { void openDetail(event, item); return }
+  event.preventDefault()
+  if (denseGridClickPending) return
+  const link = event.currentTarget as HTMLElement
+  const itemIndex = items.value.findIndex(record => record.business_id === item.business_id)
+  if (itemIndex < 0) return
+  // 细列下的点选只锚定附近图片组，不假设用户精确命中了真正想看的那张图。
+  const rowStart = Math.floor(itemIndex / 5) * 5
+  const firstRecord = items.value[rowStart]
+  if (!firstRecord) return
+  denseGridClickPending = true
+  gridColumns.value = 5
+  gridZoom.value = gridBaseColumns / 5
+  focusedRowStart.value = rowStart
+  window.clearTimeout(gridFocusFrame)
+  gridFocusFrame = window.setTimeout(() => { focusedRowStart.value = -1 }, 1800)
+  await nextTick()
+  const rowCard = galleryRoot.value?.querySelector<HTMLElement>(`[data-inspiration-card="${firstRecord.business_id}"]`)
+  if (rowCard?.isConnected) rowCard.scrollIntoView({ block: 'start', behavior: 'instant' as ScrollBehavior })
+  denseGridClickPending = false
+}
 /** 点击只复用列表已发起的后台任务，不创建详情接口、下载或解码任务；未完成时等待同一 promise。 */
 async function openDetail(event: MouseEvent, item: InspirationRecord) {
   if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return
@@ -252,11 +280,11 @@ function resetFilters() {
   sort.value = 'created_desc'
 }
 
-/** 将双指距离映射为列数，并短暂显示位置滑块反馈缩放手势。 */
+/** 将双指距离吸附到有限列数档位，并短暂显示位置滑块反馈缩放手势。 */
 function changeGridZoom(next: number) {
-  const nextZoom = Math.max(.8, Math.min(2, next))
+  const nextZoom = Math.max(.05, Math.min(4, next))
   gridZoom.value = nextZoom
-  gridColumns.value = Math.max(1, Math.min(6, Math.round(gridBaseColumns / nextZoom)))
+  gridColumns.value = nearestGridColumnCount(gridBaseColumns / nextZoom)
   gridNavVisible.value = true
   window.clearTimeout(gridNavFrame);
   gridNavFrame = window.setTimeout(() => { gridNavVisible.value = false }, 1400)
@@ -288,7 +316,11 @@ function updateGridNavigation() {
   setGridNavigationPosition(window.scrollY / max)
 }
 /** 屏幕旋转或窗口尺寸变化后，以当前平台默认列数重新计算网格。 */
-function resizeGrid() { gridBaseColumns = window.innerWidth <= 768 ? 2 : 4; gridColumns.value = Math.max(1, Math.min(6, Math.round(gridBaseColumns / gridZoom.value))) }
+function resizeGrid() { gridBaseColumns = window.innerWidth <= 768 ? 2 : 4; gridColumns.value = nearestGridColumnCount(gridBaseColumns / gridZoom.value) }
+/** 列数只取产品规定档位；缩放比例变化时选择视觉密度最接近的一档。 */
+function nearestGridColumnCount(desired: number) {
+  return gridColumnSteps.reduce((best, candidate) => Math.abs(candidate - desired) < Math.abs(best - desired) ? candidate : best, gridColumnSteps[0])
+}
 /** 同步列表整体滚动比例和滑块像素位置，拖动与手动滚动使用同一位置计算。 */
 function setGridNavigationPosition(ratio: number) {
   gridNavTop.value = Math.max(0, Math.min(1, ratio))
@@ -378,7 +410,7 @@ onMounted(async () => {
   const item = items.value.find(item => item.business_id === saved.imageID)
   if (item && card) showProjects(item, card, saved.x, saved.y, saved.menuPage, saved.menuScroll)
 })
-onBeforeUnmount(() => { alive = false; inspirationDetails.clear(); openVersion += 1; disposeMenu?.(); gesture.cancel(); associationVersion += 1; window.removeEventListener('resize', resizeGrid); window.removeEventListener('scroll', gesture.cancel, true); window.removeEventListener('scroll', updateGridNavigation); window.clearTimeout(gridNavFrame); tagsVersion += 1; window.clearInterval(processingTimer); if (searchTimer !== undefined) window.clearTimeout(searchTimer); requestVersion += 1 })
+onBeforeUnmount(() => { alive = false; inspirationDetails.clear(); openVersion += 1; disposeMenu?.(); gesture.cancel(); associationVersion += 1; window.removeEventListener('resize', resizeGrid); window.removeEventListener('scroll', gesture.cancel, true); window.removeEventListener('scroll', updateGridNavigation); window.clearTimeout(gridNavFrame); window.clearTimeout(gridFocusFrame); tagsVersion += 1; window.clearInterval(processingTimer); if (searchTimer !== undefined) window.clearTimeout(searchTimer); requestVersion += 1 })
 </script>
 
 <template>
@@ -415,14 +447,14 @@ onBeforeUnmount(() => { alive = false; inspirationDetails.clear(); openVersion +
 
       <div v-if="error" class="inline-error" role="alert"><span>{{ error }}</span><el-button text :disabled="loading" @click="loadPage(page)">{{ t('gallery.retry') }}</el-button></div>
 
-      <section v-if="items.length" class="inspiration-grid" data-content-zoom-ignore :style="{ '--grid-columns': gridColumns }" :aria-label="t('gallery.title')">
-        <article v-for="(item, index) in items" :key="item.business_id" class="inspiration-card" tabindex="0" :data-inspiration-card="item.business_id" :style="{ '--card-index': index % 8 }">
-          <RouterLink class="inspiration-link" @click.capture="openDetail($event, item)" :data-shared-transition="item.business_id" :to="`/inspirations/${item.business_id}`" :aria-label="t('gallery.openImage', { name: item.file_name || t('gallery.untitled') })">
+      <TransitionGroup v-if="items.length" tag="section" name="gallery-grid" move-class="gallery-grid-move" class="inspiration-grid" data-content-zoom-ignore :style="{ '--grid-columns': gridColumns }" :aria-label="t('gallery.title')">
+        <article v-for="(item, index) in items" :key="item.business_id" class="inspiration-card" :class="{ 'is-zoom-focus': focusedRowStart >= 0 && index >= focusedRowStart && index < focusedRowStart + 5 }" tabindex="0" :data-inspiration-card="item.business_id" :style="{ '--card-index': index % 8 }">
+          <RouterLink class="inspiration-link" @click.capture="handleGalleryImageClick($event, item)" :data-shared-transition="item.business_id" :to="`/inspirations/${item.business_id}`" :aria-label="t('gallery.openImage', { name: item.file_name || t('gallery.untitled') })">
             <div class="gallery-image-frame"><InspirationThumbnail :record="item" show-anchors detail-transition /></div>
             <p v-if="imageNote(item.data)" class="gallery-image-note" :title="imageNote(item.data)">{{ imageNote(item.data) }}</p>
           </RouterLink>
         </article>
-      </section>
+      </TransitionGroup>
 
       <section v-else-if="!loading && !error && filtersActive" class="gallery-empty gallery-filter-empty">
         <div class="empty-art" aria-hidden="true"><el-icon><Search /></el-icon></div>
@@ -461,13 +493,16 @@ onBeforeUnmount(() => { alive = false; inspirationDetails.clear(); openVersion +
 .gallery-sort-button:disabled { cursor: default; opacity: .72; }
 .sort-chevron { font-size: 11px; }
 .inspiration-grid { grid-template-columns: repeat(var(--grid-columns, 2), minmax(0, 1fr)); gap: 12px; touch-action: pan-y; }
+.gallery-grid-move { transition: transform .24s cubic-bezier(.2,.75,.25,1); }
 .gallery-side-nav { position: fixed; z-index: 35; top: 42%; right: 4px; width: 28px; height: 132px; border-radius: 999px; background: color-mix(in srgb, var(--ink) 22%, transparent); opacity: .25; touch-action: none; transition: width .16s ease, height .16s ease, opacity .18s; cursor: grab; }
 .gallery-side-nav::before { position: absolute; top: 13px; right: 12px; bottom: 13px; left: 12px; border-radius: 999px; background: color-mix(in srgb, var(--ink) 18%, transparent); content: ''; }
 .gallery-side-nav:hover, .gallery-side-nav:focus-visible, .gallery-side-nav.visible { opacity: .8; outline: none; }
 .gallery-side-nav.dragging { width: 38px; height: 148px; opacity: 1; cursor: grabbing; }
 .gallery-side-nav-thumb { position: absolute; left: 4px; width: 20px; height: 26px; border-radius: 999px; background: var(--surface-overlay); box-shadow: 0 1px 4px rgb(0 0 0 / 20%); transition: width .16s ease, height .16s ease, left .16s ease; pointer-events: none; }
 .gallery-side-nav.dragging .gallery-side-nav-thumb { left: 5px; width: 28px; height: 40px; box-shadow: 0 3px 12px rgb(0 0 0 / 26%); }
-.inspiration-card { position: relative; border-radius: var(--radius-card); -webkit-touch-callout: none; }
+.inspiration-card { position: relative; border-radius: var(--radius-card); scroll-margin-top: 78px; -webkit-touch-callout: none; }
+.inspiration-card.is-zoom-focus :deep(.thumbnail-frame) { outline: 3px solid var(--accent); outline-offset: 3px; }
+@media (prefers-reduced-motion: reduce) { .gallery-grid-move { transition: none; } }
 .inspiration-card img { -webkit-user-drag: none; }
 .inspiration-card:focus-visible { outline: none; }
 .inspiration-card :deep(.thumbnail-frame) { aspect-ratio: 2 / 3; border: 0 !important; background: transparent !important; box-shadow: none !important; }
