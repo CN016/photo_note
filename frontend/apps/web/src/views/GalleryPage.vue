@@ -447,7 +447,7 @@ onBeforeUnmount(() => { alive = false; inspirationDetails.clear(); openVersion +
 
       <div v-if="error" class="inline-error" role="alert"><span>{{ error }}</span><el-button text :disabled="loading" @click="loadPage(page)">{{ t('gallery.retry') }}</el-button></div>
 
-      <ContentZoom v-if="items.length" ref="contentZoom" class="gallery-grid-zoom"><TransitionGroup tag="section" name="gallery-grid" move-class="gallery-grid-move" class="inspiration-grid" :class="{ 'is-dense': gridColumns > 5 }" data-content-zoom-ignore :style="{ '--grid-columns': gridColumns }" :aria-label="t('gallery.title')">
+      <ContentZoom v-if="items.length" ref="contentZoom" enabled class="gallery-grid-zoom"><TransitionGroup tag="section" name="gallery-grid" move-class="gallery-grid-move" class="inspiration-grid" :class="{ 'is-dense': gridColumns > 5 }" data-content-zoom-ignore :style="{ '--grid-columns': gridColumns }" :aria-label="t('gallery.title')">
         <article v-for="(item, index) in items" :key="item.business_id" class="inspiration-card" :class="{ 'is-zoom-focus': focusedRowStart >= 0 && index >= focusedRowStart && index < focusedRowStart + 5 }" tabindex="0" :data-inspiration-card="item.business_id" :style="{ '--card-index': index % 8 }">
           <RouterLink class="inspiration-link" @click.capture="handleGalleryImageClick($event, item)" :data-shared-transition="item.business_id" :to="`/inspirations/${item.business_id}`" :aria-label="t('gallery.openImage', { name: item.file_name || t('gallery.untitled') })">
             <div class="gallery-image-frame"><InspirationThumbnail :record="item" show-anchors detail-transition /></div>

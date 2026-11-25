@@ -124,7 +124,7 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <ContentZoom selector=".tvp-content-wrap"><div ref="root" class="project-document-editor" :class="{ 'is-readonly': props.readOnly }">
+  <ContentZoom enabled selector=".tvp-content-wrap"><div ref="root" class="project-document-editor" :class="{ 'is-readonly': props.readOnly }">
     <el-alert v-if="!compatible" :title="t('projects.documentIncompatible')" type="error" :closable="false" />
     <ProEditorElementPlus v-else :model-value="props.document" output="json" :extensions="extensions" :toolbar="toolbar"
       :toolbar-options="{ fontSizes: ['12px', '14px', '16px', '18px', '20px', '24px', '30px', '36px', '48px'] }"

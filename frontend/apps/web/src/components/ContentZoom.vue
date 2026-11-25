@@ -4,7 +4,7 @@ import { isAndroid } from '../../../../packages/platform-adapters'
 
 /** 只缩放插槽中的页面主体；导航、页脚及挂到 body 的弹层不进入缩放坐标系。 */
 // 编辑器可指定内部滚动容器，让已有工具栏留在缩放边界之外，不搬动第三方组件 DOM。
-const props = defineProps<{ selector?: string }>()
+const props = withDefaults(defineProps<{ selector?: string; enabled?: boolean }>(), { enabled: false })
 const viewport = ref<HTMLElement>()
 const surface = ref<HTMLElement>()
 const enabled = ref(false)
@@ -39,7 +39,7 @@ function move(event: TouchEvent) {
 }
 function end() { gesture = null }
 onMounted(async () => {
-  enabled.value = isAndroid()
+  enabled.value = props.enabled && isAndroid()
   // 先等待原尺寸容器从 display:contents 切换为实体布局，避免首次观察回调重置刚开始的手势。
   await nextTick()
   if (!enabled.value || !viewport.value || !surface.value) return
