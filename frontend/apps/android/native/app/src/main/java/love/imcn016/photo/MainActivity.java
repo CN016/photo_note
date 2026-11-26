@@ -246,7 +246,10 @@ public class MainActivity extends AppCompatActivity {
                     }
                     GeckoResult<Object> result = new GeckoResult<>();
                     shell.invoke(data.optString("method"), data.optJSONObject("options") == null ? new JSONObject() : data.optJSONObject("options"), new NativeShellService.Reply() {
-                        @Override public void success(JSONObject value) { runOnUiThread(() -> result.complete(value)); }
+                        @Override public void success(JSONObject value) {
+                            // 延后到消息委托返回之后完成 GeckoResult，避免同步 accepted 在结果对象交付前完成。
+                            getWindow().getDecorView().post(() -> result.complete(value));
+                        }
                         @Override public void failure(String code) { runOnUiThread(() -> result.completeExceptionally(new IllegalStateException(code))); }
                     });
                     return result;

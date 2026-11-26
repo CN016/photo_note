@@ -50,7 +50,8 @@ describe('平台文件导出边界', () => {
       onload?: () => void
       readAsDataURL() { this.onload?.() }
     })
-    nativeExport.mockResolvedValue({ status: 'accepted' })
+    // Activity 永不回包也不会阻塞 Web；返回值必须由交接动作直接产生。
+    nativeExport.mockReturnValue(new Promise(() => {}))
     expect(await platformAdapter.exportFile(
       new Blob(['x'], { type: 'image/png' }),
       'photo-export.png',

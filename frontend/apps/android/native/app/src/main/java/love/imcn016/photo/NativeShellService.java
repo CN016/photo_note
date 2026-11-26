@@ -240,12 +240,16 @@ public class NativeShellService {
     /**
      * 图片导出交接模式。
      *
-     * Web 只等待“已接收”确认，随后立即返回图片详情；真正的写入和相册结果由
-     * 当前 Activity 异步完成并通过原生 Toast 通知，避免 Web 长等待后误报失败。
+     * Web 发出任务后立即返回图片详情，不等待任何原生 Promise；真正的写入和
+     * 相册结果由当前 Activity 异步完成并通过原生 Toast 通知。
      */
     public void exportImageToAlbum(Call call) {
         synchronized (this) {
-            if (busy) { call.reject("export_busy"); return; }
+            if (busy) {
+                call.reject("export_busy");
+                showHandoffResult(false, false);
+                return;
+            }
             busy = true;
         }
         String data = call.getString("data", "");
@@ -256,6 +260,7 @@ public class NativeShellService {
             || data.length() > ((MAX_BYTES + 2L) / 3L) * 4L
             || !mime.matches("[a-zA-Z0-9.+-]+/[a-zA-Z0-9.+-]+")) {
             fail(call);
+            showHandoffResult(false, false);
             return;
         }
         // 先确认 Activity 已接收；后续任何媒体处理结果都不再通过 Web 请求链路回传。

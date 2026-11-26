@@ -92,9 +92,12 @@ export const platformAdapter: PlatformAdapter = {
     if (isAndroid()) {
       if (blob.size > MAX_NATIVE_EXPORT_BYTES) throw new Error('export_too_large')
       const payload = { ...labels, filename, mime: blob.type.split(';')[0] || 'application/octet-stream', data: await encodeBlob(blob) }
-      const { status } = options.androidImageHandoff && payload.mime.startsWith('image/')
-        ? await nativeShell.exportImageToAlbum(payload)
-        : await nativeShell.exportFile(payload)
+      if (options.androidImageHandoff && payload.mime.startsWith('image/')) {
+        // 图片已经交给 Activity 后 Web 不再等待任何原生响应；最终结果只由 Activity Toast 通知。
+        void nativeShell.exportImageToAlbum(payload).catch(() => {})
+        return 'accepted'
+      }
+      const { status } = await nativeShell.exportFile(payload)
       return status
     }
     const url = URL.createObjectURL(blob)
