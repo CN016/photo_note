@@ -7,12 +7,14 @@ import { imageNote } from '../images/imageNote'
 import ContentZoom from '../components/ContentZoom.vue'
 import { computed, nextTick, onActivated, onDeactivated, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { onBeforeRouteLeave, useRoute, useRouter } from 'vue-router'
-import { registerMenu, openMenu } from '../context-menu/menu'
+import { registerMenu, openMenu, updateMenu, menuState } from '../context-menu/menu'
+import { ElMessage } from 'element-plus'
 import { clipboardAdapter } from '../../../../packages/platform-adapters'
 import { copyImage } from '../context-menu/clipboard'
-import { createGalleryImageMenu } from '../context-menu/galleryImageMenu'
+import { createGalleryImageMenu, type GalleryMenuProject } from '../context-menu/galleryImageMenu'
 import { createLongPress } from '../context-menu/longPress'
-import { gallerySnapshot, clearGallerySnapshot } from '../context-menu/galleryNavigation'
+import { gallerySnapshot, saveGallerySnapshot, clearGallerySnapshot } from '../context-menu/galleryNavigation'
+import { appendInspirationToProject } from '../projects/attachInspiration'
 import { useI18n } from 'vue-i18n'
 import { ArrowDown, PictureFilled, Search, Sort } from '@element-plus/icons-vue'
 import CreateFab from '../components/CreateFab.vue'
@@ -20,7 +22,7 @@ import InspirationThumbnail from '../components/InspirationThumbnail.vue'
 import InspirationLibraryTools from '../components/InspirationLibraryTools.vue'
 import GallerySearchPanel from '../components/GallerySearchPanel.vue'
 import { useAuthStore } from '../stores/auth'
-import type { InspirationLibraryFilters } from '../api/types'
+import type { InspirationLibraryFilters, InspirationProjectSummary, ProjectSummary } from '../api/types'
 import { api } from '../api/client'
 import { ApiError, type InspirationRecord, type TagRecord } from '../api/types'
 import { createGallerySearchState, gallerySearchHasValue, inspirationRequestOptions, type GallerySort, type GallerySearchState } from '../gallerySearch'
@@ -33,7 +35,7 @@ let savedScroll = 0
 let openedImageID = ''
 // 离开前记录真实位置；激活发生在浏览器绘制之前，缩略图和筛选均沿用原实例。
 onBeforeRouteLeave(to => { savedScroll = window.scrollY; openedImageID = to.name === 'edit-inspiration' ? String(to.params.id) : '' })
-onDeactivated(() => { active.value = false; openVersion += 1; openingID.value = ''; gesture.cancel() })
+onDeactivated(() => { active.value = false; openVersion += 1; menuVersion += 1; openingID.value = ''; gesture.cancel() })
 onActivated(() => {
   active.value = true
   window.scrollTo({ top: savedScroll, behavior: 'instant' as ScrollBehavior })
@@ -79,18 +81,143 @@ let restoring = false
 let alive = true
 let disposeMenu: (() => void) | undefined
 let touchedCard: HTMLElement | null = null
+let activeImage = ''
+let menuVersion = 0
 const gesture = createLongPress((x, y) => {
   const item = items.value.find(item => item.business_id === touchedCard?.dataset.inspirationCard)
   if (item && touchedCard) showImageMenu(item, touchedCard, x, y)
 })
-/** 图片长按和右键共用同一菜单；仅保留当前图片操作并立即显示，不等待网络请求。 */
-function showImageMenu(item: InspirationRecord, card: HTMLElement, x: number, y: number, scroll = 0) {
-  const entries = createGalleryImageMenu(
-    t('contextMenu.copyImage'),
-    clipboardAdapter.canWriteImage(),
-    () => copyImage(() => api.download(item.image_key)),
-  )
-  openMenu(x, y, entries, card, scroll)
+
+/** 项目标题为空时使用现有本地化占位，菜单行不展示内部 UUID。 */
+function menuProject(project: Pick<ProjectSummary, 'business_id' | 'title'>): GalleryMenuProject {
+  return { business_id: project.business_id, title: project.title || t('projects.editorTitlePlaceholder') }
+}
+
+/** 分页读取当前用户全部策划；页数设上限，避免异常总数造成无限请求。 */
+async function loadAllProjects(): Promise<ProjectSummary[]> {
+  const collected: ProjectSummary[] = []
+  for (let pageNumber = 1; pageNumber <= 20; pageNumber += 1) {
+    const result = await api.projects(pageNumber, 100)
+    collected.push(...result.items)
+    if (!result.items.length || collected.length >= result.total) break
+  }
+  return Array.from(new Map(collected.map(project => [project.business_id, project])).values())
+}
+
+/** 分页读取该图片已引用的全部策划，保持服务端更新时间顺序。 */
+async function loadAllInspirationProjects(id: string): Promise<InspirationProjectSummary[]> {
+  const collected: InspirationProjectSummary[] = []
+  for (let pageNumber = 1; pageNumber <= 20; pageNumber += 1) {
+    const result = await api.inspirationProjects(id, pageNumber)
+    collected.push(...result.items)
+    if (!result.items.length || collected.length >= result.total) break
+  }
+  return Array.from(new Map(collected.map(project => [project.business_id, project])).values())
+}
+
+/** 把当前图片正文节点加入目标策划；冲突时重新读取一次修订号再保存。 */
+async function addImageToProject(image: InspirationRecord, project: ProjectSummary): Promise<void> {
+  const scope = scopeKey()
+  try {
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      const current = await api.project(project.business_id)
+      const appended = appendInspirationToProject(current.document, image.business_id)
+      if (!appended.added) {
+        if (scope === scopeKey()) ElMessage.info(t('contextMenu.imageAlreadyInProject', { project: current.title || project.title }))
+        return
+      }
+      try {
+        await api.saveProject(current.business_id, {
+          title: current.title,
+          cover_emoji: current.cover_emoji,
+          cover_image_key: current.cover_image_key,
+          cover_file_name: current.cover_file_name,
+          document_schema_version: current.document_schema_version,
+          document: appended.document,
+          revision: current.revision,
+        })
+        if (scope === scopeKey()) ElMessage.success(t('contextMenu.imageAddedToProject', { project: current.title || project.title }))
+        return
+      } catch (error) {
+        if (attempt === 0 && error instanceof ApiError && error.status === 409) continue
+        throw error
+      }
+    }
+  } catch {
+    if (scope === scopeKey()) ElMessage.error(t('contextMenu.addToProjectFailed'))
+  }
+}
+
+/** 已关联策划按原图库来源保存快照，返回后可恢复同一菜单和滚动位置。 */
+function openRelated(projectID: string, x: number, y: number) {
+  const key = crypto.randomUUID()
+  history.replaceState({ ...history.state, galleryReturnKey: key }, '')
+  saveGallerySnapshot({
+    scope: scopeKey(), key, position: history.state.position, x, y,
+    search: searchQuery.value, tags: [...selectedTagIDs.value], match: tagMatch.value, sort: sort.value,
+    searchKind: gallerySearch.value.kind, searchColor: gallerySearch.value.color, tagSource: gallerySearch.value.tagSource,
+    peopleMode: gallerySearch.value.peopleMode, peopleMin: gallerySearch.value.peopleMin, peopleMax: gallerySearch.value.peopleMax,
+    filters: JSON.parse(JSON.stringify(libraryFilters.value)), items: [...items.value], page: page.value, total: total.value,
+    scroll: window.scrollY, imageID: activeImage, menuPage: 0, menuScroll: menuState.value?.scroll ?? 0,
+    toolsScroll: document.querySelector('.activity-scroll')?.scrollLeft ?? 0,
+    tools: libraryTools.value!.snapshot(), zoom: contentZoom.value!.snapshot(),
+  })
+  void router.push({ path: `/projects/${projectID}`, query: { from: 'gallery', returnKey: key, mode: 'read' } })
+}
+
+/**
+ * 图片长按和右键共用同一菜单。
+ *
+ * 前两行立即出现；添加目标与已关联策划并行读取，迟到响应只有在菜单代次、
+ * 会话范围和当前菜单 ID 都匹配时才能更新，避免把旧图片项目写到新菜单。
+ */
+async function showImageMenu(item: InspirationRecord, card: HTMLElement, x: number, y: number, scroll = 0) {
+  activeImage = item.business_id
+  const version = ++menuVersion
+  const scope = scopeKey()
+  const copy = () => copyImage(() => api.download(item.image_key))
+  const initial = createGalleryImageMenu({
+    copyLabel: t('contextMenu.copyImage'),
+    canCopy: clipboardAdapter.canWriteImage(),
+    copy,
+    addLabel: t('contextMenu.addToProject'),
+    addProjects: [],
+    addStatus: t('common.loading'),
+    addDisabled: true,
+    onAdd: () => {},
+    relatedProjects: [],
+    relatedStatus: t('common.loading'),
+    onOpenRelated: () => {},
+  })
+  const id = openMenu(x, y, initial, card, scroll)
+  const [relatedResult, projectsResult] = await Promise.allSettled([
+    loadAllInspirationProjects(item.business_id),
+    loadAllProjects(),
+  ])
+  if (version !== menuVersion || scope !== scopeKey() || menuState.value?.id !== id) return
+  const related = relatedResult.status === 'fulfilled' ? relatedResult.value : []
+  const relatedIDs = new Set(related.map(project => project.business_id))
+  const available = projectsResult.status === 'fulfilled'
+    ? projectsResult.value.filter(project => !relatedIDs.has(project.business_id))
+    : []
+  const entries = createGalleryImageMenu({
+    copyLabel: t('contextMenu.copyImage'),
+    canCopy: clipboardAdapter.canWriteImage(),
+    copy,
+    addLabel: t('contextMenu.addToProject'),
+    addProjects: available.map(menuProject),
+    addStatus: projectsResult.status === 'rejected'
+      ? t('contextMenu.projectListFailed')
+      : available.length ? undefined : t('contextMenu.noProjectsToAdd'),
+    onAdd: project => {
+      const target = projectsResult.status === 'fulfilled' ? projectsResult.value.find(item => item.business_id === project.business_id) : undefined
+      if (target) return addImageToProject(item, target)
+    },
+    relatedProjects: related.map(menuProject),
+    relatedStatus: relatedResult.status === 'rejected' ? t('contextMenu.relatedProjectsFailed') : undefined,
+    onOpenRelated: project => openRelated(project.business_id, x, y),
+  })
+  updateMenu(id, entries, menuState.value?.scroll ?? scroll)
 }
 function touchStart(event: TouchEvent) {
   galleryTouchStart(event)
@@ -341,7 +468,7 @@ function setSort(value: string) {
 /** 重试只提交当前图片任务，等待后端确认后刷新列表，防止重复点击。 */
 
 watch(() => [auth.orgid, auth.user?.business_id, auth.sessionVersion], () => {
-  openVersion += 1; openingID.value = ''; clearGallerySnapshot(); requestVersion += 1; items.value = []; total.value = 0; libraryFilters.value = {}; gallerySearch.value = createGallerySearchState(); tags.value = []
+  openVersion += 1; menuVersion += 1; openingID.value = ''; clearGallerySnapshot(); requestVersion += 1; items.value = []; total.value = 0; libraryFilters.value = {}; gallerySearch.value = createGallerySearchState(); tags.value = []
   if (active.value && route.name === 'gallery') { void loadPage(); void loadTags() }
 })
 
@@ -391,7 +518,7 @@ onMounted(async () => {
   const item = items.value.find(item => item.business_id === saved.imageID)
   if (item && card) showImageMenu(item, card, saved.x, saved.y, saved.menuScroll)
 })
-onBeforeUnmount(() => { alive = false; inspirationDetails.clear(); openVersion += 1; disposeMenu?.(); gesture.cancel(); window.removeEventListener('resize', resizeGrid); window.removeEventListener('scroll', gesture.cancel, true); window.removeEventListener('scroll', updateGridNavigation); window.clearTimeout(gridNavFrame); window.clearTimeout(gridFocusFrame); tagsVersion += 1; window.clearInterval(processingTimer); if (searchTimer !== undefined) window.clearTimeout(searchTimer); requestVersion += 1 })
+onBeforeUnmount(() => { alive = false; inspirationDetails.clear(); openVersion += 1; menuVersion += 1; disposeMenu?.(); gesture.cancel(); window.removeEventListener('resize', resizeGrid); window.removeEventListener('scroll', gesture.cancel, true); window.removeEventListener('scroll', updateGridNavigation); window.clearTimeout(gridNavFrame); window.clearTimeout(gridFocusFrame); tagsVersion += 1; window.clearInterval(processingTimer); if (searchTimer !== undefined) window.clearTimeout(searchTimer); requestVersion += 1 })
 </script>
 
 <template>

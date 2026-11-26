@@ -1,15 +1,47 @@
 import type { MenuEntry } from './menu'
 
+export interface GalleryMenuProject {
+  business_id: string
+  title: string
+}
+
+export interface GalleryImageMenuOptions {
+  copyLabel: string
+  canCopy: boolean
+  copy: () => void | Promise<void>
+  addLabel: string
+  addProjects: GalleryMenuProject[]
+  addStatus?: string
+  addDisabled?: boolean
+  onAdd: (project: GalleryMenuProject) => void | Promise<void>
+  relatedProjects: GalleryMenuProject[]
+  relatedStatus?: string
+  onOpenRelated: (project: GalleryMenuProject) => void | Promise<void>
+}
+
 /**
  * 构造灵感库图片长按菜单。
  *
- * 菜单只保留当前图片操作，不加载或展示关联策划。复制不可用时仍显示禁用项，
- * 让用户明确看到当前入口，而不是出现空菜单。
+ * 行顺序固定为：复制图片、添加到策划、已关联策划。加载或出错时用同一位置的
+ * 禁用状态行反馈，避免关联项目迟到后改变前两行的位置。
  */
-export function createGalleryImageMenu(
-  copyLabel: string,
-  canCopy: boolean,
-  copy: () => void | Promise<void>,
-): MenuEntry[] {
-  return [{ label: copyLabel, disabled: !canCopy, run: copy }]
+export function createGalleryImageMenu(options: GalleryImageMenuOptions): MenuEntry[] {
+  const addChildren: MenuEntry[] = options.addStatus
+    ? [{ label: options.addStatus, disabled: true }]
+    : options.addProjects.length
+      ? options.addProjects.map(project => ({
+        label: project.title,
+        run: () => options.onAdd(project),
+      }))
+      : [{ label: options.addLabel, disabled: true }]
+  const entries: MenuEntry[] = [
+    { label: options.copyLabel, disabled: !options.canCopy, run: options.copy },
+    { label: options.addLabel, children: addChildren, disabled: options.addDisabled },
+  ]
+  if (options.relatedStatus) entries.push({ label: options.relatedStatus, disabled: true })
+  else entries.push(...options.relatedProjects.map(project => ({
+    label: project.title,
+    run: () => options.onOpenRelated(project),
+  })))
+  return entries
 }
