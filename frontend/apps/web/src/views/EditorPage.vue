@@ -26,6 +26,7 @@ import {
   DEFAULT_WATERMARK_SCALE, MAX_WATERMARK_SCALE, MIN_WATERMARK_SCALE,
   clampWatermarkPlacement, clampWatermarkScale, drawWatermark, watermarkPreviewFontSize, type WatermarkPlacement,
 } from '../images/watermark'
+import { drawDocumentAnchors } from '../images/imageAnchorExport'
 import {
   anchorToView, clampAnchorLabelScale, createEditorDocument, cropOnRotatedCanvas, DocumentHistory, parseEditorDocument, viewSelectionToSourceRect,
   viewToSource, type EditorDocument, type ImageAnchor, type NormalizedRect,
@@ -1755,10 +1756,11 @@ function encodeExportCanvas(canvas: HTMLCanvasElement, mime: string): Promise<Bl
 }
 
 /**
- * 导出当前旋转、裁切和色彩调整后的图片。
+ * 导出当前旋转、裁切、色彩调整和图片锚点合成后的新图片。
  *
- * 水印导出沿用预览层保存的位置和倍率，在完整预览分辨率上重新绘制；
- * 文件保存/分享面板由平台适配层处理，用户取消时保留水印预览以便继续调整。
+ * 锚点使用预览层的相对位置和显示比例重新绘制到像素中，确保导出图片仍保留
+ * 当前可见的标题与描述。水印沿用同一画布，Android 图片会由平台层直接写入相册；
+ * 用户取消水印保存时保留预览，便于继续调整。
  */
 async function exportEditedImage(withWatermark: boolean): Promise<void> {
   const source = sourceCanvas.value
@@ -1769,9 +1771,10 @@ async function exportEditedImage(withWatermark: boolean): Promise<void> {
   let output: HTMLCanvasElement | null = null
   try {
     output = renderDocumentPreview(source, documentData.value)
+    const context = output.getContext('2d')
+    if (!context) throw new Error('canvas_unavailable')
+    drawDocumentAnchors(context, documentData.value, output.width, output.height, anchorDisplayStore.size / 100)
     if (withWatermark && watermarkDraft.value) {
-      const context = output.getContext('2d')
-      if (!context) throw new Error('canvas_unavailable')
       drawWatermark(context, t('common.brand'), watermarkDraft.value, output.width, output.height)
     }
     const format = exportImageFormat()

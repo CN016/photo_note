@@ -78,9 +78,11 @@
     "share": "Share file",
     "cancel": "Cancel",
     "saved": "File saved",
+    "savedToAlbum": "Photo saved to your gallery",
     "busy": "Finish the current export first",
     "failed": "Could not export the file. Please try again.",
-    "tooLarge": "The file exceeds the Android export limit of 32 MB. Reduce the image dimensions and try again."
+    "tooLarge": "The file exceeds the Android export limit of 32 MB. Reduce the image dimensions and try again.",
+    "albumPermissionDenied": "Gallery write permission was denied, so the photo could not be saved."
   },
   "inspirationGoal": {
     "title": "Your daily collection goal is not met",

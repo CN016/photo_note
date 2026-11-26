@@ -80,7 +80,7 @@ function encodeBlob(blob: Blob): Promise<string> {
   })
 }
 
-/** 普通浏览器沿用下载语义；Android 由系统文件选择器或临时授权分享完成导出。 */
+/** 普通浏览器沿用下载语义；Android 图片直存相册，其他文件由系统保存或分享完成导出。 */
 export const platformAdapter: PlatformAdapter = {
   async exportFile(blob, filename, labels) {
     if (isAndroid()) {

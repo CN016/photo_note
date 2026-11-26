@@ -2,6 +2,9 @@ package love.imcn016.photo;
 
 import static org.junit.Assert.*;
 import android.content.Intent;
+import android.net.Uri;
+import android.os.Build;
+import android.provider.MediaStore;
 import org.json.JSONObject;
 
 import android.os.SystemClock;
@@ -115,6 +118,43 @@ public class ShellInstrumentedTest {
         device.findObject(By.text("Share test")).click();
         awaitResult("shared");
         device.pressBack();
+    }
+
+    /** 图片导出不显示保存/分享面板，直接写入系统相册并可由 MediaStore 查询。 */
+    @Test
+    public void savesImageDirectlyToGallery() throws Exception {
+        if (Build.VERSION.SDK_INT <= Build.VERSION_CODES.P) {
+            InstrumentationRegistry.getInstrumentation().getUiAutomation().grantRuntimePermission(
+                activity.getPackageName(),
+                android.Manifest.permission.WRITE_EXTERNAL_STORAGE
+            );
+        }
+        String filename = "photo-nini-album-" + System.nanoTime() + ".png";
+        JSONObject data = new JSONObject();
+        data.put("filename", filename);
+        data.put("mime", "image/png");
+        data.put("data", "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9Z8l8AAAAASUVORK5CYII=");
+        data.put("title", "Export test");
+        data.put("save", "Save test");
+        data.put("share", "Share test");
+        data.put("cancel", "Cancel test");
+        shell.exportFile(testCall("exportFile", data));
+        awaitResult("saved");
+        assertNull("图片导出不应弹出文件保存面板", device.wait(Until.findObject(By.text("Export test")), 1000));
+
+        Uri collection = MediaStore.Images.Media.EXTERNAL_CONTENT_URI;
+        try (var cursor = activity.getContentResolver().query(
+            collection,
+            new String[]{ MediaStore.Images.Media._ID },
+            MediaStore.Images.Media.DISPLAY_NAME + "=?",
+            new String[]{ filename },
+            null
+        )) {
+            assertNotNull(cursor);
+            assertTrue("导出图片应作为新照片出现在相册索引中", cursor.moveToFirst());
+            Uri created = Uri.withAppendedPath(collection, String.valueOf(cursor.getLong(0)));
+            activity.getContentResolver().delete(created, null, null);
+        }
     }
 
 }

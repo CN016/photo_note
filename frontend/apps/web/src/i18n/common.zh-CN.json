@@ -78,9 +78,11 @@
     "share": "分享文件",
     "cancel": "取消",
     "saved": "文件已保存",
+    "savedToAlbum": "照片已保存到相册",
     "busy": "请先完成当前导出",
     "failed": "文件导出失败，请重试",
-    "tooLarge": "文件超过安卓单次导出上限 32 MB，请降低图片尺寸后重试"
+    "tooLarge": "文件超过安卓单次导出上限 32 MB，请降低图片尺寸后重试",
+    "albumPermissionDenied": "没有相册写入权限，无法保存照片"
   },
   "inspirationGoal": {
     "title": "今日存图目标尚未完成",

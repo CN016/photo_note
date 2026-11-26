@@ -18,10 +18,18 @@ export async function exportFile(blob: Blob, filename: string): Promise<ExportRe
       title: t('common.fileExport.title'), save: t('common.fileExport.save'),
       share: t('common.fileExport.share'), cancel: t('common.fileExport.cancel'),
     })
-    if (result === 'saved' && isAndroid()) ElMessage.success(t('common.fileExport.saved'))
+    if (result === 'saved' && isAndroid()) {
+      ElMessage.success(t(blob.type.toLowerCase().startsWith('image/') ? 'common.fileExport.savedToAlbum' : 'common.fileExport.saved'))
+    }
     return result
   } catch (error) {
-    ElMessage.error(t(error instanceof Error && error.message === 'export_too_large' ? 'common.fileExport.tooLarge' : 'common.fileExport.failed'))
+    const message = error instanceof Error ? error.message : ''
+    const key = message.includes('export_too_large')
+      ? 'common.fileExport.tooLarge'
+      : message.includes('album_permission_denied')
+        ? 'common.fileExport.albumPermissionDenied'
+        : 'common.fileExport.failed'
+    ElMessage.error(t(key))
     throw new FileExportError('export_failed')
   } finally { exporting = false }
 }

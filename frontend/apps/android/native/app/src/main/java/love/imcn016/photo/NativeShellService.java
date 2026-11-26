@@ -3,11 +3,19 @@ package love.imcn016.photo;
 import android.app.Activity;
 import android.app.AlertDialog;
 import android.content.ClipData;
+import android.content.ContentValues;
 import android.content.Intent;
+import android.content.pm.PackageManager;
+import android.database.Cursor;
 import android.graphics.Color;
 import android.net.Uri;
+import android.os.Build;
+import android.os.Environment;
+import android.media.MediaScannerConnection;
+import android.provider.MediaStore;
 import android.util.Base64;
 import androidx.activity.result.ActivityResult;
+import androidx.core.content.ContextCompat;
 import androidx.core.content.FileProvider;
 import androidx.core.view.WindowCompat;
 import org.json.JSONObject;
@@ -16,18 +24,29 @@ import androidx.activity.result.ActivityResultLauncher;
 import androidx.activity.result.contract.ActivityResultContracts;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.io.IOException;
 import java.nio.file.Files;
 
-/** 系统文件导出与主题桥接：不接收任意本地路径，不申请共享存储权限，不记录用户内容。 */
+/**
+ * 系统文件导出与主题桥接。
+ *
+ * 图片按 Android 版本写入系统相册的新条目，不再要求用户选择文件夹；其他文件继续
+ * 使用 SAF 保存或只读 URI 分享。网页不能指定本地路径，本类也不记录用户内容或相册 URI。
+ */
 public class NativeShellService {
     private final AppCompatActivity activity;
     private final ExecutorService io = Executors.newSingleThreadExecutor();
     private final ActivityResultLauncher<Intent> saveLauncher;
     private Call saveCall;
+    private final ActivityResultLauncher<String> albumPermission;
+    private Call albumCall;
     private final ActivityResultLauncher<String> notificationPermission;
     private String monitorIdentity = "";
     private volatile String monitorOwner = "";
@@ -63,6 +82,19 @@ public class NativeShellService {
             Call call = saveCall;
             saveCall = null;
             saved(call, result);
+        });
+        albumPermission = activity.registerForActivityResult(new ActivityResultContracts.RequestPermission(), granted -> {
+            Call call = albumCall;
+            albumCall = null;
+            if (call == null) {
+                cleanup();
+                return;
+            }
+            if (granted) writeImageToAlbum(call, call.getString("mime"));
+            else {
+                cleanup();
+                call.reject("album_permission_denied");
+            }
         });
     }
 
@@ -180,6 +212,10 @@ public class NativeShellService {
                 try (OutputStream output = new FileOutputStream(pendingFile)) { output.write(decoded); }
                 activity.runOnUiThread(() -> {
                     if (activity.isFinishing() || activity.isDestroyed()) { fail(call); return; }
+                    if (mime.startsWith("image/")) {
+                        saveImageToAlbum(call, mime);
+                        return;
+                    }
                     new AlertDialog.Builder(activity)
                     .setTitle(call.getString("title"))
                     .setItems(new String[] { call.getString("save"), call.getString("share") }, (dialog, which) -> {
@@ -190,6 +226,138 @@ public class NativeShellService {
                 });
             } catch (Exception error) { fail(call); }
         });
+    }
+
+    /**
+     * 图片直接进入系统相册。
+     *
+     * API 29 起通过 MediaStore 分区存储写入，无需申请存储权限；Android 9 仍需
+     * WRITE_EXTERNAL_STORAGE 才能写入公共 Pictures 目录，因此只在该系统版本请求。
+     */
+    private void saveImageToAlbum(Call call, String mime) {
+        if (Build.VERSION.SDK_INT <= Build.VERSION_CODES.P
+            && ContextCompat.checkSelfPermission(activity, android.Manifest.permission.WRITE_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED) {
+            albumCall = call;
+            albumPermission.launch(android.Manifest.permission.WRITE_EXTERNAL_STORAGE);
+            return;
+        }
+        writeImageToAlbum(call, mime);
+    }
+
+    /** 在导出线程复制缓存文件；只有相册条目或公共文件完整写入后才返回 saved。 */
+    private void writeImageToAlbum(Call call, String mime) {
+        io.execute(() -> {
+            try {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) saveImageThroughMediaStore(mime);
+                else saveImageToLegacyPictures(mime);
+                complete(call, "saved", true);
+            } catch (Exception error) {
+                fail(call);
+            }
+        });
+    }
+
+    /** 新系统以 IS_PENDING 隐藏未完成文件，避免相册短暂显示半张照片。 */
+    private void saveImageThroughMediaStore(String mime) throws IOException {
+        ContentValues values = new ContentValues();
+        values.put(MediaStore.Images.Media.DISPLAY_NAME, uniqueMediaDisplayName(pendingFile.getName()));
+        values.put(MediaStore.Images.Media.MIME_TYPE, mime);
+        values.put(MediaStore.Images.Media.RELATIVE_PATH, Environment.DIRECTORY_PICTURES + File.separator + "LightNote");
+        values.put(MediaStore.Images.Media.IS_PENDING, 1);
+        Uri uri = activity.getContentResolver().insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values);
+        if (uri == null) throw new IOException("media_insert_failed");
+        try {
+            try (InputStream input = Files.newInputStream(pendingFile.toPath());
+                 OutputStream output = activity.getContentResolver().openOutputStream(uri, "w")) {
+                if (output == null) throw new IOException("media_output_unavailable");
+                copy(input, output);
+            }
+            ContentValues ready = new ContentValues();
+            ready.put(MediaStore.Images.Media.IS_PENDING, 0);
+            if (activity.getContentResolver().update(uri, ready, null, null) <= 0) throw new IOException("media_finalize_failed");
+        } catch (Exception error) {
+            activity.getContentResolver().delete(uri, null, null);
+            throw error;
+        }
+    }
+
+    /** Android 9 写入标准 Pictures/LightNote，并交给媒体扫描器登记到相册。 */
+    private void saveImageToLegacyPictures(String mime) throws IOException {
+        File pictures = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES);
+        File album = new File(pictures, "LightNote");
+        if (!album.exists() && !album.mkdirs()) throw new IOException("album_directory_unavailable");
+        File destination = uniqueLegacyFile(album, pendingFile.getName());
+        try (InputStream input = Files.newInputStream(pendingFile.toPath());
+             OutputStream output = new FileOutputStream(destination)) {
+            copy(input, output);
+        } catch (Exception error) {
+            destination.delete();
+            throw error;
+        }
+        CountDownLatch scanned = new CountDownLatch(1);
+        AtomicBoolean indexed = new AtomicBoolean(false);
+        MediaScannerConnection.scanFile(activity, new String[]{ destination.getAbsolutePath() }, new String[]{ mime }, (path, uri) -> {
+            indexed.set(uri != null);
+            scanned.countDown();
+        });
+        try {
+            if (!scanned.await(5, TimeUnit.SECONDS) || !indexed.get()) {
+                destination.delete();
+                throw new IOException("media_scan_failed");
+            }
+        } catch (InterruptedException error) {
+            Thread.currentThread().interrupt();
+            destination.delete();
+            throw new IOException("media_scan_interrupted", error);
+        }
+    }
+
+    /** 同名导出追加序号，确保每次导出都是相册中的新照片，不覆盖历史文件。 */
+    private String uniqueMediaDisplayName(String filename) {
+        String base = filename;
+        String extension = "";
+        int dot = filename.lastIndexOf('.');
+        if (dot > 0) {
+            base = filename.substring(0, dot);
+            extension = filename.substring(dot);
+        }
+        for (int index = 0; index < 100; index += 1) {
+            String candidate = index == 0 ? filename : base + " (" + index + ")" + extension;
+            try (Cursor cursor = activity.getContentResolver().query(
+                MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
+                new String[]{ MediaStore.Images.Media._ID },
+                MediaStore.Images.Media.DISPLAY_NAME + "=?",
+                new String[]{ candidate },
+                null
+            )) {
+                if (cursor == null || !cursor.moveToFirst()) return candidate;
+            }
+        }
+        return base + "-" + System.currentTimeMillis() + extension;
+    }
+
+    /** 旧系统文件系统没有 MediaStore 的唯一命名保证，逐个检查同目录文件。 */
+    private File uniqueLegacyFile(File directory, String filename) {
+        String base = filename;
+        String extension = "";
+        int dot = filename.lastIndexOf('.');
+        if (dot > 0) {
+            base = filename.substring(0, dot);
+            extension = filename.substring(dot);
+        }
+        for (int index = 0; index < 100; index += 1) {
+            String candidate = index == 0 ? filename : base + " (" + index + ")" + extension;
+            File file = new File(directory, candidate);
+            if (!file.exists()) return file;
+        }
+        return new File(directory, base + "-" + System.currentTimeMillis() + extension);
+    }
+
+    /** 使用 64 KiB 缓冲复制，避免把导出图片再次完整解码到 Java 内存。 */
+    private void copy(InputStream input, OutputStream output) throws IOException {
+        byte[] buffer = new byte[65536];
+        int count;
+        while ((count = input.read(buffer)) != -1) output.write(buffer, 0, count);
     }
 
     /** SAF 创建文件由用户选择目标；绝不根据网页参数直接覆盖本地路径。 */
