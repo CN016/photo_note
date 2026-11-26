@@ -7,12 +7,12 @@ import { imageNote } from '../images/imageNote'
 import ContentZoom from '../components/ContentZoom.vue'
 import { computed, nextTick, onActivated, onDeactivated, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { onBeforeRouteLeave, useRoute, useRouter } from 'vue-router'
-import { registerMenu, openMenu, updateMenu, menuState, type MenuEntry } from '../context-menu/menu'
+import { registerMenu, openMenu } from '../context-menu/menu'
 import { clipboardAdapter } from '../../../../packages/platform-adapters'
 import { copyImage } from '../context-menu/clipboard'
+import { createGalleryImageMenu } from '../context-menu/galleryImageMenu'
 import { createLongPress } from '../context-menu/longPress'
-import { gallerySnapshot, saveGallerySnapshot, clearGallerySnapshot } from '../context-menu/galleryNavigation'
-import type { InspirationProjectSummary } from '../api/types'
+import { gallerySnapshot, clearGallerySnapshot } from '../context-menu/galleryNavigation'
 import { useI18n } from 'vue-i18n'
 import { ArrowDown, PictureFilled, Search, Sort } from '@element-plus/icons-vue'
 import CreateFab from '../components/CreateFab.vue'
@@ -33,7 +33,7 @@ let savedScroll = 0
 let openedImageID = ''
 // 离开前记录真实位置；激活发生在浏览器绘制之前，缩略图和筛选均沿用原实例。
 onBeforeRouteLeave(to => { savedScroll = window.scrollY; openedImageID = to.name === 'edit-inspiration' ? String(to.params.id) : '' })
-onDeactivated(() => { active.value = false; openVersion += 1; openingID.value = ''; gesture.cancel(); associationVersion += 1 })
+onDeactivated(() => { active.value = false; openVersion += 1; openingID.value = ''; gesture.cancel() })
 onActivated(() => {
   active.value = true
   window.scrollTo({ top: savedScroll, behavior: 'instant' as ScrollBehavior })
@@ -52,7 +52,7 @@ onActivated(() => {
     if (!active.value || route.name !== 'gallery') return
     const card = galleryRoot.value?.querySelector<HTMLElement>(`[data-inspiration-card="${saved.imageID}"]`)
     const item = items.value.find(item => item.business_id === saved.imageID)
-    if (card && item) showProjects(item, card, saved.x, saved.y, saved.menuPage, saved.menuScroll)
+    if (card && item) showImageMenu(item, card, saved.x, saved.y, saved.menuScroll)
   })
 })
 const galleryRoot = ref<HTMLElement>()
@@ -79,57 +79,18 @@ let restoring = false
 let alive = true
 let disposeMenu: (() => void) | undefined
 let touchedCard: HTMLElement | null = null
-let activeImage = ''
-let menuPage = 1
-let related: InspirationProjectSummary[] = []
-let relatedTotal = 0
-let associationVersion = 0
 const gesture = createLongPress((x, y) => {
   const item = items.value.find(item => item.business_id === touchedCard?.dataset.inspirationCard)
-  if (item && touchedCard) showProjects(item, touchedCard, x, y)
+  if (item && touchedCard) showImageMenu(item, touchedCard, x, y)
 })
-/** 关联浮窗按需加载，菜单代次和会话范围共同阻止迟到响应串图。 */
-function showProjects(item: InspirationRecord, card: HTMLElement, x: number, y: number, pages = 1, scroll = 0) {
-  activeImage = item.business_id; related = []; menuPage = 0; relatedTotal = 0
-  const version = ++associationVersion, scope = scopeKey()
-  const id = openMenu(x, y, [{ label: t('common.loading'), disabled: true }], card, scroll)
-  const copy: MenuEntry = { label: t('contextMenu.copyImage'), disabled: !clipboardAdapter.canWriteImage(), run: () => copyImage(() => api.download(item.image_key)) }
-  const render = (pending = false, failed = false) => {
-    const entries: MenuEntry[] = [{ label: t('gallery.relatedProjects'), disabled: true }, ...related.map(project => ({ label: project.title || t('projects.editorTitlePlaceholder'), run: () => openRelated(project.business_id, x, y) }))]
-    if (!related.length && !pending && !failed) entries.push({ label: t('gallery.noRelatedProjects'), disabled: true })
-    if (pending) entries.push({ label: t('common.loading'), disabled: true })
-    else if (failed) entries.push({ label: t('gallery.relatedProjectsError'), disabled: true }, { label: t('common.retry'), stayOpen: true, run: () => load(menuPage + 1) })
-    else if (menuPage * 20 < relatedTotal) entries.push({ label: t('gallery.loadMore'), stayOpen: true, run: () => load(menuPage + 1) })
-    entries.push(copy)
-    updateMenu(id, entries, menuState.value?.scroll ?? scroll)
-  }
-  async function load(pageNumber: number): Promise<void> {
-    render(true)
-    try {
-      const result = await api.inspirationProjects(item.business_id, pageNumber)
-      if (version !== associationVersion || scope !== scopeKey() || menuState.value?.id !== id) return
-      related = Array.from(new Map((pageNumber === 1 ? result.items : [...related, ...result.items]).map(project => [project.business_id, project])).values())
-      relatedTotal = result.total; menuPage = result.page
-      if (menuPage < pages && menuPage * 20 < relatedTotal) { await load(menuPage + 1); return }
-      render()
-      if (pages > 1 || scroll) { const state = menuState.value; if (state?.id === id) updateMenu(id, state.items, scroll) }
-    } catch { if (version === associationVersion && scope === scopeKey()) render(false, true) }
-  }
-  void load(1)
-}
-/** 来源历史项与快照绑定，浏览器返回才恢复；普通重新进入图库不误用旧状态。 */
-function openRelated(projectID: string, x: number, y: number) {
-  const key = crypto.randomUUID()
-  history.replaceState({ ...history.state, galleryReturnKey: key }, '')
-  saveGallerySnapshot({ scope: scopeKey(), key, position: history.state.position, x, y,
-    search: searchQuery.value, tags: [...selectedTagIDs.value], match: tagMatch.value, sort: sort.value,
-    searchKind: gallerySearch.value.kind, searchColor: gallerySearch.value.color, tagSource: gallerySearch.value.tagSource,
-    peopleMode: gallerySearch.value.peopleMode, peopleMin: gallerySearch.value.peopleMin, peopleMax: gallerySearch.value.peopleMax,
-    filters: JSON.parse(JSON.stringify(libraryFilters.value)), items: [...items.value], page: page.value, total: total.value,
-    scroll: window.scrollY, imageID: activeImage, menuPage, menuScroll: menuState.value?.scroll ?? 0,
-    toolsScroll: document.querySelector('.activity-scroll')?.scrollLeft ?? 0,
-    tools: libraryTools.value!.snapshot(), zoom: contentZoom.value!.snapshot() })
-  void router.push({ path: `/projects/${projectID}`, query: { from: 'gallery', returnKey: key, mode: 'read' } })
+/** 图片长按和右键共用同一菜单；仅保留当前图片操作并立即显示，不等待网络请求。 */
+function showImageMenu(item: InspirationRecord, card: HTMLElement, x: number, y: number, scroll = 0) {
+  const entries = createGalleryImageMenu(
+    t('contextMenu.copyImage'),
+    clipboardAdapter.canWriteImage(),
+    () => copyImage(() => api.download(item.image_key)),
+  )
+  openMenu(x, y, entries, card, scroll)
 }
 function touchStart(event: TouchEvent) {
   galleryTouchStart(event)
@@ -380,7 +341,7 @@ function setSort(value: string) {
 /** 重试只提交当前图片任务，等待后端确认后刷新列表，防止重复点击。 */
 
 watch(() => [auth.orgid, auth.user?.business_id, auth.sessionVersion], () => {
-  openVersion += 1; openingID.value = ''; clearGallerySnapshot(); associationVersion += 1; requestVersion += 1; items.value = []; total.value = 0; libraryFilters.value = {}; gallerySearch.value = createGallerySearchState(); tags.value = []
+  openVersion += 1; openingID.value = ''; clearGallerySnapshot(); requestVersion += 1; items.value = []; total.value = 0; libraryFilters.value = {}; gallerySearch.value = createGallerySearchState(); tags.value = []
   if (active.value && route.name === 'gallery') { void loadPage(); void loadTags() }
 })
 
@@ -391,7 +352,7 @@ onMounted(async () => {
     const card = (event.target as Element).closest<HTMLElement>('[data-inspiration-card]')
     const item = items.value.find(item => item.business_id === card?.dataset.inspirationCard)
     if (!item || !card) return false
-    gesture.cancel(); showProjects(item, card, event.clientX, event.clientY); return true
+    gesture.cancel(); showImageMenu(item, card, event.clientX, event.clientY); return true
   })
   resizeGrid()
   window.addEventListener('resize', resizeGrid, { passive: true })
@@ -428,9 +389,9 @@ onMounted(async () => {
   window.scrollTo(0, saved.scroll)
   const card = galleryRoot.value?.querySelector<HTMLElement>(`[data-inspiration-card="${saved.imageID}"]`)
   const item = items.value.find(item => item.business_id === saved.imageID)
-  if (item && card) showProjects(item, card, saved.x, saved.y, saved.menuPage, saved.menuScroll)
+  if (item && card) showImageMenu(item, card, saved.x, saved.y, saved.menuScroll)
 })
-onBeforeUnmount(() => { alive = false; inspirationDetails.clear(); openVersion += 1; disposeMenu?.(); gesture.cancel(); associationVersion += 1; window.removeEventListener('resize', resizeGrid); window.removeEventListener('scroll', gesture.cancel, true); window.removeEventListener('scroll', updateGridNavigation); window.clearTimeout(gridNavFrame); window.clearTimeout(gridFocusFrame); tagsVersion += 1; window.clearInterval(processingTimer); if (searchTimer !== undefined) window.clearTimeout(searchTimer); requestVersion += 1 })
+onBeforeUnmount(() => { alive = false; inspirationDetails.clear(); openVersion += 1; disposeMenu?.(); gesture.cancel(); window.removeEventListener('resize', resizeGrid); window.removeEventListener('scroll', gesture.cancel, true); window.removeEventListener('scroll', updateGridNavigation); window.clearTimeout(gridNavFrame); window.clearTimeout(gridFocusFrame); tagsVersion += 1; window.clearInterval(processingTimer); if (searchTimer !== undefined) window.clearTimeout(searchTimer); requestVersion += 1 })
 </script>
 
 <template>

@@ -435,8 +435,8 @@ watch(() => props.modelValue.color, color => {
 .gallery-condition-tab > .el-icon { font-size: 21px; }
 .gallery-condition-tab:hover { background: var(--surface-soft); color: var(--ink); }
 .gallery-condition-tab:active { transform: scale(.95); }
-/* 色系入口使用色相环，直观对应可选的连续颜色范围。 */
-.condition-color-ring { width: 20px; height: 20px; flex: none; border-radius: 50%; background: conic-gradient(#ff365b, #ffc400, #48ce67, #16c8e9, #3b6cff, #c43de8, #ff365b); -webkit-mask: radial-gradient(circle, transparent 48%, #000 52%); mask: radial-gradient(circle, transparent 48%, #000 52%); }
+/* 色系入口使用单线空心圆环，与搜索、标签和人数图标保持同一视觉重量。 */
+.condition-color-ring { width: 20px; height: 20px; flex: none; box-sizing: border-box; border: 3px solid currentColor; border-radius: 50%; background: transparent; }
 .gallery-condition-tab:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
 .gallery-condition-tab.active { background: var(--accent-soft); color: var(--accent); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 20%, transparent); }
 .condition-active-dot { position: absolute; top: 8px; right: 8px; width: 7px; height: 7px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 2px var(--surface-overlay); }
