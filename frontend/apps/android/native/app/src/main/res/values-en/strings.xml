@@ -6,6 +6,9 @@
     <string name="engine_failed">Could not start the creative engine. Close and reopen LightNote.</string>
     <string name="update_checking">Checking for page updates…</string>
     <string name="update_downloading">Downloading page update: %1$d%%</string>
+    <string name="export_image_saved">Download complete</string>
+    <string name="export_image_failed">Download failed. Try again.</string>
+    <string name="export_image_permission_denied">Gallery permission is required to save this photo.</string>
     <string name="update_verifying">Verifying and installing the update…</string>
     <string name="update_fallback">Starting the available local version…</string>
     <string name="update_retry">Check again</string>

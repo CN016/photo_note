@@ -3,12 +3,17 @@ interface NotificationSessionTokens { access_token: string; refresh_token: strin
 
 /** 系统文件面板的文案由共享界面按当前语言传入，适配层不持有业务文案。 */
 export interface ExportLabels { title: string; save: string; share: string; cancel: string }
-export type ExportResult = 'saved' | 'shared' | 'cancelled'
+export type ExportResult = 'saved' | 'shared' | 'cancelled' | 'accepted'
+export interface PlatformExportOptions {
+  /** Android 图片交给 Activity 后立即返回；最终相册结果由原生 Toast 通知。 */
+  androidImageHandoff?: boolean
+}
 export interface PlatformAdapter {
-  exportFile(blob: Blob, filename: string, labels: ExportLabels): Promise<ExportResult>
+  exportFile(blob: Blob, filename: string, labels: ExportLabels, options?: PlatformExportOptions): Promise<ExportResult>
 }
 interface NativeShell {
   exportFile(options: ExportLabels & { data: string; filename: string; mime: string }): Promise<{ status: ExportResult }>
+  exportImageToAlbum(options: ExportLabels & { data: string; filename: string; mime: string }): Promise<{ status: ExportResult }>
   setTheme(options: { dark: boolean }): Promise<void>
   startNotificationMonitor(options: { identity: string; tokens: NotificationSessionTokens }): Promise<void>
   stopNotificationMonitor(options: { identity: string }): Promise<void>
@@ -37,6 +42,7 @@ function invoke<T>(method: string, options: unknown, timeoutMs = 0): Promise<T> 
 }
 export const nativeShell: NativeShell = {
   exportFile: options => invoke('exportFile', options),
+  exportImageToAlbum: options => invoke('exportImageToAlbum', options),
   setTheme: options => invoke('setTheme', options),
   startNotificationMonitor: options => invoke('startNotificationMonitor', options),
   stopNotificationMonitor: options => invoke('stopNotificationMonitor', options),
@@ -82,10 +88,13 @@ function encodeBlob(blob: Blob): Promise<string> {
 
 /** 普通浏览器沿用下载语义；Android 图片直存相册，其他文件由系统保存或分享完成导出。 */
 export const platformAdapter: PlatformAdapter = {
-  async exportFile(blob, filename, labels) {
+  async exportFile(blob, filename, labels, options = {}) {
     if (isAndroid()) {
       if (blob.size > MAX_NATIVE_EXPORT_BYTES) throw new Error('export_too_large')
-      const { status } = await nativeShell.exportFile({ ...labels, filename, mime: blob.type.split(';')[0] || 'application/octet-stream', data: await encodeBlob(blob) })
+      const payload = { ...labels, filename, mime: blob.type.split(';')[0] || 'application/octet-stream', data: await encodeBlob(blob) }
+      const { status } = options.androidImageHandoff && payload.mime.startsWith('image/')
+        ? await nativeShell.exportImageToAlbum(payload)
+        : await nativeShell.exportFile(payload)
       return status
     }
     const url = URL.createObjectURL(blob)

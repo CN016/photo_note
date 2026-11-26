@@ -44,6 +44,25 @@ describe('平台文件导出边界', () => {
     expect(nativeExport).not.toHaveBeenCalled()
   })
 
+  it('Android 图片交接只等待 Activity 接收，不等待相册最终写入', async () => {
+    vi.stubGlobal('FileReader', class {
+      result = 'data:image/png;base64,eA=='
+      onload?: () => void
+      readAsDataURL() { this.onload?.() }
+    })
+    nativeExport.mockResolvedValue({ status: 'accepted' })
+    expect(await platformAdapter.exportFile(
+      new Blob(['x'], { type: 'image/png' }),
+      'photo-export.png',
+      labels,
+      { androidImageHandoff: true },
+    )).toBe('accepted')
+    expect(nativeExport).toHaveBeenCalledWith('photo_nini', {
+      method: 'exportImageToAlbum',
+      options: { ...labels, filename: 'photo-export.png', mime: 'image/png', data: 'eA==' },
+    })
+  })
+
   it('Android 首帧完成后只向同源窗口发送就绪事件', () => {
     const postMessage = vi.fn()
     vi.stubGlobal('window', { postMessage })

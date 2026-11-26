@@ -1840,15 +1840,18 @@ async function exportEditedImage(withWatermark: boolean): Promise<void> {
       return
     }
 
-    let result: 'saved' | 'shared' | 'cancelled'
+    let result: 'saved' | 'shared' | 'cancelled' | 'accepted'
     try {
-      result = await exportFile(blob, exportFilename, { successMessage: t('editor.exportSuccess') })
+      result = await exportFile(blob, exportFilename, {
+        successMessage: t('editor.exportSuccess'),
+        androidImageHandoff: true,
+      })
     } catch (cause) {
       // 平台层已经给出真实的保存错误；只补充非平台异常，不能再把自己的收尾当成保存失败。
       if (!(cause instanceof FileExportError)) showTopNotice(t('editor.exportFailed'), 'error')
       return
     }
-    if (result !== 'saved') return
+    if (result !== 'saved' && result !== 'accepted') return
     try {
       // 保存已成功，页面收尾即使遇到路由或动画异常也不能覆盖成功结果。
       if (withWatermark) exitWatermarkMode()

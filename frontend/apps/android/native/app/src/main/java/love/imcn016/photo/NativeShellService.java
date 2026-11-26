@@ -14,6 +14,7 @@ import android.os.Environment;
 import android.media.MediaScannerConnection;
 import android.provider.MediaStore;
 import android.util.Base64;
+import android.widget.Toast;
 import androidx.activity.result.ActivityResult;
 import androidx.core.content.ContextCompat;
 import androidx.core.content.FileProvider;
@@ -44,6 +45,8 @@ public class NativeShellService {
     private Call saveCall;
     private final ActivityResultLauncher<String> albumPermission;
     private Call albumCall;
+    private String albumMime = "";
+    private boolean albumHandoff;
     private final ActivityResultLauncher<String> notificationPermission;
     private String monitorIdentity = "";
     private volatile String monitorOwner = "";
@@ -83,14 +86,22 @@ public class NativeShellService {
         albumPermission = activity.registerForActivityResult(new ActivityResultContracts.RequestPermission(), granted -> {
             Call call = albumCall;
             albumCall = null;
-            if (call == null) {
+            String mime = albumMime;
+            albumMime = "";
+            boolean handoff = albumHandoff;
+            albumHandoff = false;
+            if (call == null && !handoff) {
                 cleanup();
                 return;
             }
-            if (granted) writeImageToAlbum(call, call.getString("mime"));
+            if (granted) {
+                if (handoff) writeImageToAlbumHandoff(mime);
+                else writeImageToAlbum(call, mime);
+            }
             else {
                 cleanup();
-                call.reject("album_permission_denied");
+                if (handoff) showHandoffResult(false, true);
+                else call.reject("album_permission_denied");
             }
         });
     }
@@ -98,6 +109,7 @@ public class NativeShellService {
     public void invoke(String method, JSONObject options, Reply reply) {
         Call call = new Call(options, reply);
         if ("exportFile".equals(method)) exportFile(call);
+        else if ("exportImageToAlbum".equals(method)) exportImageToAlbum(call);
         else if ("setTheme".equals(method)) setTheme(call);
         else if ("minimizeApp".equals(method)) { activity.moveTaskToBack(true); call.resolve(); }
         else if ("independentNotificationSessions".equals(method)) call.resolve();
@@ -226,19 +238,113 @@ public class NativeShellService {
     }
 
     /**
+     * 图片导出交接模式。
+     *
+     * Web 只等待“已接收”确认，随后立即返回图片详情；真正的写入和相册结果由
+     * 当前 Activity 异步完成并通过原生 Toast 通知，避免 Web 长等待后误报失败。
+     */
+    public void exportImageToAlbum(Call call) {
+        synchronized (this) {
+            if (busy) { call.reject("export_busy"); return; }
+            busy = true;
+        }
+        String data = call.getString("data", "");
+        String filename = call.getString("filename", "export");
+        String mime = call.getString("mime", "application/octet-stream");
+        if (!mime.startsWith("image/") || filename.trim().isEmpty() || filename.length() > 180
+            || filename.contains("/") || filename.contains("\\") || filename.contains("\0")
+            || data.length() > ((MAX_BYTES + 2L) / 3L) * 4L
+            || !mime.matches("[a-zA-Z0-9.+-]+/[a-zA-Z0-9.+-]+")) {
+            fail(call);
+            return;
+        }
+        // 先确认 Activity 已接收；后续任何媒体处理结果都不再通过 Web 请求链路回传。
+        try {
+            call.resolve(new JSONObject().put("status", "accepted"));
+        } catch (org.json.JSONException impossible) {
+            fail(call);
+            return;
+        }
+        io.execute(() -> {
+            try {
+                File directory = new File(activity.getCacheDir(), "exports");
+                if (!directory.exists() && !directory.mkdirs()) throw new java.io.IOException();
+                File batch = new File(directory, java.util.UUID.randomUUID().toString());
+                if (!batch.mkdir()) throw new java.io.IOException();
+                pendingFile = new File(batch, filename);
+                byte[] decoded = Base64.decode(data, Base64.NO_WRAP);
+                if (decoded.length > MAX_BYTES) throw new java.io.IOException();
+                try (OutputStream output = new FileOutputStream(pendingFile)) { output.write(decoded); }
+                activity.runOnUiThread(() -> {
+                    if (activity.isFinishing() || activity.isDestroyed()) {
+                        cleanup();
+                        return;
+                    }
+                    saveImageToAlbumHandoff(call, mime);
+                });
+            } catch (Exception error) {
+                cleanup();
+                showHandoffResult(false, false);
+            }
+        });
+    }
+
+    /**
      * 图片直接进入系统相册。
      *
      * API 29 起通过 MediaStore 分区存储写入，无需申请存储权限；Android 9 仍需
      * WRITE_EXTERNAL_STORAGE 才能写入公共 Pictures 目录，因此只在该系统版本请求。
      */
     private void saveImageToAlbum(Call call, String mime) {
+        albumHandoff = false;
         if (Build.VERSION.SDK_INT <= Build.VERSION_CODES.P
             && ContextCompat.checkSelfPermission(activity, android.Manifest.permission.WRITE_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED) {
             albumCall = call;
+            albumMime = mime;
             albumPermission.launch(android.Manifest.permission.WRITE_EXTERNAL_STORAGE);
             return;
         }
         writeImageToAlbum(call, mime);
+    }
+
+    /** 交接模式需要 Android 9 写入权限；授权结果只触发原生 Toast，不再回写 Web。 */
+    private void saveImageToAlbumHandoff(Call call, String mime) {
+        if (Build.VERSION.SDK_INT <= Build.VERSION_CODES.P
+            && ContextCompat.checkSelfPermission(activity, android.Manifest.permission.WRITE_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED) {
+            // 交接请求已经向 Web 返回，不保留包含 Base64 的 Call，避免权限弹窗期间占用大对象。
+            albumCall = null;
+            albumMime = mime;
+            albumHandoff = true;
+            albumPermission.launch(android.Manifest.permission.WRITE_EXTERNAL_STORAGE);
+            return;
+        }
+        writeImageToAlbumHandoff(mime);
+    }
+
+    /** 交接模式只清理缓存和显示原生结果，不调用已结束的 Web Call。 */
+    private void writeImageToAlbumHandoff(String mime) {
+        io.execute(() -> {
+            boolean saved = false;
+            try {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) saveImageThroughMediaStore(mime);
+                else saveImageToLegacyPictures(mime);
+                saved = true;
+            } catch (Exception error) {
+                saved = false;
+            } finally {
+                cleanup();
+            }
+            showHandoffResult(saved, false);
+        });
+    }
+
+    /** Activity 自有提示不依赖 Web toast 或长连接生命周期。 */
+    private void showHandoffResult(boolean saved, boolean permissionDenied) {
+        if (activity.isFinishing() || activity.isDestroyed()) return;
+        int text = saved ? R.string.export_image_saved
+            : permissionDenied ? R.string.export_image_permission_denied
+            : R.string.export_image_failed;
+        activity.runOnUiThread(() -> Toast.makeText(activity, text, Toast.LENGTH_SHORT).show());
     }
 
     /** 在导出线程复制缓存文件；只有相册条目或公共文件完整写入后才返回 saved。 */

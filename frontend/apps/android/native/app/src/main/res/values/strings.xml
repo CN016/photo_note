@@ -6,6 +6,9 @@
     <string name="engine_failed">创作引擎启动失败，请关闭后重新打开 LightNote。</string>
     <string name="update_checking">正在检查页面更新…</string>
     <string name="update_downloading">正在下载页面更新：%1$d%%</string>
+    <string name="export_image_saved">下载成功</string>
+    <string name="export_image_failed">下载失败，请重试</string>
+    <string name="export_image_permission_denied">没有相册写入权限，无法保存照片</string>
     <string name="update_verifying">正在校验并安装更新…</string>
     <string name="update_fallback">正在启动本地可用版本…</string>
     <string name="update_retry">重新检查</string>

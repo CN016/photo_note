@@ -10,6 +10,8 @@ export class FileExportError extends Error {}
 export interface FileExportOptions {
   /** 业务页可提供更明确的成功文案；未提供时沿用平台默认提示。 */
   successMessage?: string
+  /** Android 图片交给 Activity 后立即返回，最终结果由原生 Toast 通知。 */
+  androidImageHandoff?: boolean
 }
 
 /** 导出状态覆盖整个系统面板生命周期，避免重复点击同时持有多份大文件。 */
@@ -21,7 +23,7 @@ export async function exportFile(blob: Blob, filename: string, options: FileExpo
     const result = await platformAdapter.exportFile(blob, filename, {
       title: t('common.fileExport.title'), save: t('common.fileExport.save'),
       share: t('common.fileExport.share'), cancel: t('common.fileExport.cancel'),
-    })
+    }, { androidImageHandoff: options.androidImageHandoff })
     if (result === 'saved' && (options.successMessage || isAndroid())) {
       ElMessage.success(options.successMessage
         || t(blob.type.toLowerCase().startsWith('image/') ? 'common.fileExport.savedToAlbum' : 'common.fileExport.saved'))

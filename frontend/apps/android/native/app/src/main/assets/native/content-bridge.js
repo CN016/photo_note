@@ -22,7 +22,7 @@
       return;
     }
     if (data?.channel !== 'photo-nini-native-request' || !Number.isSafeInteger(data.id)) return;
-    if (!['exportFile', 'setTheme', 'minimizeApp', 'independentNotificationSessions', 'startNotificationMonitor', 'stopNotificationMonitor', 'consumeNotificationOpen'].includes(data.message?.method)) return;
+    if (!['exportFile', 'exportImageToAlbum', 'setTheme', 'minimizeApp', 'independentNotificationSessions', 'startNotificationMonitor', 'stopNotificationMonitor', 'consumeNotificationOpen'].includes(data.message?.method)) return;
     try {
       const value = await browser.runtime.sendNativeMessage('photo_nini', data.message);
       window.postMessage({ channel: 'photo-nini-native-response', id: data.id, value }, location.origin);
