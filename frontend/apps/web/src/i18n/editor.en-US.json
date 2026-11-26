@@ -14,6 +14,7 @@
   "exportSection": "Export",
   "exportImage": "Export image",
   "exportingImage": "Exporting image…",
+  "exportSuccess": "Download complete",
   "exportFailed": "The image couldn't be exported. Try again.",
   "watermarkAdd": "Add watermark and export",
   "watermarkTitle": "Watermark",

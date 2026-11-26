@@ -14,6 +14,7 @@
   "exportSection": "导出",
   "exportImage": "导出图片",
   "exportingImage": "正在导出图片…",
+  "exportSuccess": "下载成功",
   "exportFailed": "图片导出未完成，请重试。",
   "watermarkAdd": "添加水印并导出",
   "watermarkTitle": "水印",

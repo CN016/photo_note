@@ -27,12 +27,13 @@ import {
   clampWatermarkPlacement, clampWatermarkScale, drawWatermark, watermarkPreviewFontSize, type WatermarkPlacement,
 } from '../images/watermark'
 import { drawDocumentAnchors } from '../images/imageAnchorExport'
+import { exportSourceKey, hasExportVisualChanges, originalExportFormat } from '../images/exportImage'
 import {
   anchorToView, clampAnchorLabelScale, createEditorDocument, cropOnRotatedCanvas, DocumentHistory, parseEditorDocument, viewSelectionToSourceRect,
   viewToSource, type EditorDocument, type ImageAnchor, type NormalizedRect,
 } from '../../../../packages/editor-core/src'
 import {
-  analyzeImageColors, decodeImagePreview, isColorAnalysis, makeWorkingJpeg, releaseCanvas, renderDocumentPreview,
+  analyzeImageColors, decodeImageForExport, decodeImagePreview, isColorAnalysis, makeWorkingJpeg, releaseCanvas, renderDocumentPreview,
   readInspirationImageMetadata, type ColorAnalysis,
 } from '../../../../packages/image-processing/src'
 
@@ -210,6 +211,8 @@ function restoreAnchorEditorScroll(): void {
 const editSnapshot = ref('')
 const documentData = ref<EditorDocument>(createEditorDocument())
 const sourceCanvas = shallowRef<HTMLCanvasElement | null>(null)
+const loadedImageBlob = shallowRef<Blob | null>(null)
+const loadedImageKey = ref('')
 const previewCanvas = ref<HTMLCanvasElement | null>(null)
 const backdropCanvas = ref<HTMLCanvasElement | null>(null)
 const stageBox = ref<HTMLElement | null>(null)
@@ -730,6 +733,8 @@ async function loadSelectedFile(file: File): Promise<void> {
   filename.value = file.name
   uploadSourceKey = ''
   uploadWorkKey = ''
+  loadedImageBlob.value = null
+  loadedImageKey.value = ''
   releaseCanvas(sourceCanvas.value)
   sourceCanvas.value = null
   documentData.value = createEditorDocument()
@@ -775,6 +780,8 @@ async function loadExisting(): Promise<void> {
     history = new DocumentHistory(documentData.value)
     const workImage = await api.download(loaded.image_key)
     if (version !== decodeVersion) return
+    loadedImageBlob.value = workImage
+    loadedImageKey.value = loaded.image_key
     const decoded = await decodeImagePreview(workImage)
     if (version !== decodeVersion) { releaseCanvas(decoded.canvas); return }
     sourceCanvas.value = decoded.canvas
@@ -1740,8 +1747,10 @@ function updateWatermarkScale(value: number): void {
   }
 }
 
-/** 按原文件名选择导出编码；带透明通道的格式保留 PNG，其余照片使用 JPEG 控制体积。 */
-function exportImageFormat(): { mime: 'image/png' | 'image/jpeg'; extension: 'png' | 'jpg' } {
+/** 按原文件实际 MIME 选择导出编码；带透明通道的格式保留 PNG，其余照片使用高质量 JPEG。 */
+function exportImageFormat(sourceBlob?: Blob): { mime: 'image/png' | 'image/jpeg'; extension: 'png' | 'jpg' } {
+  const mime = sourceBlob?.type.split(';')[0]?.trim().toLowerCase()
+  if (mime && /^image\/(png|webp|gif|avif|bmp)$/.test(mime)) return { mime: 'image/png', extension: 'png' }
   const name = (record.value?.file_name || filename.value || '').toLowerCase()
   return /\.(png|webp|gif|avif|bmp)$/.test(name) ? { mime: 'image/png', extension: 'png' } : { mime: 'image/jpeg', extension: 'jpg' }
 }
@@ -1751,40 +1760,100 @@ function encodeExportCanvas(canvas: HTMLCanvasElement, mime: string): Promise<Bl
   return new Promise((resolve, reject) => canvas.toBlob(
     blob => blob ? resolve(blob) : reject(new Error('canvas_encode_failed')),
     mime,
-    mime === 'image/jpeg' ? 0.92 : undefined,
+    mime === 'image/jpeg' ? 0.96 : undefined,
   ))
+}
+
+/** 优先读取独立原图；历史记录原图 key 被清理或不可读时回退到当前工作图。 */
+async function loadExportSourceBlob(workKey: string): Promise<Blob> {
+  const preferred = exportSourceKey(documentData.value, workKey)
+  if (preferred !== workKey) {
+    try {
+      return await api.download(preferred)
+    } catch { /* 历史原图可能已被后台清理，继续使用仍可访问的工作图。 */ }
+  }
+  if (loadedImageBlob.value && loadedImageKey.value === workKey) return loadedImageBlob.value
+  return api.download(workKey)
+}
+
+/**
+ * 在原图尺寸上重新绘制编辑结果。
+ *
+ * 原图解码失败时回退到当前预览画布，确保已能查看的图片仍可导出，而不是因为
+ * 设备内存不足同时又让整个保存流程失败。
+ */
+async function renderExportCanvas(sourceBlob: Blob): Promise<HTMLCanvasElement> {
+  let exportSource: HTMLCanvasElement | null = null
+  let ownsExportSource = false
+  try {
+    const decoded = await decodeImageForExport(sourceBlob)
+    exportSource = decoded.canvas
+    ownsExportSource = true
+  } catch {
+    exportSource = sourceCanvas.value
+  }
+  if (!exportSource) throw new Error('export_source_unavailable')
+  try {
+    const output = renderDocumentPreview(exportSource, documentData.value)
+    const context = output.getContext('2d')
+    if (!context) throw new Error('canvas_unavailable')
+    drawDocumentAnchors(context, documentData.value, output.width, output.height, anchorDisplayStore.size / 100)
+    if (watermarkMode.value && watermarkDraft.value) {
+      drawWatermark(context, t('common.brand'), watermarkDraft.value, output.width, output.height)
+    }
+    return output
+  } finally {
+    if (ownsExportSource) releaseCanvas(exportSource)
+  }
 }
 
 /**
  * 导出当前旋转、裁切、色彩调整和图片锚点合成后的新图片。
  *
  * 锚点使用预览层的相对位置和显示比例重新绘制到像素中，确保导出图片仍保留
- * 当前可见的标题与描述。水印沿用同一画布，Android 图片会由平台层直接写入相册；
- * 用户取消水印保存时保留预览，便于继续调整。
+ * 当前可见的标题与描述。无视觉编辑时直接导出原始文件字节；需要重绘时优先
+ * 读取 `source_image_key` 原图并按原图尺寸渲染。保存与媒体生成分阶段处理，
+ * 成功后的页面收尾不会被误报为导出失败。
  */
 async function exportEditedImage(withWatermark: boolean): Promise<void> {
   const source = sourceCanvas.value
-  if (!source || exportingImage.value) return
+  const workKey = record.value?.image_key
+  if (!source || !workKey || exportingImage.value) return
   if (withWatermark && !watermarkDraft.value) return
   exportingImage.value = true
   error.value = ''
   let output: HTMLCanvasElement | null = null
   try {
-    output = renderDocumentPreview(source, documentData.value)
-    const context = output.getContext('2d')
-    if (!context) throw new Error('canvas_unavailable')
-    drawDocumentAnchors(context, documentData.value, output.width, output.height, anchorDisplayStore.size / 100)
-    if (withWatermark && watermarkDraft.value) {
-      drawWatermark(context, t('common.brand'), watermarkDraft.value, output.width, output.height)
+    let blob: Blob
+    let exportFilename: string
+    try {
+      const sourceBlob = await loadExportSourceBlob(workKey)
+      const render = hasExportVisualChanges(documentData.value, withWatermark)
+      const format = render ? exportImageFormat(sourceBlob) : originalExportFormat(sourceBlob, record.value?.file_name || filename.value)
+      blob = render
+        ? await encodeExportCanvas(output = await renderExportCanvas(sourceBlob), format.mime)
+        : sourceBlob
+      const stem = (record.value?.file_name || filename.value || 'image').replace(/\.[^.]+$/, '').trim() || 'image'
+      exportFilename = `${stem}-${withWatermark ? 'watermark' : 'export'}.${format.extension}`
+    } catch {
+      showTopNotice(t('editor.exportFailed'), 'error')
+      return
     }
-    const format = exportImageFormat()
-    const blob = await encodeExportCanvas(output, format.mime)
-    const stem = (record.value?.file_name || filename.value || 'image').replace(/\.[^.]+$/, '').trim() || 'image'
-    const result = await exportFile(blob, `${stem}-${withWatermark ? 'watermark' : 'export'}.${format.extension}`)
-    if (withWatermark && result !== 'cancelled') exitWatermarkMode()
-  } catch (cause) {
-    // exportFile 已提示保存失败；这里只补充画布渲染和编码错误，避免同一次失败弹两次提示。
-    if (!(cause instanceof FileExportError)) showTopNotice(t('editor.exportFailed'), 'error')
+
+    let result: 'saved' | 'shared' | 'cancelled'
+    try {
+      result = await exportFile(blob, exportFilename, { successMessage: t('editor.exportSuccess') })
+    } catch (cause) {
+      // 平台层已经给出真实的保存错误；只补充非平台异常，不能再把自己的收尾当成保存失败。
+      if (!(cause instanceof FileExportError)) showTopNotice(t('editor.exportFailed'), 'error')
+      return
+    }
+    if (result !== 'saved') return
+    try {
+      // 保存已成功，页面收尾即使遇到路由或动画异常也不能覆盖成功结果。
+      if (withWatermark) exitWatermarkMode()
+      if (toolPanel.value === 'properties') closeToolPanel('properties')
+    } catch { /* 媒体已保存，收尾失败不得提示导出失败。 */ }
   } finally {
     releaseCanvas(output)
     exportingImage.value = false
@@ -1957,6 +2026,8 @@ onBeforeUnmount(() => {
   if (noteSaveTimer !== undefined) window.clearTimeout(noteSaveTimer)
   if (frameRequest) cancelAnimationFrame(frameRequest)
   resizeObserver?.disconnect()
+  loadedImageBlob.value = null
+  loadedImageKey.value = ''
   releaseCanvas(sourceCanvas.value)
   if (previewCanvas.value) { previewCanvas.value.width = 0; previewCanvas.value.height = 0 }
 })

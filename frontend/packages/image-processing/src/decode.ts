@@ -9,6 +9,13 @@ export interface DecodedPreview {
 }
 
 const PREVIEW_LIMIT = 1800
+/**
+ * 导出解码的安全边长上限。
+ *
+ * 常见手机 24MP、48MP 照片不会被缩小；只有超过浏览器/设备稳定处理范围的原图
+ * 才降采样，避免为了理论上的无限尺寸导致 canvas 分配失败或页面被系统终止。
+ */
+export const EXPORT_MAX_DIMENSION = 8192
 
 /** 按最长边限制预览尺寸并保持宽高比，防止编辑时长期持有原尺寸像素。 */
 export function fitPreviewDimensions(width: number, height: number, maxDimension = PREVIEW_LIMIT): { width: number; height: number } {
@@ -59,6 +66,16 @@ export async function decodeImagePreview(file: Blob, maxDimension = PREVIEW_LIMI
     context.drawImage(bitmap, 0, 0, width, height)
     return { canvas, width, height, format: 'image', wasDownsampled: width < bitmap.width || height < bitmap.height }
   } finally { bitmap.close() }
+}
+
+/**
+ * 以原图尺寸解码导出源。
+ *
+ * 该入口只用于用户主动导出，不能用于列表或编辑器预览；返回值中的
+ * `wasDownsampled` 可提示超过安全边长的超大图片，但常见照片应保持原始尺寸。
+ */
+export function decodeImageForExport(file: Blob): Promise<DecodedPreview> {
+  return decodeImagePreview(file, EXPORT_MAX_DIMENSION)
 }
 
 /** 为缺少 createImageBitmap 的浏览器回退到原生 HTMLImageElement 解码器。 */

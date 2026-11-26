@@ -7,9 +7,13 @@ import { i18n } from './i18n'
 let exporting = false
 /** 标记已向用户反馈的导出错误，业务页只补充自己的加载错误，避免双重提示。 */
 export class FileExportError extends Error {}
+export interface FileExportOptions {
+  /** 业务页可提供更明确的成功文案；未提供时沿用平台默认提示。 */
+  successMessage?: string
+}
 
 /** 导出状态覆盖整个系统面板生命周期，避免重复点击同时持有多份大文件。 */
-export async function exportFile(blob: Blob, filename: string): Promise<ExportResult> {
+export async function exportFile(blob: Blob, filename: string, options: FileExportOptions = {}): Promise<ExportResult> {
   const t = i18n.global.t
   if (exporting) { ElMessage.info(t('common.fileExport.busy')); return 'cancelled' }
   exporting = true
@@ -18,8 +22,9 @@ export async function exportFile(blob: Blob, filename: string): Promise<ExportRe
       title: t('common.fileExport.title'), save: t('common.fileExport.save'),
       share: t('common.fileExport.share'), cancel: t('common.fileExport.cancel'),
     })
-    if (result === 'saved' && isAndroid()) {
-      ElMessage.success(t(blob.type.toLowerCase().startsWith('image/') ? 'common.fileExport.savedToAlbum' : 'common.fileExport.saved'))
+    if (result === 'saved' && (options.successMessage || isAndroid())) {
+      ElMessage.success(options.successMessage
+        || t(blob.type.toLowerCase().startsWith('image/') ? 'common.fileExport.savedToAlbum' : 'common.fileExport.saved'))
     }
     return result
   } catch (error) {
