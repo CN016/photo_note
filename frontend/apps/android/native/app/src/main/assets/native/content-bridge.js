@@ -26,6 +26,10 @@
     try {
       const value = await browser.runtime.sendNativeMessage('photo_nini', data.message);
       window.postMessage({ channel: 'photo-nini-native-response', id: data.id, value }, location.origin);
-    } catch { window.postMessage({ channel: 'photo-nini-native-response', id: data.id, error: 'native_failed' }, location.origin); }
+    } catch (error) {
+      const raw = error instanceof Error ? error.message : '';
+      const code = raw.replace(/^Error:\s*/, '');
+      window.postMessage({ channel: 'photo-nini-native-response', id: data.id, error: /^[a-z0-9_]+$/.test(code) ? code : 'native_failed' }, location.origin);
+    }
   });
 })();

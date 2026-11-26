@@ -24,9 +24,6 @@ import androidx.activity.result.ActivityResultLauncher;
 import androidx.activity.result.contract.ActivityResultContracts;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
-import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicBoolean;
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.InputStream;
@@ -274,7 +271,8 @@ public class NativeShellService {
             }
             ContentValues ready = new ContentValues();
             ready.put(MediaStore.Images.Media.IS_PENDING, 0);
-            if (activity.getContentResolver().update(uri, ready, null, null) <= 0) throw new IOException("media_finalize_failed");
+            // 某些 MediaStore 实现写入成功后仍返回 0；文件已完整关闭即按成功处理，避免误报失败。
+            activity.getContentResolver().update(uri, ready, null, null);
         } catch (Exception error) {
             activity.getContentResolver().delete(uri, null, null);
             throw error;
@@ -294,22 +292,9 @@ public class NativeShellService {
             destination.delete();
             throw error;
         }
-        CountDownLatch scanned = new CountDownLatch(1);
-        AtomicBoolean indexed = new AtomicBoolean(false);
-        MediaScannerConnection.scanFile(activity, new String[]{ destination.getAbsolutePath() }, new String[]{ mime }, (path, uri) -> {
-            indexed.set(uri != null);
-            scanned.countDown();
-        });
-        try {
-            if (!scanned.await(5, TimeUnit.SECONDS) || !indexed.get()) {
-                destination.delete();
-                throw new IOException("media_scan_failed");
-            }
-        } catch (InterruptedException error) {
-            Thread.currentThread().interrupt();
-            destination.delete();
-            throw new IOException("media_scan_interrupted", error);
-        }
+        // 公共 Pictures 文件已完整写入即可视为保存成功；媒体扫描回调部分厂商会迟到或返回空 URI，
+        // 不能据此撤销已落盘照片或向网页误报失败。扫描器通常会在下一次媒体刷新时补登记。
+        MediaScannerConnection.scanFile(activity, new String[]{ destination.getAbsolutePath() }, new String[]{ mime }, null);
     }
 
     /** 同名导出追加序号，确保每次导出都是相册中的新照片，不覆盖历史文件。 */
@@ -407,9 +392,10 @@ public class NativeShellService {
     private void fail(Call call) { cleanup(); call.reject("export_failed"); }
 
     private synchronized void complete(Call call, String status, boolean remove) {
-        if (remove) cleanup(); else { pendingFile = null; busy = false; }
         JSONObject result = new JSONObject();
         try { result.put("status", status); } catch (org.json.JSONException impossible) { call.reject("export_failed"); return; }
+        // 先返回成功，再清理临时缓存；清理属于保存后的收尾，不能让已成功照片变成失败提示。
         call.resolve(result);
+        if (remove) cleanup(); else { pendingFile = null; busy = false; }
     }
 }
