@@ -3,6 +3,7 @@ import type { Router } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { isAndroid, nativeShell, platformAdapter, minimizeApp, subscribeNativeBack, subscribeNativeNotificationOpen, supportsNotificationMonitor, type ExportResult } from '../../../packages/platform-adapters'
 import { i18n } from './i18n'
+import { fileExportFeedbackKey } from './fileExportFeedback'
 
 let exporting = false
 /** 标记已向用户反馈的导出错误，业务页只补充自己的加载错误，避免双重提示。 */
@@ -31,12 +32,9 @@ export async function exportFile(blob: Blob, filename: string, options: FileExpo
     return result
   } catch (error) {
     const message = error instanceof Error ? error.message : ''
-    const key = message.includes('export_too_large')
-      ? 'common.fileExport.tooLarge'
-      : message.includes('album_permission_denied')
-        ? 'common.fileExport.albumPermissionDenied'
-        : 'common.fileExport.failed'
-    ElMessage.error(t(key))
+    const key = fileExportFeedbackKey(message)
+    // 只有文件过大和权限拒绝可以明确归因并指导用户；未知竞态不能误报保存失败。
+    if (key) ElMessage.error(t(key))
     throw new FileExportError('export_failed')
   } finally { exporting = false }
 }
