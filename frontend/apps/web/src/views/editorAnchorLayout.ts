@@ -11,6 +11,10 @@ export const ANCHOR_LABEL_MIN_WIDTH = 72
 export const ANCHOR_LABEL_MAX_WIDTH = 280
 /** 文字块起点到画布右边缘之间预留的避让距离，按锚点展示比例缩放。 */
 export const ANCHOR_LABEL_MARKER_OFFSET = 8
+/** 锚点标题在 100% 展示比例下的基准字号，详情、全屏、缩略图和导出共用。 */
+export const ANCHOR_TITLE_BASE_FONT_SIZE = 12
+/** 锚点详细描述在 100% 展示比例下的基准字号，始终小于标题。 */
+export const ANCHOR_DESCRIPTION_BASE_FONT_SIZE = 10
 /** 缩略图锚点文字按渲染图片宽度缩小的参考宽度，保持列表与编辑器中的比例关系。 */
 export const THUMBNAIL_ANCHOR_REFERENCE_WIDTH = 420
 
@@ -73,10 +77,10 @@ export function anchorLabelMaxWidth(note: string, availableRight: number, displa
   const scale = Number.isFinite(displayScale) && displayScale > 0 ? displayScale : 1
   const textScale = Number.isFinite(labelScale) && labelScale > 0 ? labelScale : 1
   const characters = Math.max(1, Array.from(note).length)
-  // 单行理想宽度按标题字号（14px/字符）估算，再叠加用户文字倍率，避免标题因低估而提前换行。
+  // 单行理想宽度按标题基准字号估算，再叠加用户文字倍率，避免标题因低估而提前换行。
   const desired = Math.min(
     ANCHOR_LABEL_MAX_WIDTH * scale * textScale,
-    Math.max(96 * scale, characters * 14 * scale * textScale + 24 * scale),
+    Math.max(96 * scale, characters * ANCHOR_TITLE_BASE_FONT_SIZE * scale * textScale + 24 * scale),
   )
   const available = Math.max(0, Number.isFinite(availableRight) ? availableRight : 0)
   // 右侧没有可用空间时退回最小宽度，避免长备注按完整理想宽度展开后被画布边缘裁掉大半。

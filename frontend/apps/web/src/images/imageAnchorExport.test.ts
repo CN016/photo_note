@@ -33,9 +33,9 @@ function fakeContext() {
 describe('图片锚点导出', () => {
   it('按常见手机预览比例换算字号和落点尺寸', () => {
     const metrics = anchorExportMetrics(1800, 1.25, 1.5)
-    expect(metrics.titleFontSize).toBeCloseTo(112.5)
-    expect(metrics.descriptionFontSize).toBeCloseTo(88.392857)
-    expect(metrics.markerDotSize).toBeCloseTo(63)
+    expect(metrics.titleFontSize).toBeCloseTo(96.428571)
+    expect(metrics.descriptionFontSize).toBeCloseTo(80.357143)
+    expect(metrics.markerDotSize).toBeCloseTo(54)
     expect(metrics.markerOffset).toBeCloseTo(42.857143)
   })
 

@@ -6,7 +6,7 @@ import { anchorToView, clampAnchorLabelScale, parseEditorDocument, type EditorDo
 import { decodeImagePreview, releaseCanvas, renderDocumentPreview } from '../../../../packages/image-processing/src'
 import { loadThumbnail } from '../images/thumbnails'
 import ImageAnchorMarker from './ImageAnchorMarker.vue'
-import { anchorNoteTitle, thumbnailAnchorTextScale } from '../views/editorAnchorLayout'
+import { ANCHOR_TITLE_BASE_FONT_SIZE, anchorNoteTitle, thumbnailAnchorTextScale } from '../views/editorAnchorLayout'
 import {
   inspirationDetailKey,
   inspirationDetails,
@@ -72,7 +72,7 @@ const anchors = computed(() => {
       style: {
         left: `${x}px`,
         top: `${y}px`,
-        '--anchor-title-font-size': `${11 * imageTextScale}px`,
+        '--anchor-title-font-size': `${ANCHOR_TITLE_BASE_FONT_SIZE * imageTextScale}px`,
         '--anchor-label-scale': `${labelScale}`,
         '--anchor-marker-dot-size': `${10 * visualScale * .56}px`,
         '--thumbnail-anchor-note-width': `${Math.max(36 * visualScale, Math.min(width - x - 8, 160 * visualScale))}px`,
@@ -234,7 +234,7 @@ onBeforeUnmount(() => {
   width: max-content;
   max-width: var(--thumbnail-anchor-note-width, 120px);
   color: #fff;
-  font-size: calc(var(--anchor-title-font-size, 14px) * var(--anchor-label-scale, 1));
+  font-size: calc(var(--anchor-title-font-size, 12px) * var(--anchor-label-scale, 1));
   font-weight: 600;
   line-height: 1.2;
   overflow-wrap: anywhere;
@@ -245,7 +245,7 @@ onBeforeUnmount(() => {
   right: 0;
   bottom: -1px;
   left: 0;
-  height: max(2px, calc(var(--anchor-title-font-size, 14px) * var(--anchor-label-scale, 1) * .14));
+  height: max(2px, calc(var(--anchor-title-font-size, 12px) * var(--anchor-label-scale, 1) * .14));
   border-radius: 999px;
   background: #f3e600;
   box-shadow: 0 1px 3px rgb(0 0 0 / 28%);

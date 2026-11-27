@@ -7,13 +7,14 @@
  */
 
 import { anchorToView, clampAnchorLabelScale, type EditorDocument } from '../../../../packages/editor-core/src'
-import { ANCHOR_LABEL_MARKER_OFFSET, anchorLabelMaxWidth, anchorNoteLongestLine, splitAnchorNote } from '../views/editorAnchorLayout'
+import {
+  ANCHOR_DESCRIPTION_BASE_FONT_SIZE, ANCHOR_LABEL_MARKER_OFFSET, ANCHOR_TITLE_BASE_FONT_SIZE,
+  anchorLabelMaxWidth, anchorNoteLongestLine, splitAnchorNote,
+} from '../views/editorAnchorLayout'
 import { UI_FONT_STACK } from '../uiFont'
 
 /** 与编辑器常见手机预览宽度一致，确保导出文字保持当前视觉比例。 */
 export const ANCHOR_EXPORT_REFERENCE_WIDTH = 420
-const TITLE_BASE_SIZE = 14
-const DESCRIPTION_BASE_SIZE = 11
 const MARKER_DOT_RATIO = 0.56
 const DESCRIPTION_GAP_RATIO = 0.08
 const TITLE_LINE_HEIGHT = 1.3
@@ -37,13 +38,13 @@ export function anchorExportMetrics(imageWidth: number, displayScale = 1, labelS
   const globalScale = Number.isFinite(displayScale) && displayScale > 0 ? displayScale : 1
   const textScale = clampAnchorLabelScale(labelScale)
   const layoutScale = width / ANCHOR_EXPORT_REFERENCE_WIDTH * globalScale
-  const titleFontSize = TITLE_BASE_SIZE * layoutScale * textScale
+  const titleFontSize = ANCHOR_TITLE_BASE_FONT_SIZE * layoutScale * textScale
   return {
     layoutScale,
     titleFontSize,
-    descriptionFontSize: DESCRIPTION_BASE_SIZE * layoutScale * textScale,
-    markerDotSize: TITLE_BASE_SIZE * layoutScale * textScale * MARKER_DOT_RATIO,
-    descriptionGap: TITLE_BASE_SIZE * layoutScale * textScale * DESCRIPTION_GAP_RATIO,
+    descriptionFontSize: ANCHOR_DESCRIPTION_BASE_FONT_SIZE * layoutScale * textScale,
+    markerDotSize: ANCHOR_TITLE_BASE_FONT_SIZE * layoutScale * textScale * MARKER_DOT_RATIO,
+    descriptionGap: ANCHOR_TITLE_BASE_FONT_SIZE * layoutScale * textScale * DESCRIPTION_GAP_RATIO,
     markerOffset: ANCHOR_LABEL_MARKER_OFFSET * layoutScale,
     underlineThickness: Math.max(2 * layoutScale, titleFontSize * UNDERLINE_RATIO),
   }
