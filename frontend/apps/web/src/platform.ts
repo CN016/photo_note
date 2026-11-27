@@ -42,11 +42,11 @@ export async function exportFile(blob: Blob, filename: string, options: FileExpo
 /** 返回键先关闭最上层可关闭浮层，再走路由守卫；首页回到系统而不销毁登录态。 */
 export function closeTopOverlay(): boolean {
   if (menuState.value) { closeMenu(true); return true }
-  const overlays = [...document.querySelectorAll<HTMLElement>('.el-overlay, .el-image-viewer__wrapper')]
+  const overlays = [...document.querySelectorAll<HTMLElement>('.el-overlay, .el-image-viewer__wrapper, [data-native-overlay]')]
     .filter(node => node.getClientRects().length > 0)
   const top = overlays.sort((a, b) => Number(getComputedStyle(a).zIndex) - Number(getComputedStyle(b).zIndex)).at(-1)
   if (!top) return false
-  const close = top.querySelector<HTMLElement>('.el-message-box__headerbtn, .el-dialog__headerbtn, .el-drawer__close-btn, .el-image-viewer__close, .preview-heading button')
+  const close = top.querySelector<HTMLElement>('.el-message-box__headerbtn, .el-dialog__headerbtn, .el-drawer__close-btn, .el-image-viewer__close, .preview-heading button, [data-native-overlay-close]')
   if (close && getComputedStyle(close).display !== 'none') close.click()
   else document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', code: 'Escape', bubbles: true }))
   return true

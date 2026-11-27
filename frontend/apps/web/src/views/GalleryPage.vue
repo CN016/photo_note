@@ -4,6 +4,8 @@ import { capturePreparedOrigin } from '../motion/navigationMotion'
 import { prepareListImage } from '../motion/imageMotion'
 import { inspirationDetails, inspirationDetailKey, preloadInspirationDetail, prepareDetailRecord } from '../images/detailImages'
 import { imageNote } from '../images/imageNote'
+import { originalExportFormat } from '../images/exportImage'
+import { exportFile } from '../platform'
 import ContentZoom from '../components/ContentZoom.vue'
 import { computed, nextTick, onActivated, onDeactivated, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { onBeforeRouteLeave, useRoute, useRouter } from 'vue-router'
@@ -178,8 +180,12 @@ async function showImageMenu(item: InspirationRecord, card: HTMLElement, x: numb
   activeImage = item.business_id
   const version = ++menuVersion
   const scope = scopeKey()
+  const download = () => downloadGalleryImage(item)
   const copy = () => copyImage(() => api.download(item.image_key))
   const initial = createGalleryImageMenu({
+    downloadLabel: t('contextMenu.downloadImage'),
+    canDownload: Boolean(item.image_key),
+    download,
     copyLabel: t('contextMenu.copyImage'),
     canCopy: clipboardAdapter.canWriteImage(),
     copy,
@@ -204,6 +210,9 @@ async function showImageMenu(item: InspirationRecord, card: HTMLElement, x: numb
     ? projectsResult.value.filter(project => !relatedIDs.has(project.business_id))
     : []
   const entries = createGalleryImageMenu({
+    downloadLabel: t('contextMenu.downloadImage'),
+    canDownload: Boolean(item.image_key),
+    download,
     copyLabel: t('contextMenu.copyImage'),
     canCopy: clipboardAdapter.canWriteImage(),
     copy,
@@ -221,6 +230,17 @@ async function showImageMenu(item: InspirationRecord, card: HTMLElement, x: numb
     onOpenRelated: project => openRelated(project.business_id, x, y),
   })
   updateMenu(id, entries, menuState.value?.scroll ?? scroll)
+}
+
+/** 列表长按下载当前工作图，沿用平台文件导出能力并保留原编码格式。 */
+async function downloadGalleryImage(item: InspirationRecord): Promise<void> {
+  const blob = await api.download(item.image_key)
+  const format = originalExportFormat(blob, item.file_name)
+  const stem = item.file_name.replace(/\.[^.]+$/, '').trim() || 'inspiration'
+  await exportFile(blob, `${stem}.${format.extension}`, {
+    successMessage: t('contextMenu.imageDownloaded'),
+    androidImageHandoff: true,
+  })
 }
 function touchStart(event: TouchEvent) {
   galleryTouchStart(event)

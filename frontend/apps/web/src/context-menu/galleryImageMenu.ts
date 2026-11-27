@@ -6,6 +6,9 @@ export interface GalleryMenuProject {
 }
 
 export interface GalleryImageMenuOptions {
+  downloadLabel: string
+  canDownload: boolean
+  download: () => void | Promise<void>
   copyLabel: string
   canCopy: boolean
   copy: () => void | Promise<void>
@@ -35,6 +38,7 @@ export function createGalleryImageMenu(options: GalleryImageMenuOptions): MenuEn
       }))
       : [{ label: options.addLabel, disabled: true }]
   const entries: MenuEntry[] = [
+    { label: options.downloadLabel, disabled: !options.canDownload, run: options.download },
     { label: options.copyLabel, disabled: !options.canCopy, run: options.copy },
     { label: options.addLabel, children: addChildren, disabled: options.addDisabled },
   ]

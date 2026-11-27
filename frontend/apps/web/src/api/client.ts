@@ -366,6 +366,8 @@ export const api = {
   },
   /** 读取单张灵感图文档。 */
   inspiration(id: string) { return request<InspirationRecord>(`/inspirations/${encodeURIComponent(id)}`) },
+  /** 删除当前空间和当前创建者名下未被策划引用的灵感图。 */
+  deleteInspiration(id: string) { return request<void>(`/inspirations/${encodeURIComponent(id)}`, { method: 'DELETE' }) },
   /** 上传原始图片字节；文件名和类型由浏览器 FormData 提交。 */
   async upload(file: Blob, filename: string): Promise<{ storekey: string }> {
     const body = new FormData()

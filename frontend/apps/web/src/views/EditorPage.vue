@@ -9,13 +9,14 @@ import {
 } from '../images/pinchZoom'
 import ContentZoom from '../components/ContentZoom.vue'
 import { createLongPress } from '../context-menu/longPress'
+import { copyImage } from '../context-menu/clipboard'
 import { friendlyExtra, formatMetadataValue as formatImageMetadataValue, rawMetadataValue, gpsMapUrl } from './imageMetadataDisplay'
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue'
 import { gsap } from 'gsap'
 import { useI18n } from 'vue-i18n'
 import { onBeforeRouteLeave, useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox, type UploadFile } from 'element-plus'
-import { ArrowLeft, ArrowRight, Check, Close, Crop, Delete, Download, FullScreen, MagicStick, Plus, RefreshLeft, RefreshRight, UploadFilled, MoreFilled, Aim, Operation, Document } from '@element-plus/icons-vue'
+import { ArrowLeft, ArrowRight, Check, Close, CopyDocument, Crop, Delete, Download, FullScreen, MagicStick, Plus, RefreshLeft, RefreshRight, UploadFilled, MoreFilled, Aim, Operation, Document } from '@element-plus/icons-vue'
 import { api as baseApi } from '../api/client'
 import { ApiError, type InspirationImageMetadata, type InspirationRecord } from '../api/types'
 import { useAnchorDisplayStore } from '../stores/anchorDisplay'
@@ -63,6 +64,7 @@ const api = {
     ? baseApi.managementSaveInspiration(id, { data, ...(imageMetadata ? { image_metadata: imageMetadata } : {}) }, managementOrgID.value)
     : baseApi.updateInspiration(id, data, imageMetadata),
   updateInspirationTags: (id: string, names: string[]) => managementMode.value ? baseApi.managementSaveInspiration(id, { tag_names: names }, managementOrgID.value) : baseApi.updateInspirationTags(id, names),
+  deleteInspiration: (id: string) => managementMode.value ? baseApi.managementDeleteInspiration(id, managementOrgID.value) : baseApi.deleteInspiration(id),
 }
 const isExisting = computed(() => itemId.value.length > 0)
 const isEditing = ref(false)
@@ -261,6 +263,8 @@ const watermarkMode = ref(false)
 const watermarkDraft = ref<WatermarkPlacement | null>(null)
 const watermarkMoving = ref<WatermarkMoveDraft | null>(null)
 const exportingImage = ref(false)
+const detailImageMenuOpen = ref(false)
+const detailImageMenuSheet = ref<HTMLElement | null>(null)
 const pressedDetailTag = ref('')
 const historyRevision = ref(0)
 const cropSelection = ref<NormalizedRect | null>(null)
@@ -295,6 +299,12 @@ let anchorEditorViewportFrame = 0
 const detailTagLongPress = createLongPress(() => {
   const name = pressedDetailTag.value
   if (name) void removeDetailTag(name)
+})
+const detailImageLongPress = createLongPress(() => {
+  if (!isExisting.value || isEditing.value || watermarkMode.value || anchorEditorOpen.value) return
+  detailImageMenuOpen.value = true
+  // 长按完成后浏览器仍会补发 click，阻止它继续创建锚点。
+  suppressPreviewClick = true
 })
 
 /** 详情页只展示已采集到的属性；元数据中的空值不会占据面板空间。 */
@@ -1031,6 +1041,78 @@ function stagePoint(event: PointerEvent): { x: number; y: number } {
   if (!bounds) return { x: 0, y: 0 }
   return { x: Math.max(0, Math.min(1, (event.clientX - bounds.left) / bounds.width)), y: Math.max(0, Math.min(1, (event.clientY - bounds.top) / bounds.height)) }
 }
+
+/** 详情态长按图片打开底部操作面板；编辑、裁切和水印模式不抢占原手势。 */
+function beginPreviewInteraction(event: PointerEvent): void {
+  beginCropSelection(event)
+  if (!event.isPrimary || !isExisting.value || isEditing.value || cropMode.value || watermarkMode.value || anchorEditorOpen.value) return
+  detailImageLongPress.start(event.clientX, event.clientY)
+}
+
+/** 手指或指针移动超过阈值即取消长按，并把位移继续交给裁切逻辑。 */
+function movePreviewInteraction(event: PointerEvent): void {
+  detailImageLongPress.move(event.clientX, event.clientY)
+  moveCropSelection(event)
+}
+
+/** 指针结束时清理长按计时器；长按已触发时由 suppressPreviewClick 吞掉后续 click。 */
+function endPreviewInteraction(event: PointerEvent): void {
+  detailImageLongPress.cancel()
+  endCropSelection(event)
+}
+
+function openDetailImageMenu(): void {
+  if (!isExisting.value || isEditing.value || cropMode.value || watermarkMode.value || anchorEditorOpen.value) return
+  suppressPreviewClick = true
+  detailImageMenuOpen.value = true
+}
+
+function closeDetailImageMenu(): void {
+  detailImageMenuOpen.value = false
+}
+
+/** 保存按钮与属性面板导出共用同一导出函数，确保文件名、质量和平台保存行为一致。 */
+async function saveDetailImage(): Promise<void> {
+  closeDetailImageMenu()
+  await exportEditedImage(false)
+}
+
+/** 复制当前详情画布的可见编辑结果，不重新请求图片或写入图片文档。 */
+async function copyDetailImage(): Promise<void> {
+  const canvas = previewCanvas.value
+  closeDetailImageMenu()
+  if (!canvas || !canvas.width || !canvas.height) return
+  const blob = await new Promise<Blob | null>(resolve => canvas.toBlob(resolve, 'image/png'))
+  if (blob) await copyImage(async () => blob)
+}
+
+/** 删除当前灵感图；被策划引用时由后端返回冲突并保留当前页面。 */
+async function deleteDetailImage(): Promise<void> {
+  if (!record.value) return
+  closeDetailImageMenu()
+  try {
+    await ElMessageBox.confirm(t('organizations.deleteImageConfirm'), t('contextMenu.deleteImage'), {
+      confirmButtonText: t('contextMenu.deleteImage'),
+      cancelButtonText: t('common.cancel'),
+      type: 'warning',
+      customClass: 'editor-glass-dialog',
+    })
+  } catch { return }
+  try {
+    await api.deleteInspiration(record.value.business_id)
+    ElMessage.success(t('contextMenu.imageDeleted'))
+    if (managementMode.value) router.back()
+    else await router.replace('/inspirations')
+  } catch (cause) {
+    showTopNotice(localError(cause, t('contextMenu.imageDeleteFailed')), 'error')
+  }
+}
+
+watch(detailImageMenuOpen, async open => {
+  if (!open) return
+  await nextTick()
+  detailImageMenuSheet.value?.focus({ preventScroll: true })
+})
 
 /** 仅在裁切模式记录起点，并捕获当前指针以支持拖出画布边缘。 */
 function beginCropSelection(event: PointerEvent): void {
@@ -2023,6 +2105,8 @@ onBeforeRouteLeave(async to => {
 
 onBeforeUnmount(() => {
   // 先交出真实渲染像素，再释放原画布；退出动画不依赖已经卸载的编辑组件。
+  detailImageLongPress.cancel()
+  detailImageMenuOpen.value = false
   captureDetailImage(previewCanvas.value)
   resetZoomViewer()
   exitWatermarkMode()
@@ -2082,10 +2166,11 @@ onBeforeUnmount(() => {
                 :aria-label="anchorMode ? t('editor.anchorModeOn') : isExisting && !isEditing ? t('editor.anchorAtImage') : t('editor.previewLabel')"
                 @keydown.enter.prevent="addAnchorAtCenter"
                 @keydown.space.prevent="addAnchorAtCenter"
-                @pointerdown="beginCropSelection"
-                @pointermove="moveCropSelection"
-                @pointerup="endCropSelection"
-                @pointercancel="endCropSelection"
+                @pointerdown="beginPreviewInteraction"
+                @pointermove="movePreviewInteraction"
+                @pointerup="endPreviewInteraction"
+                @pointercancel="endPreviewInteraction"
+                @contextmenu.prevent="openDetailImageMenu"
               ></canvas>
               <div v-if="cropMode && cropSelection" class="crop-selection" :style="cropDragStyle" aria-hidden="true"></div>
               <!--
@@ -2231,6 +2316,35 @@ onBeforeUnmount(() => {
 
       <div v-if="error && !imageReady" class="editor-load-error" role="alert"><p>{{ error }}</p><RouterLink class="secondary-button" to="/inspirations">{{ t('common.back') }}</RouterLink></div>
     </main></ContentZoom>
+    <Teleport to="body">
+      <Transition name="detail-image-actions">
+        <div v-if="detailImageMenuOpen" class="detail-image-actions-layer" data-native-overlay @click.self="closeDetailImageMenu">
+          <section ref="detailImageMenuSheet" class="detail-image-actions-sheet" role="dialog" aria-modal="true" :aria-label="t('contextMenu.imageActions')" tabindex="-1" @keydown.esc.prevent="closeDetailImageMenu">
+            <span class="detail-image-actions-handle" aria-hidden="true"></span>
+            <div class="detail-image-actions-heading">
+              <h2>{{ t('contextMenu.imageActions') }}</h2>
+              <button type="button" class="detail-image-actions-close" data-native-overlay-close :aria-label="t('common.close')" @click="closeDetailImageMenu">
+                <el-icon aria-hidden="true"><Close /></el-icon>
+              </button>
+            </div>
+            <div class="detail-image-actions-grid">
+              <button type="button" :disabled="exportingImage" @click="saveDetailImage">
+                <el-icon aria-hidden="true"><Download /></el-icon>
+                <span>{{ t('contextMenu.saveImage') }}</span>
+              </button>
+              <button type="button" @click="copyDetailImage">
+                <el-icon aria-hidden="true"><CopyDocument /></el-icon>
+                <span>{{ t('contextMenu.copyImage') }}</span>
+              </button>
+              <button type="button" class="is-danger" @click="deleteDetailImage">
+                <el-icon aria-hidden="true"><Delete /></el-icon>
+                <span>{{ t('contextMenu.deleteImage') }}</span>
+              </button>
+            </div>
+          </section>
+        </div>
+      </Transition>
+    </Teleport>
     <div v-if="imageReady && (!isExisting || isEditing)" class="image-edit-dock" :class="{ 'is-editing': isEditing }" role="region" :aria-label="t('editor.tools')">
       <div class="image-dock-tools" role="toolbar" :aria-label="t('editor.tools')">
         <button type="button" :class="{ active: anchorMode || toolPanel === 'anchors' }" @click="openTool('anchors', $event)"><el-icon aria-hidden="true"><Aim /></el-icon><span>{{ t('editor.toolbarAnchors') }}</span></button>
@@ -2570,6 +2684,21 @@ onBeforeUnmount(() => {
 .canvas-backdrop { position: absolute; z-index: -1; inset: -36px; width: calc(100% + 72px); height: calc(100% + 72px); filter: blur(28px) saturate(1.15); opacity: .62; transform: scale(1.035); }
 .is-detail .editor-canvas-wrap { box-shadow: none; }
 .image-edit-dock { position: fixed; z-index: 45; bottom: 20px; left: calc(50% + 112px); transform: translateX(-50%); display: flex; flex-wrap: wrap; align-items: center; gap: 12px; max-width: calc(100% - 290px); padding: 8px; border: 1px solid color-mix(in srgb, var(--ink) 10%, transparent); border-radius: 24px; background: radial-gradient(150% 180% at 8% 0%, color-mix(in srgb, var(--detail-ambient, var(--accent)) 20%, transparent), transparent 58%), linear-gradient(180deg, rgb(255 255 255 / 24%), rgb(255 255 255 / 5%)), color-mix(in srgb, var(--ink) 7%, transparent); box-shadow: inset 0 1px 0 rgb(255 255 255 / 50%), inset 0 -1px 0 rgb(0 0 0 / 8%), 0 12px 34px rgb(0 0 0 / 15%); backdrop-filter: blur(30px) saturate(190%); -webkit-backdrop-filter: blur(30px) saturate(190%); }
+.detail-image-actions-layer { position: fixed; z-index: 2600; inset: 0; display: flex; align-items: flex-end; justify-content: center; padding: 16px max(12px, env(safe-area-inset-right)) max(12px, env(safe-area-inset-bottom)) max(12px, env(safe-area-inset-left)); background: rgb(8 12 10 / 18%); backdrop-filter: blur(3px); -webkit-backdrop-filter: blur(3px); }
+.detail-image-actions-sheet { width: min(520px, 100%); padding: 10px 12px 14px; border: 1px solid color-mix(in srgb, var(--ink) 10%, transparent); border-radius: 20px; background: color-mix(in srgb, var(--surface-overlay) 96%, transparent); box-shadow: 0 1px 2px rgb(0 0 0 / 8%), 0 18px 54px rgb(0 0 0 / 18%); outline: none; }
+.detail-image-actions-handle { display: block; width: 34px; height: 4px; margin: 0 auto 10px; border-radius: 99px; background: color-mix(in srgb, var(--ink) 18%, transparent); }
+.detail-image-actions-heading { display: flex; min-height: 38px; align-items: center; justify-content: space-between; gap: 12px; padding: 0 2px 8px; }
+.detail-image-actions-heading h2 { margin: 0; color: var(--ink); font-size: 15px; font-weight: 500; letter-spacing: 0; }
+.detail-image-actions-close { display: grid; width: 36px; height: 36px; place-items: center; padding: 0; border: 0; border-radius: 10px; background: var(--surface-soft); color: var(--muted); cursor: pointer; font-size: 17px; }
+.detail-image-actions-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.detail-image-actions-grid button { display: grid; min-height: 74px; place-items: center; align-content: center; gap: 7px; padding: 8px; border: 1px solid var(--line); border-radius: 14px; background: var(--surface-soft); color: var(--ink-soft); cursor: pointer; font: inherit; font-size: 12px; }
+.detail-image-actions-grid button .el-icon { font-size: 22px; }
+.detail-image-actions-grid button:active:not(:disabled) { transform: scale(.98); }
+.detail-image-actions-grid button.is-danger { border-color: color-mix(in srgb, var(--danger) 22%, var(--line)); color: var(--danger); }
+.detail-image-actions-enter-active, .detail-image-actions-leave-active { transition: opacity 160ms ease; }
+.detail-image-actions-enter-active .detail-image-actions-sheet, .detail-image-actions-leave-active .detail-image-actions-sheet { transition: transform 200ms cubic-bezier(.22, 1, .36, 1); }
+.detail-image-actions-enter-from, .detail-image-actions-leave-to { opacity: 0; }
+.detail-image-actions-enter-from .detail-image-actions-sheet, .detail-image-actions-leave-to .detail-image-actions-sheet { transform: translateY(18px); }
 .detail-caption { display: grid; gap: 8px; max-width: 760px; margin: 16px auto 0; padding: 0 8px; color: var(--ink); }
 .detail-caption p { margin: 0; color: var(--ink-soft); font-size: 14px; line-height: 1.6; white-space: pre-wrap; overflow-wrap: anywhere; }
 .detail-note-editor { min-height: 44px; }
@@ -2579,6 +2708,7 @@ onBeforeUnmount(() => {
 .detail-note-trigger:hover { color: var(--ink); }
 .detail-note-trigger:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 12px; }
 .detail-note-editor :deep(.el-textarea__inner) { min-height: 32px !important; padding: 4px 0; border: 0; border-radius: 0; background: transparent; box-shadow: none; color: var(--ink); font: inherit; font-size: 14px; line-height: 1.72; }
+.detail-note-editor :deep(.el-textarea__inner::placeholder) { color: color-mix(in srgb, var(--muted) 72%, transparent); font-size: 12px; font-weight: 400; letter-spacing: 0; line-height: 1.7; }
 .detail-note-editor :deep(.el-textarea__inner:focus) { box-shadow: none; }
 .detail-tag-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .detail-tag-pill, .detail-tag-more { position: relative; display: inline-flex; min-height: 34px; align-items: center; justify-content: center; gap: 4px; overflow: hidden; padding: 6px 12px; border: 1px solid color-mix(in srgb, var(--line) 78%, transparent); border-radius: 999px; background: color-mix(in srgb, var(--surface) 74%, transparent); color: var(--ink-soft); cursor: pointer; font: inherit; font-size: 12px; line-height: 1; white-space: nowrap; touch-action: manipulation; user-select: none; -webkit-touch-callout: none; }
@@ -2737,7 +2867,7 @@ onBeforeUnmount(() => {
 :global(.editor-glass-dialog .el-dialog__header), :global(.editor-glass-dialog .el-message-box__header) { border-bottom: 1px solid color-mix(in srgb, var(--ink) 8%, transparent); }
 :global(.editor-glass-message.el-message) { border: 1px solid color-mix(in srgb, var(--ink) 12%, transparent); background: linear-gradient(180deg, rgb(255 255 255 / 20%), rgb(255 255 255 / 3%)), color-mix(in srgb, var(--ink) 8%, transparent); backdrop-filter: blur(26px) saturate(180%); -webkit-backdrop-filter: blur(26px) saturate(180%); box-shadow: inset 0 1px 0 rgb(255 255 255 / 48%), 0 14px 38px rgb(0 0 0 / 18%); }
 @media (prefers-reduced-motion: reduce) {
-  .detail-back, .detail-more, .image-dock-tools button, .detail-tag-picker, .detail-tag-picker-layer, .anchor-editor-enter-active, .anchor-editor-leave-active { transition: none; }
+  .detail-back, .detail-more, .image-dock-tools button, .detail-tag-picker, .detail-tag-picker-layer, .anchor-editor-enter-active, .anchor-editor-leave-active, .detail-image-actions-enter-active, .detail-image-actions-leave-active { transition: none; }
 }
 </style>
 
