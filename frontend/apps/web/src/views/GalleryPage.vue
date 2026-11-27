@@ -26,6 +26,9 @@ import type { InspirationLibraryFilters, InspirationProjectSummary, ProjectSumma
 import { api } from '../api/client'
 import { ApiError, type InspirationRecord, type TagRecord } from '../api/types'
 import { createGallerySearchState, gallerySearchHasValue, inspirationRequestOptions, type GallerySort, type GallerySearchState } from '../gallerySearch'
+import {
+  DEFAULT_GALLERY_COLUMNS, GALLERY_THUMBNAIL_RADIUS, nearestGalleryColumnCount,
+} from './galleryGridLayout'
 
 const { t, locale } = useI18n()
 const router = useRouter()
@@ -61,7 +64,7 @@ const galleryRoot = ref<HTMLElement>()
 useGallerySectionSwipe(galleryRoot, 'list')
 const libraryTools = ref<InstanceType<typeof InspirationLibraryTools>>()
 const contentZoom = ref<InstanceType<typeof ContentZoom>>()
-const gridColumns = ref(2)
+const gridColumns = ref(DEFAULT_GALLERY_COLUMNS)
 const gridZoom = ref(1)
 const gridNavTop = ref(0)
 const gridNavThumbTop = ref(0)
@@ -69,12 +72,11 @@ const gridNavVisible = ref(false)
 const gridNavTrack = ref<HTMLElement>()
 const gridNavThumb = ref<HTMLElement>()
 const focusedRowStart = ref(-1)
-const gridColumnSteps = [1, 2, 3, 4, 5, 10, 15, 20, 25, 30] as const
 let gridNavFrame = 0
 let gridFocusFrame = 0
 let gridTouchDistance = 0
 let gridTouchZoom = 1
-let gridBaseColumns = 2
+let gridBaseColumns = DEFAULT_GALLERY_COLUMNS
 let gridNavDragging = false
 const scopeKey = () => `${auth.sessionID}:${auth.orgid}:${auth.sessionVersion}:${auth.user?.business_id ?? ''}`
 let restoring = false
@@ -392,7 +394,7 @@ function resetFilters() {
 function changeGridZoom(next: number) {
   const nextZoom = Math.max(.05, Math.min(4, next))
   gridZoom.value = nextZoom
-  gridColumns.value = nearestGridColumnCount(gridBaseColumns / nextZoom)
+  gridColumns.value = nearestGalleryColumnCount(gridBaseColumns / nextZoom)
   gridNavVisible.value = true
   window.clearTimeout(gridNavFrame);
   gridNavFrame = window.setTimeout(() => { gridNavVisible.value = false }, 1400)
@@ -424,11 +426,7 @@ function updateGridNavigation() {
   setGridNavigationPosition(window.scrollY / max)
 }
 /** 屏幕旋转或窗口尺寸变化后，以当前平台默认列数重新计算网格。 */
-function resizeGrid() { gridBaseColumns = window.innerWidth <= 768 ? 2 : 4; gridColumns.value = nearestGridColumnCount(gridBaseColumns / gridZoom.value) }
-/** 列数只取产品规定档位；缩放比例变化时选择视觉密度最接近的一档。 */
-function nearestGridColumnCount(desired: number) {
-  return gridColumnSteps.reduce((best, candidate) => Math.abs(candidate - desired) < Math.abs(best - desired) ? candidate : best, gridColumnSteps[0])
-}
+function resizeGrid() { gridBaseColumns = DEFAULT_GALLERY_COLUMNS; gridColumns.value = nearestGalleryColumnCount(gridBaseColumns / gridZoom.value) }
 /** 同步列表整体滚动比例和滑块像素位置，拖动与手动滚动使用同一位置计算。 */
 function setGridNavigationPosition(ratio: number) {
   gridNavTop.value = Math.max(0, Math.min(1, ratio))
@@ -522,7 +520,7 @@ onBeforeUnmount(() => { alive = false; inspirationDetails.clear(); openVersion +
 </script>
 
 <template>
-  <div ref="galleryRoot" class="workspace-page gallery-workspace" @touchstart="touchStart" @touchmove="touchMove" @touchend="gesture.cancel(); galleryTouchEnd($event)" @touchcancel="gesture.cancel(); galleryTouchEnd($event)" @click.capture="interceptClick">
+  <div ref="galleryRoot" class="workspace-page gallery-workspace" :style="{ '--gallery-thumbnail-radius': `${GALLERY_THUMBNAIL_RADIUS}px` }" @touchstart="touchStart" @touchmove="touchMove" @touchend="gesture.cancel(); galleryTouchEnd($event)" @touchcancel="gesture.cancel(); galleryTouchEnd($event)" @click.capture="interceptClick">
     <main id="main-content" class="gallery-main">
       <section class="gallery-intro">
         <div><h1>{{ t('gallery.title') }}</h1></div>
@@ -614,16 +612,16 @@ onBeforeUnmount(() => { alive = false; inspirationDetails.clear(); openVersion +
 .gallery-side-nav.dragging { width: 38px; height: 148px; opacity: 1; cursor: grabbing; }
 .gallery-side-nav-thumb { position: absolute; left: 4px; width: 20px; height: 26px; border-radius: 999px; background: var(--surface-overlay); box-shadow: 0 1px 4px rgb(0 0 0 / 20%); transition: width .16s ease, height .16s ease, left .16s ease; pointer-events: none; }
 .gallery-side-nav.dragging .gallery-side-nav-thumb { left: 5px; width: 28px; height: 40px; box-shadow: 0 3px 12px rgb(0 0 0 / 26%); }
-.inspiration-card { position: relative; border-radius: var(--radius-card); scroll-margin-top: 78px; -webkit-touch-callout: none; }
+.inspiration-card { position: relative; border-radius: var(--gallery-thumbnail-radius, 3px); scroll-margin-top: 78px; -webkit-touch-callout: none; }
 .inspiration-card.is-zoom-focus :deep(.thumbnail-frame) { outline: 3px solid var(--accent); outline-offset: 3px; }
 @media (prefers-reduced-motion: reduce) { .gallery-grid-move { transition: none; } }
 .inspiration-card img { -webkit-user-drag: none; }
 .inspiration-card:focus-visible { outline: none; }
-.inspiration-card :deep(.thumbnail-frame) { aspect-ratio: 2 / 3; border: 0 !important; background: transparent !important; box-shadow: none !important; }
+.inspiration-card :deep(.thumbnail-frame) { aspect-ratio: 2 / 3; border: 0 !important; border-radius: var(--gallery-thumbnail-radius, 3px) !important; background: transparent !important; box-shadow: none !important; }
 .inspiration-grid.is-dense .inspiration-card :deep(.thumbnail-frame), .inspiration-grid.is-dense .inspiration-card :deep(.thumbnail-image), .inspiration-grid.is-dense .gallery-image-frame { border-radius: 0 !important; }
 .inspiration-card:hover :deep(.thumbnail-frame), .inspiration-card:focus-within :deep(.thumbnail-frame) { border: 0 !important; box-shadow: none !important; }
 .inspiration-card:focus-visible :deep(.thumbnail-frame) { outline: 3px solid var(--focus); outline-offset: 3px; }
-.gallery-image-frame { position: relative; border: 0 !important; border-radius: var(--radius-card); background: transparent !important; box-shadow: none !important; }
+.gallery-image-frame { position: relative; border: 0 !important; border-radius: var(--gallery-thumbnail-radius, 3px); background: transparent !important; box-shadow: none !important; }
 .inspiration-card:hover .gallery-image-frame, .inspiration-card:focus-within .gallery-image-frame { box-shadow: none !important; }
 .gallery-image-note { overflow: hidden; margin: 0; padding: 7px 2px 2px; color: var(--ink); font-size: 13px; line-height: 1.5; white-space: nowrap; text-overflow: ellipsis; }
 @media (max-width: 768px) {
@@ -639,7 +637,7 @@ onBeforeUnmount(() => { alive = false; inspirationDetails.clear(); openVersion +
   .inspiration-grid { gap: 8px; }
   .inspiration-grid.is-dense { gap: 0; }
   .gallery-side-nav { right: 2px; }
-  .inspiration-card :deep(.thumbnail-frame) { border-radius: 14px; }
+  .inspiration-card :deep(.thumbnail-frame) { border-radius: var(--gallery-thumbnail-radius, 3px) !important; }
 }
 @media (min-width: 769px) {
   .inspiration-grid { grid-template-columns: repeat(var(--grid-columns, 3), minmax(0, 1fr)); gap: 16px; }
