@@ -213,7 +213,7 @@ func TestInspirationLibraryPostgres(t *testing.T) {
 	if analyzed.AutoTagging == nil || len(analyzed.TagIDs) != 4 {
 		t.Fatal("自动标签未写入画像或覆盖手工标签")
 	}
-	// 额外插入红、蓝色图片，验证任意色值只使用前三种代表色排序，以及人数范围查询。
+	// 额外插入红、绿、蓝色图片，验证任意色值按全部代表色的占比和颜色相似度排序。
 	seedSearchable := func(people int, colorHex, bucket, paletteJSON, tagName string) model.Inspiration {
 		t.Helper()
 		tag := model.Tag{BaseModel: model.BaseModel{BusinessID: uuid.New()}, UserID: uid, Content: tagName}
@@ -249,6 +249,23 @@ func TestInspirationLibraryPostgres(t *testing.T) {
 	}
 	if colorTotal < 4 || blueIndex < 0 || grayIndex <= blueIndex {
 		t.Fatalf("任意色值未优先排序全图相近颜色占比: total=%d items=%+v", colorTotal, colorMatches)
+	}
+	green := seedSearchable(6, "#00a651", "h04", `{"version":1,"palette":[{"hex":"#00a651","percentage":82},{"hex":"#8bd79c","percentage":13},{"hex":"#053b24","percentage":5}],"other_percentage":0}`, "绿色主体")
+	greenFiltered := model.WithInspirationFilters(ctx, model.InspirationFilters{Color: "#00a651"})
+	greenMatches, _, e := r.ListInspirations(greenFiltered, uid, nil, "any", "", "color_match", 0, 20)
+	must(e)
+	greenIndex := -1
+	blueIndex = -1
+	for index, item := range greenMatches {
+		if item.BusinessID == green.BusinessID {
+			greenIndex = index
+		}
+		if item.BusinessID == blue.BusinessID {
+			blueIndex = index
+		}
+	}
+	if greenIndex != 0 || blueIndex <= greenIndex {
+		t.Fatalf("绿色查询未按色相优先排序绿色图片: green=%d blue=%d items=%+v", greenIndex, blueIndex, greenMatches)
 	}
 	rangeFiltered := model.WithInspirationFilters(ctx, model.InspirationFilters{PeopleMode: "range", PeopleMin: "3", PeopleMax: "5"})
 	rangeMatches, rangeTotal, e := r.ListInspirations(rangeFiltered, uid, nil, "any", "", "created_desc", 0, 20)
@@ -332,9 +349,9 @@ func TestInspirationLibraryPostgres(t *testing.T) {
 	must(r.DeleteInspiration(ctx, uid, item.BusinessID))
 	rows, err = r.ListInspirationActivities(ctx, uid, day, day)
 	must(err)
-	// 两次文本检索样本与两条可检索画像样本都计入历史存图数，删除图片不会回减。
-	if rows[0].SavedCount != 5 || *rows[0].Target != 4 {
-		t.Fatal("删除回减历史计数或修改目标丢失快照")
+	// 初始图片、四张颜色样本和两张文本样本都计入历史存图数，删除图片不会回减。
+	if rows[0].SavedCount != 7 || *rows[0].Target != 4 {
+		t.Fatalf("删除回减历史计数或修改目标丢失快照: saved=%d target=%v", rows[0].SavedCount, *rows[0].Target)
 	}
 }
 

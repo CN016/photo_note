@@ -371,7 +371,7 @@ func (store *PostgresStore) ListInspirations(ctx context.Context, userID uuid.UU
 	}
 	items := make([]model.Inspiration, 0)
 	if sort == "color_match" {
-		if expression, ok := inspirationColorDistance(filters.Color); ok {
+		if expression, ok := inspirationColorScore(filters.Color); ok {
 			query = query.Order(expression + " DESC").Order("created_at DESC, business_id DESC")
 		} else {
 			query = query.Order("created_at DESC, business_id DESC")
@@ -429,20 +429,23 @@ func applyInspirationTagSource(query *gorm.DB, ctx context.Context, userID uuid.
 	)`, scope.OrgID, userID, tagIDs)
 }
 
-// inspirationColorDistance 按相近颜色在全图中的占比汇总匹配度；色值在服务层已验证。
-func inspirationColorDistance(value string) (string, bool) {
-	if len(value) != 7 || value[0] != '#' {
-		return "", false
-	}
-	red, ok := parseHexByte(value[1:3])
-	if !ok {
-		return "", false
-	}
-	green, ok := parseHexByte(value[3:5])
-	if !ok {
-		return "", false
-	}
-	blue, ok := parseHexByte(value[5:7])
+/** 查询色在 HSV 空间中的分量；色相为角度，饱和度和明度范围为 0 至 1。 */
+type colorHSV struct {
+	hue        float64
+	saturation float64
+	value      float64
+}
+
+/**
+ * inspirationColorScore 生成按色相主导、饱和度与明度修正的颜色匹配分数。
+ *
+ * 纯 RGB 欧氏距离会让绿色与蓝色这类高饱和异色仍得到较高相似度。这里把每个
+ * 代表色转换到 HSV：色相差超过 60° 不参与匹配，低饱和颜色不冒充彩色；同色相
+ * 的深浅变化仍按饱和度、明度和全图占比贡献分数。中性色查询改为明度与低饱和
+ * 程度匹配。代表色由图片分析固定为最多五项，计算量受控，历史画像无需重算。
+ */
+func inspirationColorScore(value string) (string, bool) {
+	query, ok := parseColorHSV(value)
 	if !ok {
 		return "", false
 	}
@@ -450,17 +453,104 @@ func inspirationColorDistance(value string) (string, bool) {
 		WHEN jsonb_typeof(color_palette->'palette') = 'array' THEN COALESCE((
 			SELECT SUM(
 				GREATEST(0, COALESCE((CASE WHEN color_item->>'percentage' ~ '^\d+(\.\d+)?$' THEN (color_item->>'percentage')::numeric END), 0)) *
-				GREATEST(0, 1 - (
-					2 * POWER((('x'||substr(color_item->>'hex',2,2))::bit(8)::integer - %d),2) +
-					4 * POWER((('x'||substr(color_item->>'hex',4,2))::bit(8)::integer - %d),2) +
-					3 * POWER((('x'||substr(color_item->>'hex',6,2))::bit(8)::integer - %d),2)
-				) / 585225.0)
+				CASE
+					WHEN %f <= 0.12 THEN
+						GREATEST(0.0, 1 - ABS(%f - item.value)) *
+						GREATEST(0.0, 1 - item.saturation)
+					WHEN item.saturation <= 0.12 THEN 0.0
+					ELSE
+						POWER(GREATEST(0.0, 1 - LEAST(
+							ABS(%f - item.hue),
+							360.0 - ABS(%f - item.hue)
+						) / 60.0), 2) *
+						(0.60 + 0.40 * GREATEST(0.0, 1 - ABS(%f - item.saturation))) *
+						(0.70 + 0.30 * GREATEST(0.0, 1 - ABS(%f - item.value))) *
+						(0.35 + 0.65 * item.saturation)
+				END
 			)
 			FROM jsonb_array_elements(color_palette->'palette') palette(color_item)
+			CROSS JOIN LATERAL (
+				SELECT
+					rgb.red,
+					rgb.green,
+					rgb.blue,
+					rgb.max_value,
+					rgb.delta,
+					CASE
+						WHEN rgb.delta <= 0 THEN 0.0
+						WHEN rgb.max_value = rgb.red THEN MOD(60.0 * (rgb.green - rgb.blue) / rgb.delta + 360.0, 360.0)
+						WHEN rgb.max_value = rgb.green THEN 60.0 * ((rgb.blue - rgb.red) / rgb.delta + 2.0)
+						ELSE 60.0 * ((rgb.red - rgb.green) / rgb.delta + 4.0)
+					END AS hue,
+					CASE WHEN rgb.max_value <= 0 THEN 0.0 ELSE rgb.delta / rgb.max_value END AS saturation,
+					rgb.max_value AS value
+				FROM (
+					SELECT
+						channel.red,
+						channel.green,
+						channel.blue,
+						GREATEST(channel.red, channel.green, channel.blue) AS max_value,
+						GREATEST(channel.red, channel.green, channel.blue) -
+							LEAST(channel.red, channel.green, channel.blue) AS delta
+					FROM (
+						SELECT
+							(('x'||substr(color_item->>'hex',2,2))::bit(8)::integer)::numeric / 255.0 AS red,
+							(('x'||substr(color_item->>'hex',4,2))::bit(8)::integer)::numeric / 255.0 AS green,
+							(('x'||substr(color_item->>'hex',6,2))::bit(8)::integer)::numeric / 255.0 AS blue
+					) channel
+				) rgb
+			) item
 			WHERE color_item->>'hex' ~ '^#[0-9a-fA-F]{6}$'
 		),0)
 		ELSE 1000000000
-	END`, red, green, blue), true
+	END`, query.saturation, query.value, query.hue, query.hue, query.saturation, query.value), true
+}
+
+/** parseColorHSV 严格解析 #rrggbb，并把 RGB 转为用于匹配的 HSV 分量。 */
+func parseColorHSV(value string) (colorHSV, bool) {
+	if len(value) != 7 || value[0] != '#' {
+		return colorHSV{}, false
+	}
+	red, redOK := parseHexByte(value[1:3])
+	green, greenOK := parseHexByte(value[3:5])
+	blue, blueOK := parseHexByte(value[5:7])
+	if !redOK || !greenOK || !blueOK {
+		return colorHSV{}, false
+	}
+	maximum := red
+	if green > maximum {
+		maximum = green
+	}
+	if blue > maximum {
+		maximum = blue
+	}
+	minimum := red
+	if green < minimum {
+		minimum = green
+	}
+	if blue < minimum {
+		minimum = blue
+	}
+	delta := maximum - minimum
+	result := colorHSV{value: float64(maximum) / 255}
+	if maximum > 0 {
+		result.saturation = float64(delta) / float64(maximum)
+	}
+	if delta == 0 {
+		return result, true
+	}
+	switch maximum {
+	case red:
+		result.hue = 60 * float64(green-blue) / float64(delta)
+		if result.hue < 0 {
+			result.hue += 360
+		}
+	case green:
+		result.hue = 60 * (float64(blue-red)/float64(delta) + 2)
+	default:
+		result.hue = 60 * (float64(red-green)/float64(delta) + 4)
+	}
+	return result, true
 }
 
 // parseHexByte 只解析两位十六进制字节，调用方已完成长度和字符检查。
