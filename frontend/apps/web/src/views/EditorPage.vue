@@ -162,8 +162,9 @@ watch(() => route.query.panel, value => {
 function returnAfterImageExport(): void {
   const state = window.history.state as { back?: string | null; position?: unknown } | null
   const hasOwnedPropertiesEntry = propertiesHistoryEntry && route.query.panel === 'properties'
-  const position = typeof state?.position === 'number' ? state.position : undefined
-  const steps = imageExportBackSteps(hasOwnedPropertiesEntry, position)
+  const imageRouteName = route.name
+  const imageID = itemId.value
+  const steps = imageExportBackSteps(hasOwnedPropertiesEntry)
   propertiesHistoryEntry = false
   try {
     if (!state?.back) {
@@ -174,7 +175,13 @@ function returnAfterImageExport(): void {
     else router.back()
   } catch {
     void router.replace('/inspirations')
+    return
   }
+  // `router.go(-2)` 在历史长度不足时可能被浏览器收敛为停留在详情或只退一层；
+  // 路由完成后仍在同一张照片就明确回到灵感库，保证成功后不会继续停在编辑页。
+  window.setTimeout(() => {
+    if (route.name === imageRouteName && itemId.value === imageID) void router.replace('/inspirations')
+  }, 400)
 }
 
 let anchorEditorScrollSnapshot: { left: number; top: number } | null = null
@@ -2697,7 +2704,7 @@ onBeforeUnmount(() => {
 .image-anchor.is-draft .image-anchor-title,
 .image-anchor.is-draft .image-anchor-description { cursor: default; pointer-events: none; }
 /* 尚未输入标题时保留一小段黄色定位线，开始输入后由标题自身绘制等宽下划线。 */
-.image-anchor-draft-rule { position: absolute; top: 0; left: 0; width: calc(var(--anchor-title-font-size, 12px) * var(--anchor-label-scale, 1) * 2.8); height: max(2px, calc(var(--anchor-title-font-size, 12px) * var(--anchor-label-scale, 1) * .14)); border-radius: 999px; background: #f3e600; box-shadow: 0 1px 3px rgb(0 0 0 / 28%); transform: translateY(-50%); }
+.image-anchor-draft-rule { position: absolute; top: 0; left: 0; width: calc(var(--anchor-title-font-size, 10px) * var(--anchor-label-scale, 1) * 2.8); height: max(1px, calc(var(--anchor-title-font-size, 10px) * var(--anchor-label-scale, 1) * .10)); border-radius: 999px; background: #f3e600; box-shadow: 0 1px 3px rgb(0 0 0 / 28%); transform: translateY(-50%); }
 /* 正在编辑的锚点标题左侧提供文字缩放手柄；手柄可独立接收指针和键盘事件。 */
 .image-anchor-resize { position: absolute; top: -10px; left: 8px; width: 18px; height: 18px; border: 2px solid #fff; border-radius: 50%; background: #f3e600; box-shadow: 0 2px 8px rgb(0 0 0 / 28%); cursor: nwse-resize; pointer-events: auto; touch-action: none; }
 .image-anchor-resize::after { position: absolute; right: 4px; bottom: 4px; width: 7px; height: 7px; border-right: 1.5px solid rgb(23 23 23 / 60%); border-bottom: 1.5px solid rgb(23 23 23 / 60%); content: ''; }
@@ -2739,8 +2746,8 @@ onBeforeUnmount(() => {
 .inspiration-zoom-image canvas { display: block; width: 100%; height: 100%; }
 .inspiration-zoom-anchors { position: absolute; z-index: 1; inset: 0; pointer-events: none; }
 .inspiration-zoom-anchor {
-  --anchor-marker-dot-size: calc(var(--anchor-title-font-size, 12px) * var(--anchor-label-scale, 1) * .56);
-  --anchor-marker-description-gap: calc(var(--anchor-title-font-size, 12px) * var(--anchor-label-scale, 1) * .08);
+  --anchor-marker-dot-size: calc(var(--anchor-title-font-size, 10px) * var(--anchor-label-scale, 1) * .48);
+  --anchor-marker-description-gap: calc(var(--anchor-title-font-size, 10px) * var(--anchor-label-scale, 1) * .08);
   position: absolute;
   width: 0;
   height: 0;
@@ -2750,9 +2757,9 @@ onBeforeUnmount(() => {
 }
 /* 全屏层沿用详情页的黄色落点与上下文字布局，并用反向缩放保持屏幕字号稳定。 */
 .inspiration-zoom-anchor-body { position: absolute; top: 0; left: 0; width: min(260px, 52vw); text-shadow: 0 1px 3px rgb(0 0 0 / 55%); }
-.inspiration-zoom-anchor-title { position: absolute; bottom: 0; left: 0; display: block; width: max-content; max-width: 100%; color: #fff; font-size: calc(var(--anchor-title-font-size, 12px) * var(--anchor-label-scale, 1)); font-weight: 600; line-height: 1.3; overflow-wrap: anywhere; }
-.inspiration-zoom-anchor-title::after { position: absolute; right: 0; bottom: -1px; left: 0; height: max(2px, calc(var(--anchor-title-font-size, 12px) * var(--anchor-label-scale, 1) * .14)); border-radius: 999px; background: #f3e600; box-shadow: 0 1px 3px rgb(0 0 0 / 28%); content: ''; }
-.inspiration-zoom-anchor-description { position: absolute; top: calc(var(--anchor-marker-dot-size) / 2 + var(--anchor-marker-description-gap)); left: 0; display: block; width: max-content; max-width: 100%; color: rgb(255 255 255 / 80%); font-size: calc(var(--anchor-desc-font-size, 10px) * var(--anchor-label-scale, 1)); line-height: 1.45; overflow-wrap: anywhere; white-space: pre-wrap; }
+.inspiration-zoom-anchor-title { position: absolute; bottom: 0; left: 0; display: block; width: max-content; max-width: 100%; color: #fff; font-size: calc(var(--anchor-title-font-size, 10px) * var(--anchor-label-scale, 1)); font-weight: 500; line-height: 1.35; overflow-wrap: anywhere; }
+.inspiration-zoom-anchor-title::after { position: absolute; right: 0; bottom: -1px; left: 0; height: max(1px, calc(var(--anchor-title-font-size, 10px) * var(--anchor-label-scale, 1) * .10)); border-radius: 999px; background: #f3e600; box-shadow: 0 1px 3px rgb(0 0 0 / 28%); content: ''; }
+.inspiration-zoom-anchor-description { position: absolute; top: calc(var(--anchor-marker-dot-size) / 2 + var(--anchor-marker-description-gap)); left: 0; display: block; width: max-content; max-width: 100%; color: rgb(255 255 255 / 76%); font-size: calc(var(--anchor-desc-font-size, 9px) * var(--anchor-label-scale, 1)); line-height: 1.45; overflow-wrap: anywhere; white-space: pre-wrap; }
 .inspiration-zoom-close { position: absolute; z-index: 2; top: max(12px, env(safe-area-inset-top)); right: max(12px, env(safe-area-inset-right)); display: grid; width: 48px; height: 48px; place-items: center; border: 1px solid rgb(255 255 255 / 30%); border-radius: 50%; background: rgb(255 255 255 / 12%); color: #fff; cursor: pointer; font-size: 22px; backdrop-filter: blur(24px) saturate(180%); -webkit-backdrop-filter: blur(24px) saturate(180%); box-shadow: inset 0 1px 0 rgb(255 255 255 / 34%), 0 8px 26px rgb(0 0 0 / 28%); }
 .inspiration-zoom-close:active { transform: scale(.94); }
 .inspiration-zoom-close:focus-visible { outline: 2px solid #fff; outline-offset: 3px; }

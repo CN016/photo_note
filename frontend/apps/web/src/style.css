@@ -277,14 +277,14 @@ p { line-height: 1.55; }
  * 标题位于横线上方、描述位于下方，两者绝对定位，避免文本换行把落点推离原位置。
  */
 .image-anchor {
-  --anchor-marker-dot-size: calc(var(--anchor-title-font-size, 12px) * var(--anchor-label-scale, 1) * .56);
-  --anchor-marker-description-gap: calc(var(--anchor-title-font-size, 12px) * var(--anchor-label-scale, 1) * .08);
+  --anchor-marker-dot-size: calc(var(--anchor-title-font-size, 10px) * var(--anchor-label-scale, 1) * .48);
+  --anchor-marker-description-gap: calc(var(--anchor-title-font-size, 10px) * var(--anchor-label-scale, 1) * .08);
   position: absolute;
   z-index: 3;
   width: 0;
   height: 0;
 }
-.image-anchor-body { position: absolute; top: 0; left: 0; width: var(--anchor-label-max-width, 220px); color: #fff; pointer-events: none; text-shadow: 0 1px 3px rgb(0 0 0 / 55%); user-select: none; }
+.image-anchor-body { position: absolute; top: 0; left: 0; width: var(--anchor-label-max-width, 220px); color: #fff; pointer-events: none; text-shadow: 0 1px 2px rgb(0 0 0 / 45%); user-select: none; }
 .image-anchor.is-moving { z-index: 5; }
 .image-anchor.is-moving .image-anchor-title,
 .image-anchor.is-moving .image-anchor-description { cursor: grabbing; }
@@ -297,9 +297,9 @@ p { line-height: 1.55; }
   max-width: 100%;
   color: #fff;
   cursor: grab;
-  font-size: calc(var(--anchor-title-font-size, 12px) * var(--anchor-label-scale, 1));
-  font-weight: 600;
-  line-height: 1.3;
+  font-size: calc(var(--anchor-title-font-size, 10px) * var(--anchor-label-scale, 1));
+  font-weight: 500;
+  line-height: 1.35;
   overflow-wrap: anywhere;
   pointer-events: auto;
   touch-action: none;
@@ -309,7 +309,7 @@ p { line-height: 1.55; }
   right: 0;
   bottom: -1px;
   left: 0;
-  height: max(2px, calc(var(--anchor-title-font-size, 12px) * var(--anchor-label-scale, 1) * .14));
+  height: max(1px, calc(var(--anchor-title-font-size, 10px) * var(--anchor-label-scale, 1) * .10));
   border-radius: 999px;
   background: #f3e600;
   box-shadow: 0 1px 3px rgb(0 0 0 / 28%);
@@ -324,7 +324,7 @@ p { line-height: 1.55; }
   max-width: 100%;
   color: rgb(255 255 255 / 80%);
   cursor: grab;
-  font-size: calc(var(--anchor-desc-font-size, 10px) * var(--anchor-label-scale, 1));
+  font-size: calc(var(--anchor-desc-font-size, 9px) * var(--anchor-label-scale, 1));
   line-height: 1.55;
   overflow-wrap: anywhere;
   pointer-events: auto;

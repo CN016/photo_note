@@ -15,11 +15,11 @@ import { UI_FONT_STACK } from '../uiFont'
 
 /** 与编辑器常见手机预览宽度一致，确保导出文字保持当前视觉比例。 */
 export const ANCHOR_EXPORT_REFERENCE_WIDTH = 420
-const MARKER_DOT_RATIO = 0.56
+const MARKER_DOT_RATIO = 0.48
 const DESCRIPTION_GAP_RATIO = 0.08
 const TITLE_LINE_HEIGHT = 1.3
 const DESCRIPTION_LINE_HEIGHT = 1.55
-const UNDERLINE_RATIO = 0.14
+const UNDERLINE_RATIO = 0.10
 
 /** 导出锚点所需的尺寸；所有值均已换算为输出图片像素。 */
 export interface AnchorExportMetrics {
@@ -46,7 +46,7 @@ export function anchorExportMetrics(imageWidth: number, displayScale = 1, labelS
     markerDotSize: ANCHOR_TITLE_BASE_FONT_SIZE * layoutScale * textScale * MARKER_DOT_RATIO,
     descriptionGap: ANCHOR_TITLE_BASE_FONT_SIZE * layoutScale * textScale * DESCRIPTION_GAP_RATIO,
     markerOffset: ANCHOR_LABEL_MARKER_OFFSET * layoutScale,
-    underlineThickness: Math.max(2 * layoutScale, titleFontSize * UNDERLINE_RATIO),
+    underlineThickness: Math.max(1 * layoutScale, titleFontSize * UNDERLINE_RATIO),
   }
 }
 
@@ -114,7 +114,7 @@ export function drawDocumentAnchors(
     context.shadowBlur = Math.max(1, metrics.layoutScale * 3)
     context.shadowOffsetY = Math.max(1, metrics.layoutScale)
     context.fillStyle = '#ffffff'
-    context.font = `600 ${metrics.titleFontSize}px ${UI_FONT_STACK}`
+    context.font = `500 ${metrics.titleFontSize}px ${UI_FONT_STACK}`
 
     const titleLines = title ? wrapAnchorText(context, title, labelMaxWidth) : []
     const titleLineHeight = metrics.titleFontSize * TITLE_LINE_HEIGHT

@@ -12,9 +12,9 @@ export const ANCHOR_LABEL_MAX_WIDTH = 280
 /** 文字块起点到画布右边缘之间预留的避让距离，按锚点展示比例缩放。 */
 export const ANCHOR_LABEL_MARKER_OFFSET = 8
 /** 锚点标题在 100% 展示比例下的基准字号，详情、全屏、缩略图和导出共用。 */
-export const ANCHOR_TITLE_BASE_FONT_SIZE = 12
+export const ANCHOR_TITLE_BASE_FONT_SIZE = 10
 /** 锚点详细描述在 100% 展示比例下的基准字号，始终小于标题。 */
-export const ANCHOR_DESCRIPTION_BASE_FONT_SIZE = 10
+export const ANCHOR_DESCRIPTION_BASE_FONT_SIZE = 9
 /** 缩略图锚点文字按渲染图片宽度缩小的参考宽度，保持列表与编辑器中的比例关系。 */
 export const THUMBNAIL_ANCHOR_REFERENCE_WIDTH = 420
 

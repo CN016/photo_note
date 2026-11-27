@@ -74,7 +74,7 @@ const anchors = computed(() => {
         top: `${y}px`,
         '--anchor-title-font-size': `${ANCHOR_TITLE_BASE_FONT_SIZE * imageTextScale}px`,
         '--anchor-label-scale': `${labelScale}`,
-        '--anchor-marker-dot-size': `${10 * visualScale * .56}px`,
+        '--anchor-marker-dot-size': `${10 * visualScale * .48}px`,
         '--thumbnail-anchor-note-width': `${Math.max(36 * visualScale, Math.min(width - x - 8, 160 * visualScale))}px`,
       },
     }]
@@ -234,18 +234,18 @@ onBeforeUnmount(() => {
   width: max-content;
   max-width: var(--thumbnail-anchor-note-width, 120px);
   color: #fff;
-  font-size: calc(var(--anchor-title-font-size, 12px) * var(--anchor-label-scale, 1));
-  font-weight: 600;
-  line-height: 1.2;
+  font-size: calc(var(--anchor-title-font-size, 10px) * var(--anchor-label-scale, 1));
+  font-weight: 500;
+  line-height: 1.3;
   overflow-wrap: anywhere;
-  text-shadow: 0 1px 3px rgb(0 0 0 / 68%);
+  text-shadow: 0 1px 2px rgb(0 0 0 / 55%);
 }
 .thumbnail-anchor-title::after {
   position: absolute;
   right: 0;
   bottom: -1px;
   left: 0;
-  height: max(2px, calc(var(--anchor-title-font-size, 12px) * var(--anchor-label-scale, 1) * .14));
+  height: max(1px, calc(var(--anchor-title-font-size, 10px) * var(--anchor-label-scale, 1) * .10));
   border-radius: 999px;
   background: #f3e600;
   box-shadow: 0 1px 3px rgb(0 0 0 / 28%);
