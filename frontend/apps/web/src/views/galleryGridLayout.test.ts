@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest'
 import {
   DEFAULT_GALLERY_COLUMNS,
   GALLERY_COLUMN_STEPS,
+  GALLERY_GRID_GAP,
+  GALLERY_MOBILE_GRID_GAP,
   GALLERY_THUMBNAIL_RADIUS,
   nearestGalleryColumnCount,
 } from './galleryGridLayout'
@@ -10,6 +12,8 @@ describe('图库默认网格', () => {
   it('进入列表默认显示五列并使用小圆角', () => {
     expect(DEFAULT_GALLERY_COLUMNS).toBe(5)
     expect(GALLERY_THUMBNAIL_RADIUS).toBe(3)
+    expect(GALLERY_GRID_GAP).toBe(6)
+    expect(GALLERY_MOBILE_GRID_GAP).toBe(4)
   })
 
   it('缩放结果吸附到允许列数档位', () => {

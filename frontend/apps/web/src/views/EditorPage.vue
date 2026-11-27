@@ -31,7 +31,6 @@ import {
 } from '../images/watermark'
 import { drawDocumentAnchors } from '../images/imageAnchorExport'
 import { exportSourceKey, hasExportVisualChanges, originalExportFormat } from '../images/exportImage'
-import { imageExportBackSteps } from './exportNavigation'
 import {
   anchorToView, clampAnchorLabelScale, createEditorDocument, cropOnRotatedCanvas, DocumentHistory, parseEditorDocument, viewSelectionToSourceRect,
   viewToSource, type EditorDocument, type ImageAnchor, type NormalizedRect,
@@ -150,39 +149,6 @@ watch(() => route.query.panel, value => {
   propertiesHistoryEntry = false
   if (toolPanel.value === 'properties') toolPanel.value = null
 })
-
-/**
- * 图片保存成功后回到进入照片前的页面。
- *
- * 普通导出仍停留在 `?panel=properties` 时，浏览历史比图片详情多一条内部面板
- * 记录，需要一次跨两层；水印模式已经关闭该记录，只跨一层。没有可回退历史时
- * 使用灵感库兜底，避免按钮完成后停留在当前图片。导航异常只影响收尾，不会把
- * 已成功的照片保存误报为失败。
- */
-function returnAfterImageExport(): void {
-  const state = window.history.state as { back?: string | null; position?: unknown } | null
-  const hasOwnedPropertiesEntry = propertiesHistoryEntry && route.query.panel === 'properties'
-  const imageRouteName = route.name
-  const imageID = itemId.value
-  const steps = imageExportBackSteps(hasOwnedPropertiesEntry)
-  propertiesHistoryEntry = false
-  try {
-    if (!state?.back) {
-      void router.replace('/inspirations')
-      return
-    }
-    if (steps === -2) router.go(steps)
-    else router.back()
-  } catch {
-    void router.replace('/inspirations')
-    return
-  }
-  // `router.go(-2)` 在历史长度不足时可能被浏览器收敛为停留在详情或只退一层；
-  // 路由完成后仍在同一张照片就明确回到灵感库，保证成功后不会继续停在编辑页。
-  window.setTimeout(() => {
-    if (route.name === imageRouteName && itemId.value === imageID) void router.replace('/inspirations')
-  }, 400)
-}
 
 let anchorEditorScrollSnapshot: { left: number; top: number } | null = null
 let anchorEditorScrollRestoreTimers: number[] = []
@@ -1893,7 +1859,8 @@ async function exportEditedImage(withWatermark: boolean): Promise<void> {
       // 保存已成功，页面收尾即使遇到路由或动画异常也不能覆盖成功结果。
       if (withWatermark) exitWatermarkMode()
       toolPanel.value = null
-      returnAfterImageExport()
+      // 导出后只关闭导出界面，保留当前照片查看页；属性面板历史记录通过原有关闭路径移除。
+      syncPropertiesQuery(false)
     } catch { /* 媒体已保存，收尾失败不得提示导出失败。 */ }
   } finally {
     releaseCanvas(output)
@@ -2608,7 +2575,7 @@ onBeforeUnmount(() => {
 .detail-note-editor { min-height: 44px; }
 .detail-note-trigger { display: flex; width: 100%; min-height: 44px; align-items: flex-start; padding: 4px 0; border: 0; background: transparent; color: var(--ink); cursor: text; font: inherit; font-size: 14px; line-height: 1.72; text-align: left; white-space: pre-wrap; overflow-wrap: anywhere; touch-action: manipulation; }
 .detail-note-trigger span { width: 100%; }
-.detail-note-trigger span.is-placeholder { color: var(--muted); }
+.detail-note-trigger span.is-placeholder { color: color-mix(in srgb, var(--muted) 72%, transparent); font-size: 12px; font-weight: 400; letter-spacing: 0; line-height: 1.7; }
 .detail-note-trigger:hover { color: var(--ink); }
 .detail-note-trigger:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 12px; }
 .detail-note-editor :deep(.el-textarea__inner) { min-height: 32px !important; padding: 4px 0; border: 0; border-radius: 0; background: transparent; box-shadow: none; color: var(--ink); font: inherit; font-size: 14px; line-height: 1.72; }

@@ -27,7 +27,8 @@ import { api } from '../api/client'
 import { ApiError, type InspirationRecord, type TagRecord } from '../api/types'
 import { createGallerySearchState, gallerySearchHasValue, inspirationRequestOptions, type GallerySort, type GallerySearchState } from '../gallerySearch'
 import {
-  DEFAULT_GALLERY_COLUMNS, GALLERY_THUMBNAIL_RADIUS, nearestGalleryColumnCount,
+  DEFAULT_GALLERY_COLUMNS, GALLERY_GRID_GAP, GALLERY_MOBILE_GRID_GAP, GALLERY_THUMBNAIL_RADIUS,
+  nearestGalleryColumnCount,
 } from './galleryGridLayout'
 
 const { t, locale } = useI18n()
@@ -520,7 +521,7 @@ onBeforeUnmount(() => { alive = false; inspirationDetails.clear(); openVersion +
 </script>
 
 <template>
-  <div ref="galleryRoot" class="workspace-page gallery-workspace" :style="{ '--gallery-thumbnail-radius': `${GALLERY_THUMBNAIL_RADIUS}px` }" @touchstart="touchStart" @touchmove="touchMove" @touchend="gesture.cancel(); galleryTouchEnd($event)" @touchcancel="gesture.cancel(); galleryTouchEnd($event)" @click.capture="interceptClick">
+  <div ref="galleryRoot" class="workspace-page gallery-workspace" :style="{ '--gallery-thumbnail-radius': `${GALLERY_THUMBNAIL_RADIUS}px`, '--gallery-grid-gap': `${GALLERY_GRID_GAP}px`, '--gallery-mobile-grid-gap': `${GALLERY_MOBILE_GRID_GAP}px` }" @touchstart="touchStart" @touchmove="touchMove" @touchend="gesture.cancel(); galleryTouchEnd($event)" @touchcancel="gesture.cancel(); galleryTouchEnd($event)" @click.capture="interceptClick">
     <main id="main-content" class="gallery-main">
       <section class="gallery-intro">
         <div><h1>{{ t('gallery.title') }}</h1></div>
@@ -602,7 +603,7 @@ onBeforeUnmount(() => { alive = false; inspirationDetails.clear(); openVersion +
 .gallery-sort-button:hover:not(:disabled), .gallery-sort-button:focus-visible { background: var(--surface-soft); color: var(--ink); outline: none; }
 .gallery-sort-button:disabled { cursor: default; opacity: .72; }
 .sort-chevron { font-size: 11px; }
-.inspiration-grid { grid-template-columns: repeat(var(--grid-columns, 2), minmax(0, 1fr)); gap: 12px; touch-action: pan-y; }
+.inspiration-grid { grid-template-columns: repeat(var(--grid-columns, 5), minmax(0, 1fr)); gap: var(--gallery-grid-gap, 6px); touch-action: pan-y; }
 .inspiration-grid.is-dense { gap: 0; }
 .inspiration-grid.is-dense .gallery-image-note, .inspiration-grid.is-dense .inspiration-card :deep(.thumbnail-anchor-title) { display: none !important; }
 .gallery-grid-move { transition: transform .24s cubic-bezier(.2,.75,.25,1); }
@@ -634,13 +635,13 @@ onBeforeUnmount(() => { alive = false; inspirationDetails.clear(); openVersion +
   .gallery-main :deep(.library-board) { margin-top: 8px; margin-bottom: 6px; }
   .gallery-workspace > .workspace-footer { padding-top: 8px; padding-bottom: 8px; }
   .gallery-sort-button { min-height: 44px; padding-inline: 5px; }
-  .inspiration-grid { gap: 8px; }
+  .inspiration-grid { gap: var(--gallery-mobile-grid-gap, 4px); }
   .inspiration-grid.is-dense { gap: 0; }
   .gallery-side-nav { right: 2px; }
   .inspiration-card :deep(.thumbnail-frame) { border-radius: var(--gallery-thumbnail-radius, 3px) !important; }
 }
 @media (min-width: 769px) {
-  .inspiration-grid { grid-template-columns: repeat(var(--grid-columns, 3), minmax(0, 1fr)); gap: 16px; }
+  .inspiration-grid { grid-template-columns: repeat(var(--grid-columns, 5), minmax(0, 1fr)); gap: var(--gallery-grid-gap, 6px); }
 }
 @media (min-width: 1600px) { .gallery-main { max-width: none; } }
 </style>

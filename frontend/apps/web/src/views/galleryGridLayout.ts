@@ -2,6 +2,10 @@
 export const DEFAULT_GALLERY_COLUMNS = 5
 /** 图库缩略图默认圆角，使用小圆角保留照片面积而不是形成大卡片轮廓。 */
 export const GALLERY_THUMBNAIL_RADIUS = 3
+/** 桌面五列网格的缩略图间距。 */
+export const GALLERY_GRID_GAP = 6
+/** 手机五列网格的缩略图间距；按设备像素比放大后仍保持紧凑。 */
+export const GALLERY_MOBILE_GRID_GAP = 4
 /** 双指缩放允许吸附的列数档位。 */
 export const GALLERY_COLUMN_STEPS = [1, 2, 3, 4, 5, 10, 15, 20, 25, 30] as const
 
