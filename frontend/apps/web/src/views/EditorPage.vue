@@ -300,12 +300,6 @@ const detailTagLongPress = createLongPress(() => {
   const name = pressedDetailTag.value
   if (name) void removeDetailTag(name)
 })
-const detailImageLongPress = createLongPress(() => {
-  if (!isExisting.value || isEditing.value || watermarkMode.value || anchorEditorOpen.value) return
-  detailImageMenuOpen.value = true
-  // 长按完成后浏览器仍会补发 click，阻止它继续创建锚点。
-  suppressPreviewClick = true
-})
 
 /** 详情页只展示已采集到的属性；元数据中的空值不会占据面板空间。 */
 const imageMetadataSections = computed(() => {
@@ -1042,28 +1036,9 @@ function stagePoint(event: PointerEvent): { x: number; y: number } {
   return { x: Math.max(0, Math.min(1, (event.clientX - bounds.left) / bounds.width)), y: Math.max(0, Math.min(1, (event.clientY - bounds.top) / bounds.height)) }
 }
 
-/** 详情态长按图片打开底部操作面板；编辑、裁切和水印模式不抢占原手势。 */
-function beginPreviewInteraction(event: PointerEvent): void {
-  beginCropSelection(event)
-  if (!event.isPrimary || !isExisting.value || isEditing.value || cropMode.value || watermarkMode.value || anchorEditorOpen.value) return
-  detailImageLongPress.start(event.clientX, event.clientY)
-}
-
-/** 手指或指针移动超过阈值即取消长按，并把位移继续交给裁切逻辑。 */
-function movePreviewInteraction(event: PointerEvent): void {
-  detailImageLongPress.move(event.clientX, event.clientY)
-  moveCropSelection(event)
-}
-
-/** 指针结束时清理长按计时器；长按已触发时由 suppressPreviewClick 吞掉后续 click。 */
-function endPreviewInteraction(event: PointerEvent): void {
-  detailImageLongPress.cancel()
-  endCropSelection(event)
-}
-
+/** 手机原生长按和桌面右键都会触发 contextmenu；只复用该事件，不拦截原有指针手势。 */
 function openDetailImageMenu(): void {
   if (!isExisting.value || isEditing.value || cropMode.value || watermarkMode.value || anchorEditorOpen.value) return
-  suppressPreviewClick = true
   detailImageMenuOpen.value = true
 }
 
@@ -2105,7 +2080,6 @@ onBeforeRouteLeave(async to => {
 
 onBeforeUnmount(() => {
   // 先交出真实渲染像素，再释放原画布；退出动画不依赖已经卸载的编辑组件。
-  detailImageLongPress.cancel()
   detailImageMenuOpen.value = false
   captureDetailImage(previewCanvas.value)
   resetZoomViewer()
@@ -2166,10 +2140,10 @@ onBeforeUnmount(() => {
                 :aria-label="anchorMode ? t('editor.anchorModeOn') : isExisting && !isEditing ? t('editor.anchorAtImage') : t('editor.previewLabel')"
                 @keydown.enter.prevent="addAnchorAtCenter"
                 @keydown.space.prevent="addAnchorAtCenter"
-                @pointerdown="beginPreviewInteraction"
-                @pointermove="movePreviewInteraction"
-                @pointerup="endPreviewInteraction"
-                @pointercancel="endPreviewInteraction"
+                @pointerdown="beginCropSelection"
+                @pointermove="moveCropSelection"
+                @pointerup="endCropSelection"
+                @pointercancel="endCropSelection"
                 @contextmenu.prevent="openDetailImageMenu"
               ></canvas>
               <div v-if="cropMode && cropSelection" class="crop-selection" :style="cropDragStyle" aria-hidden="true"></div>
