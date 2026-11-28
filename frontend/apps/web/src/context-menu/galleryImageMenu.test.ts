@@ -4,9 +4,12 @@ import { createGalleryImageMenu } from './galleryImageMenu'
 describe('灵感库图片菜单', () => {
   it('复制第一项、添加第二项，已关联策划从第三项开始', async () => {
     const copy = vi.fn()
+    const manage = vi.fn()
     const add = vi.fn()
     const open = vi.fn()
     const entries = createGalleryImageMenu({
+      manageLabel: '管理',
+      manage,
       copyLabel: '复制图片',
       canCopy: true,
       copy,
@@ -17,18 +20,21 @@ describe('灵感库图片菜单', () => {
       onOpenRelated: open,
     })
 
-    expect(entries.map(entry => entry.label)).toEqual(['复制图片', '添加到…', '春日策划'])
-    expect(entries[0]).toMatchObject({ label: '复制图片', disabled: false })
+    expect(entries.map(entry => entry.label)).toEqual(['管理', '复制图片', '添加到…', '春日策划'])
     await entries[0]?.run?.()
+    expect(manage).toHaveBeenCalledTimes(1)
+    await entries[1]?.run?.()
     expect(copy).toHaveBeenCalledTimes(1)
-    await entries[1]?.children?.[0]?.run?.()
+    await entries[2]?.children?.[0]?.run?.()
     expect(add).toHaveBeenCalledTimes(1)
-    await entries[2]?.run?.()
+    await entries[3]?.run?.()
     expect(open).toHaveBeenCalledTimes(1)
   })
 
   it('剪贴板不可写和加载状态下不改变前两行位置', () => {
     const entries = createGalleryImageMenu({
+      manageLabel: 'Manage',
+      manage: () => {},
       copyLabel: 'Copy image',
       canCopy: false,
       copy: () => {},
@@ -41,9 +47,9 @@ describe('灵感库图片菜单', () => {
       relatedStatus: 'Loading…',
       onOpenRelated: () => {},
     })
-    expect(entries.map(entry => entry.label)).toEqual(['Copy image', 'Add to…', 'Loading…'])
-    expect(entries[0]?.disabled).toBe(true)
+    expect(entries.map(entry => entry.label)).toEqual(['Manage', 'Copy image', 'Add to…', 'Loading…'])
     expect(entries[1]?.disabled).toBe(true)
-    expect(entries[1]?.children?.[0]?.disabled).toBe(true)
+    expect(entries[2]?.disabled).toBe(true)
+    expect(entries[2]?.children?.[0]?.disabled).toBe(true)
   })
 })

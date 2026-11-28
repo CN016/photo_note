@@ -9,13 +9,15 @@ import {
 } from '../images/pinchZoom'
 import ContentZoom from '../components/ContentZoom.vue'
 import { createLongPress } from '../context-menu/longPress'
+import { copyImage } from '../context-menu/clipboard'
+import { closeMenu } from '../context-menu/menu'
 import { friendlyExtra, formatMetadataValue as formatImageMetadataValue, rawMetadataValue, gpsMapUrl } from './imageMetadataDisplay'
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue'
 import { gsap } from 'gsap'
 import { useI18n } from 'vue-i18n'
 import { onBeforeRouteLeave, useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox, type UploadFile } from 'element-plus'
-import { ArrowLeft, ArrowRight, Check, Close, Crop, Delete, Download, FullScreen, MagicStick, Plus, RefreshLeft, RefreshRight, UploadFilled, MoreFilled, Aim, Operation, Document } from '@element-plus/icons-vue'
+import { ArrowLeft, ArrowRight, Check, Close, CopyDocument, Crop, Delete, Download, FullScreen, MagicStick, Plus, RefreshLeft, RefreshRight, UploadFilled, MoreFilled, Aim, Operation, Document } from '@element-plus/icons-vue'
 import { api as baseApi } from '../api/client'
 import { ApiError, type InspirationImageMetadata, type InspirationRecord } from '../api/types'
 import { useAnchorDisplayStore } from '../stores/anchorDisplay'
@@ -63,6 +65,7 @@ const api = {
     ? baseApi.managementSaveInspiration(id, { data, ...(imageMetadata ? { image_metadata: imageMetadata } : {}) }, managementOrgID.value)
     : baseApi.updateInspiration(id, data, imageMetadata),
   updateInspirationTags: (id: string, names: string[]) => managementMode.value ? baseApi.managementSaveInspiration(id, { tag_names: names }, managementOrgID.value) : baseApi.updateInspirationTags(id, names),
+  deleteInspiration: (id: string) => managementMode.value ? baseApi.managementDeleteInspiration(id, managementOrgID.value) : baseApi.deleteInspiration(id),
 }
 const isExisting = computed(() => itemId.value.length > 0)
 const isEditing = ref(false)
@@ -261,6 +264,8 @@ const watermarkMode = ref(false)
 const watermarkDraft = ref<WatermarkPlacement | null>(null)
 const watermarkMoving = ref<WatermarkMoveDraft | null>(null)
 const exportingImage = ref(false)
+const detailImageMenuOpen = ref(false)
+const detailImageMenuSheet = ref<HTMLElement | null>(null)
 const pressedDetailTag = ref('')
 const historyRevision = ref(0)
 const cropSelection = ref<NormalizedRect | null>(null)
@@ -280,6 +285,7 @@ let noteSaveTimer: number | undefined
 let tagSearchVersion = 0
 let suppressAnchorClick = false
 let suppressPreviewClick = false
+let detailImageDeleted = false
 let noteSavePromise: Promise<boolean> | null = null
 let detailWriteChain: Promise<unknown> = Promise.resolve()
 let detailLocalRevision = 0
@@ -295,6 +301,11 @@ let anchorEditorViewportFrame = 0
 const detailTagLongPress = createLongPress(() => {
   const name = pressedDetailTag.value
   if (name) void removeDetailTag(name)
+})
+const detailImageLongPress = createLongPress(() => {
+  if (!isExisting.value || isEditing.value || watermarkMode.value || anchorEditorOpen.value) return
+  suppressPreviewClick = true
+  detailImageMenuOpen.value = true
 })
 
 /** 详情页只展示已采集到的属性；元数据中的空值不会占据面板空间。 */
@@ -1032,6 +1043,71 @@ function stagePoint(event: PointerEvent): { x: number; y: number } {
   return { x: Math.max(0, Math.min(1, (event.clientX - bounds.left) / bounds.width)), y: Math.max(0, Math.min(1, (event.clientY - bounds.top) / bounds.height)) }
 }
 
+function openDetailImageMenu(): void {
+  if (!isExisting.value || isEditing.value || cropMode.value || watermarkMode.value || anchorEditorOpen.value) return
+  // 桌面右键会先由全局菜单捕获；打开原生底部操作层前关闭它，避免两层同时出现。
+  closeMenu()
+  detailImageMenuOpen.value = true
+}
+
+function closeDetailImageMenu(): void {
+  detailImageMenuOpen.value = false
+}
+
+/** 保存按钮复用属性面板导出，确保与“下载图片”使用同一质量和平台保存路径。 */
+async function saveDetailImage(): Promise<void> {
+  closeDetailImageMenu()
+  await exportEditedImage(false)
+}
+
+/** 复制当前详情画布的可见编辑结果，不重新请求图片或写入图片文档。 */
+async function copyDetailImage(): Promise<void> {
+  const canvas = previewCanvas.value
+  closeDetailImageMenu()
+  if (!canvas || !canvas.width || !canvas.height) return
+  const blob = await new Promise<Blob | null>(resolve => canvas.toBlob(resolve, 'image/png'))
+  if (blob) await copyImage(async () => blob)
+}
+
+/** 删除当前图片；策划引用冲突时保留当前页面并展示错误。 */
+async function deleteDetailImage(): Promise<void> {
+  const imageID = record.value?.business_id
+  if (!imageID) return
+  closeDetailImageMenu()
+  try {
+    await ElMessageBox.confirm(t('organizations.deleteImageConfirm'), t('contextMenu.deleteImage'), {
+      confirmButtonText: t('contextMenu.deleteImage'),
+      cancelButtonText: t('common.cancel'),
+      type: 'warning',
+      customClass: 'editor-glass-dialog',
+    })
+  } catch { return }
+  try {
+    // 删除前先结束已经提交的自动保存；尚未提交的草稿随图片一起删除，避免离页守卫再次写入。
+    if (noteSaveTimer !== undefined) {
+      window.clearTimeout(noteSaveTimer)
+      noteSaveTimer = undefined
+    }
+    if (noteSavePromise) await noteSavePromise
+    if (tagWritePromise) await tagWritePromise
+    if (colorWritePromise) await colorWritePromise
+    await detailWriteChain
+    await api.deleteInspiration(imageID)
+    detailImageDeleted = true
+    ElMessage.success(t('contextMenu.imageDeleted'))
+    if (managementMode.value) router.back()
+    else await router.replace('/inspirations')
+  } catch (cause) {
+    showTopNotice(localError(cause, t('contextMenu.imageDeleteFailed')), 'error')
+  }
+}
+
+watch(detailImageMenuOpen, async open => {
+  if (!open) return
+  await nextTick()
+  detailImageMenuSheet.value?.focus({ preventScroll: true })
+})
+
 /** 仅在裁切模式记录起点，并捕获当前指针以支持拖出画布边缘。 */
 function beginCropSelection(event: PointerEvent): void {
   if (!cropMode.value || !previewCanvas.value) return
@@ -1199,6 +1275,7 @@ function restoreZoomViewer(): void {
 
 /** 手指抬起时已达到全屏阈值就保留大图；否则完整倒放回详情画布原位置。 */
 function endPreviewPinch(): void {
+  detailImageLongPress.cancel()
   if (!zoomStart || !zoomOrigin) return
   if (zoomPinchMode === 'return') {
     endFullscreenPinch()
@@ -1249,6 +1326,13 @@ function endPreviewPinch(): void {
 
 /** 开始双指手势时同步复制真实画布像素，首帧就与用户手指位置对齐。 */
 function beginPreviewPinch(event: TouchEvent): void {
+  if (event.touches.length === 2) detailImageLongPress.cancel()
+  else if (event.touches.length === 1 && isExisting.value && !isEditing.value
+    && !watermarkMode.value && !anchorEditorOpen.value
+    && (event.target as Element)?.closest('.editor-canvas')) {
+    const touch = event.touches[0]
+    if (touch) detailImageLongPress.start(touch.clientX, touch.clientY)
+  }
   if (isEditing.value || zoomActive.value || anchorEditorOpen.value || watermarkMode.value || event.touches.length !== 2) return
   const origin = prepareZoomSnapshot()
   if (!origin) return
@@ -1273,6 +1357,12 @@ function beginPreviewPinch(event: TouchEvent): void {
 
 /** 手势每一帧都按当前双指距离更新缩放、位置和背景，不等待阈值再跳转全屏。 */
 function movePreviewPinch(event: TouchEvent): void {
+  if (event.touches.length === 1) {
+    const touch = event.touches[0]
+    if (touch) detailImageLongPress.move(touch.clientX, touch.clientY)
+    return
+  }
+  if (event.touches.length === 2) detailImageLongPress.cancel()
   if (!zoomOrigin || !zoomStart || event.touches.length !== 2) return
   event.preventDefault()
   const first = { x: event.touches[0]!.clientX, y: event.touches[0]!.clientY }
@@ -1983,6 +2073,7 @@ onMounted(() => {
 
 /** 通过页内返回或浏览器导航离开时，同样确认是否丢弃已有灵感图的未保存调整。 */
 onBeforeRouteLeave(async to => {
+  if (detailImageDeleted) return true
   // 多步上传和图片保存尚未完成时不能卸载旧空间；切换协调器会保留旧组织供重试。
   // 读取预览不是写入事务，允许用户在打开动画/解码期间返回；卸载代次会丢弃迟到结果。
   // 保存与空间切换仍等待原范围任务，避免将旧空间写入带到新空间。
@@ -2023,6 +2114,8 @@ onBeforeRouteLeave(async to => {
 
 onBeforeUnmount(() => {
   // 先交出真实渲染像素，再释放原画布；退出动画不依赖已经卸载的编辑组件。
+  detailImageLongPress.cancel()
+  detailImageMenuOpen.value = false
   captureDetailImage(previewCanvas.value)
   resetZoomViewer()
   exitWatermarkMode()
@@ -2086,6 +2179,7 @@ onBeforeUnmount(() => {
                 @pointermove="moveCropSelection"
                 @pointerup="endCropSelection"
                 @pointercancel="endCropSelection"
+                @contextmenu.prevent="openDetailImageMenu"
               ></canvas>
               <div v-if="cropMode && cropSelection" class="crop-selection" :style="cropDragStyle" aria-hidden="true"></div>
               <!--
@@ -2231,6 +2325,24 @@ onBeforeUnmount(() => {
 
       <div v-if="error && !imageReady" class="editor-load-error" role="alert"><p>{{ error }}</p><RouterLink class="secondary-button" to="/inspirations">{{ t('common.back') }}</RouterLink></div>
     </main></ContentZoom>
+    <Teleport to="body">
+      <Transition name="detail-image-actions">
+        <div v-if="detailImageMenuOpen" class="detail-image-actions-layer" data-native-overlay @click.self="closeDetailImageMenu">
+          <section ref="detailImageMenuSheet" class="detail-image-actions-sheet" role="dialog" aria-modal="true" :aria-label="t('contextMenu.imageActions')" tabindex="-1" @keydown.esc.prevent="closeDetailImageMenu">
+            <span class="detail-image-actions-handle" aria-hidden="true"></span>
+            <div class="detail-image-actions-heading">
+              <h2>{{ t('contextMenu.imageActions') }}</h2>
+              <button type="button" class="detail-image-actions-close" data-native-overlay-close :aria-label="t('common.close')" @click="closeDetailImageMenu"><el-icon aria-hidden="true"><Close /></el-icon></button>
+            </div>
+            <div class="detail-image-actions-grid">
+              <button type="button" :disabled="exportingImage" @click="saveDetailImage"><el-icon aria-hidden="true"><Download /></el-icon><span>{{ t('contextMenu.saveImage') }}</span></button>
+              <button type="button" @click="copyDetailImage"><el-icon aria-hidden="true"><CopyDocument /></el-icon><span>{{ t('contextMenu.copyImage') }}</span></button>
+              <button type="button" class="is-danger" @click="deleteDetailImage"><el-icon aria-hidden="true"><Delete /></el-icon><span>{{ t('contextMenu.deleteImage') }}</span></button>
+            </div>
+          </section>
+        </div>
+      </Transition>
+    </Teleport>
     <div v-if="imageReady && (!isExisting || isEditing)" class="image-edit-dock" :class="{ 'is-editing': isEditing }" role="region" :aria-label="t('editor.tools')">
       <div class="image-dock-tools" role="toolbar" :aria-label="t('editor.tools')">
         <button type="button" :class="{ active: anchorMode || toolPanel === 'anchors' }" @click="openTool('anchors', $event)"><el-icon aria-hidden="true"><Aim /></el-icon><span>{{ t('editor.toolbarAnchors') }}</span></button>
@@ -2570,6 +2682,21 @@ onBeforeUnmount(() => {
 .canvas-backdrop { position: absolute; z-index: -1; inset: -36px; width: calc(100% + 72px); height: calc(100% + 72px); filter: blur(28px) saturate(1.15); opacity: .62; transform: scale(1.035); }
 .is-detail .editor-canvas-wrap { box-shadow: none; }
 .image-edit-dock { position: fixed; z-index: 45; bottom: 20px; left: calc(50% + 112px); transform: translateX(-50%); display: flex; flex-wrap: wrap; align-items: center; gap: 12px; max-width: calc(100% - 290px); padding: 8px; border: 1px solid color-mix(in srgb, var(--ink) 10%, transparent); border-radius: 24px; background: radial-gradient(150% 180% at 8% 0%, color-mix(in srgb, var(--detail-ambient, var(--accent)) 20%, transparent), transparent 58%), linear-gradient(180deg, rgb(255 255 255 / 24%), rgb(255 255 255 / 5%)), color-mix(in srgb, var(--ink) 7%, transparent); box-shadow: inset 0 1px 0 rgb(255 255 255 / 50%), inset 0 -1px 0 rgb(0 0 0 / 8%), 0 12px 34px rgb(0 0 0 / 15%); backdrop-filter: blur(30px) saturate(190%); -webkit-backdrop-filter: blur(30px) saturate(190%); }
+.detail-image-actions-layer { position: fixed; z-index: 2600; inset: 0; display: flex; align-items: flex-end; justify-content: center; padding: 16px max(12px, env(safe-area-inset-right)) max(12px, env(safe-area-inset-bottom)) max(12px, env(safe-area-inset-left)); background: rgb(8 12 10 / 18%); backdrop-filter: blur(3px); -webkit-backdrop-filter: blur(3px); }
+.detail-image-actions-sheet { width: min(520px, 100%); padding: 10px 12px 14px; border: 1px solid color-mix(in srgb, var(--ink) 10%, transparent); border-radius: 20px; background: color-mix(in srgb, var(--surface-overlay) 96%, transparent); box-shadow: 0 1px 2px rgb(0 0 0 / 8%), 0 18px 54px rgb(0 0 0 / 18%); outline: none; }
+.detail-image-actions-handle { display: block; width: 34px; height: 4px; margin: 0 auto 10px; border-radius: 99px; background: color-mix(in srgb, var(--ink) 18%, transparent); }
+.detail-image-actions-heading { display: flex; min-height: 38px; align-items: center; justify-content: space-between; gap: 12px; padding: 0 2px 8px; }
+.detail-image-actions-heading h2 { margin: 0; color: var(--ink); font-size: 15px; font-weight: 500; letter-spacing: 0; }
+.detail-image-actions-close { display: grid; width: 36px; height: 36px; place-items: center; padding: 0; border: 0; border-radius: 10px; background: var(--surface-soft); color: var(--muted); cursor: pointer; font-size: 17px; }
+.detail-image-actions-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.detail-image-actions-grid button { display: grid; min-height: 74px; place-items: center; align-content: center; gap: 7px; padding: 8px; border: 1px solid var(--line); border-radius: 14px; background: var(--surface-soft); color: var(--ink-soft); cursor: pointer; font: inherit; font-size: 12px; }
+.detail-image-actions-grid button .el-icon { font-size: 22px; }
+.detail-image-actions-grid button:active:not(:disabled) { transform: scale(.98); }
+.detail-image-actions-grid button.is-danger { border-color: color-mix(in srgb, var(--danger) 22%, var(--line)); color: var(--danger); }
+.detail-image-actions-enter-active, .detail-image-actions-leave-active { transition: opacity 160ms ease; }
+.detail-image-actions-enter-active .detail-image-actions-sheet, .detail-image-actions-leave-active .detail-image-actions-sheet { transition: transform 200ms cubic-bezier(.22, 1, .36, 1); }
+.detail-image-actions-enter-from, .detail-image-actions-leave-to { opacity: 0; }
+.detail-image-actions-enter-from .detail-image-actions-sheet, .detail-image-actions-leave-to .detail-image-actions-sheet { transform: translateY(18px); }
 .detail-caption { display: grid; gap: 8px; max-width: 760px; margin: 16px auto 0; padding: 0 8px; color: var(--ink); }
 .detail-caption p { margin: 0; color: var(--ink-soft); font-size: 14px; line-height: 1.6; white-space: pre-wrap; overflow-wrap: anywhere; }
 .detail-note-editor { min-height: 44px; }
@@ -2737,7 +2864,7 @@ onBeforeUnmount(() => {
 :global(.editor-glass-dialog .el-dialog__header), :global(.editor-glass-dialog .el-message-box__header) { border-bottom: 1px solid color-mix(in srgb, var(--ink) 8%, transparent); }
 :global(.editor-glass-message.el-message) { border: 1px solid color-mix(in srgb, var(--ink) 12%, transparent); background: linear-gradient(180deg, rgb(255 255 255 / 20%), rgb(255 255 255 / 3%)), color-mix(in srgb, var(--ink) 8%, transparent); backdrop-filter: blur(26px) saturate(180%); -webkit-backdrop-filter: blur(26px) saturate(180%); box-shadow: inset 0 1px 0 rgb(255 255 255 / 48%), 0 14px 38px rgb(0 0 0 / 18%); }
 @media (prefers-reduced-motion: reduce) {
-  .detail-back, .detail-more, .image-dock-tools button, .detail-tag-picker, .detail-tag-picker-layer, .anchor-editor-enter-active, .anchor-editor-leave-active { transition: none; }
+  .detail-back, .detail-more, .image-dock-tools button, .detail-tag-picker, .detail-tag-picker-layer, .anchor-editor-enter-active, .anchor-editor-leave-active, .detail-image-actions-enter-active, .detail-image-actions-leave-active { transition: none; }
 }
 </style>
 

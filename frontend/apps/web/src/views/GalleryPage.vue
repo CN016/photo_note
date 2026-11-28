@@ -8,15 +8,18 @@ import ContentZoom from '../components/ContentZoom.vue'
 import { computed, nextTick, onActivated, onDeactivated, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { onBeforeRouteLeave, useRoute, useRouter } from 'vue-router'
 import { registerMenu, openMenu, updateMenu, menuState } from '../context-menu/menu'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import { clipboardAdapter } from '../../../../packages/platform-adapters'
 import { copyImage } from '../context-menu/clipboard'
 import { createGalleryImageMenu, type GalleryMenuProject } from '../context-menu/galleryImageMenu'
 import { createLongPress } from '../context-menu/longPress'
 import { gallerySnapshot, saveGallerySnapshot, clearGallerySnapshot } from '../context-menu/galleryNavigation'
 import { appendInspirationToProject } from '../projects/attachInspiration'
+import { originalExportFormat } from '../images/exportImage'
+import { exportFile, FileExportError } from '../platform'
+import { localOriginalZip } from '../delivery/localZip'
 import { useI18n } from 'vue-i18n'
-import { ArrowDown, PictureFilled, Search, Sort } from '@element-plus/icons-vue'
+import { ArrowDown, Check, Close, Delete, Download, PictureFilled, Plus, Search, Sort } from '@element-plus/icons-vue'
 import CreateFab from '../components/CreateFab.vue'
 import InspirationThumbnail from '../components/InspirationThumbnail.vue'
 import InspirationLibraryTools from '../components/InspirationLibraryTools.vue'
@@ -39,7 +42,7 @@ let savedScroll = 0
 let openedImageID = ''
 // 离开前记录真实位置；激活发生在浏览器绘制之前，缩略图和筛选均沿用原实例。
 onBeforeRouteLeave(to => { savedScroll = window.scrollY; openedImageID = to.name === 'edit-inspiration' ? String(to.params.id) : '' })
-onDeactivated(() => { active.value = false; openVersion += 1; menuVersion += 1; openingID.value = ''; gesture.cancel() })
+onDeactivated(() => { active.value = false; openVersion += 1; menuVersion += 1; openingID.value = ''; gesture.cancel(); if (!managementBusy.value) exitManagement() })
 onActivated(() => {
   active.value = true
   window.scrollTo({ top: savedScroll, behavior: 'instant' as ScrollBehavior })
@@ -51,7 +54,14 @@ onActivated(() => {
       if (!alive || !active.value || scope !== scopeKey()) return
       const index = items.value.findIndex(item => item.business_id === id)
       if (index >= 0) items.value[index] = record
-    }).catch(() => { /* 单条刷新失败保留已显示内容，列表重试仍通过原入口进行。 */ })
+    }).catch(cause => {
+      if (!alive || !active.value || scope !== scopeKey()) return
+      // 详情页删除成功后返回时应立即移除失效卡片；瞬时网络失败仍保留原内容。
+      if (cause instanceof ApiError && cause.status === 404) {
+        items.value = items.value.filter(item => item.business_id !== id)
+        total.value = Math.max(0, total.value - 1)
+      }
+    })
   }
   const saved = gallerySnapshot(scopeKey(), history.state.galleryReturnKey)
   if (saved && saved.key === history.state.galleryReturnKey && saved.position === history.state.position) void nextTick(() => {
@@ -171,15 +181,19 @@ function openRelated(projectID: string, x: number, y: number) {
 /**
  * 图片长按和右键共用同一菜单。
  *
- * 前两行立即出现；添加目标与已关联策划并行读取，迟到响应只有在菜单代次、
+ * 管理和复制立即出现；添加目标与已关联策划并行读取，迟到响应只有在菜单代次、
  * 会话范围和当前菜单 ID 都匹配时才能更新，避免把旧图片项目写到新菜单。
  */
 async function showImageMenu(item: InspirationRecord, card: HTMLElement, x: number, y: number, scroll = 0) {
+  // 管理模式使用点击勾选；长按、右键和快照恢复都不能再叠加单图菜单。
+  if (manageMode.value) return
   activeImage = item.business_id
   const version = ++menuVersion
   const scope = scopeKey()
   const copy = () => copyImage(() => api.download(item.image_key))
   const initial = createGalleryImageMenu({
+    manageLabel: t('contextMenu.manageImage'),
+    manage: () => beginManagement(item),
     copyLabel: t('contextMenu.copyImage'),
     canCopy: clipboardAdapter.canWriteImage(),
     copy,
@@ -204,6 +218,8 @@ async function showImageMenu(item: InspirationRecord, card: HTMLElement, x: numb
     ? projectsResult.value.filter(project => !relatedIDs.has(project.business_id))
     : []
   const entries = createGalleryImageMenu({
+    manageLabel: t('contextMenu.manageImage'),
+    manage: () => beginManagement(item),
     copyLabel: t('contextMenu.copyImage'),
     canCopy: clipboardAdapter.canWriteImage(),
     copy,
@@ -222,8 +238,153 @@ async function showImageMenu(item: InspirationRecord, card: HTMLElement, x: numb
   })
   updateMenu(id, entries, menuState.value?.scroll ?? scroll)
 }
+
+/** 从长按菜单进入批量管理并默认选中当前图片。 */
+function beginManagement(item: InspirationRecord): void {
+  manageMode.value = true
+  selectedImageIDs.value = [item.business_id]
+}
+
+function exitManagement(): void {
+  if (managementBusy.value) return
+  manageMode.value = false
+  selectedImageIDs.value = []
+  batchProjectPickerOpen.value = false
+  batchProjects.value = []
+}
+
+function toggleManagedImage(id: string): void {
+  if (managementBusy.value) return
+  selectedImageIDs.value = selectedImageIDs.value.includes(id)
+    ? selectedImageIDs.value.filter(value => value !== id)
+    : [...selectedImageIDs.value, id]
+}
+
+/** 批量下载生成一个 ZIP，避免连续浏览器下载被拦截，也便于移动端一次保存。 */
+async function downloadManagedImages(): Promise<void> {
+  if (!selectedImages.value.length || managementBusy.value) return
+  managementBusy.value = true
+  try {
+    const files = await Promise.all(selectedImages.value.map(async item => {
+      const blob = await api.download(item.image_key)
+      const format = originalExportFormat(blob, item.file_name)
+      const stem = item.file_name.replace(/\.[^.]+$/, '').replace(/[\\/:*?"<>|]+/g, '-').trim() || 'image'
+      const name = `${stem}-${item.business_id.slice(0, 6)}.${format.extension}`
+      return { name, file: new File([blob], name, { type: format.mime }) }
+    }))
+    const archive = await localOriginalZip(files)
+    await exportFile(archive, `lightnote-selection-${Date.now()}.zip`, { successMessage: t('gallery.management.downloaded') })
+  } catch (cause) {
+    if (!(cause instanceof FileExportError)) ElMessage.error(t('gallery.management.downloadFailed'))
+  } finally {
+    managementBusy.value = false
+  }
+}
+
+/** 读取全部策划后打开批量添加选择框。 */
+async function openManagementProjectPicker(): Promise<void> {
+  if (!selectedImages.value.length || managementBusy.value) return
+  batchProjectPickerOpen.value = true
+  batchProjectsLoading.value = true
+  batchProjects.value = []
+  try {
+    batchProjects.value = await loadAllProjects()
+  } catch {
+    ElMessage.error(t('gallery.management.projectPickerFailed'))
+  } finally {
+    batchProjectsLoading.value = false
+  }
+}
+
+/** 将全部选中图片原子写入同一策划文档，冲突时重新读取修订号再试一次。 */
+async function addManagedImagesToProject(project: ProjectSummary): Promise<void> {
+  if (!selectedImages.value.length || managementBusy.value) return
+  managementBusy.value = true
+  batchProjectPickerOpen.value = false
+  const ids = selectedImages.value.map(item => item.business_id)
+  try {
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      const current = await api.project(project.business_id)
+      let document = current.document
+      let added = 0
+      for (const id of ids) {
+        const appended = appendInspirationToProject(document, id)
+        document = appended.document
+        if (appended.added) added += 1
+      }
+      if (!added) {
+        ElMessage.info(t('gallery.management.alreadyAdded', { project: current.title || project.title }))
+        return
+      }
+      try {
+        await api.saveProject(current.business_id, {
+          title: current.title,
+          cover_emoji: current.cover_emoji,
+          cover_image_key: current.cover_image_key,
+          cover_file_name: current.cover_file_name,
+          document_schema_version: current.document_schema_version,
+          document,
+          revision: current.revision,
+        })
+        ElMessage.success(t('gallery.management.added', { project: current.title || project.title, count: added }))
+        return
+      } catch (cause) {
+        if (attempt === 0 && cause instanceof ApiError && cause.status === 409) continue
+        throw cause
+      }
+    }
+  } catch {
+    ElMessage.error(t('gallery.management.addFailed'))
+  } finally {
+    managementBusy.value = false
+  }
+}
+
+/** 逐张删除选中图片；被策划引用或失败的图片保留选中状态供用户重试。 */
+async function deleteManagedImages(): Promise<void> {
+  const ids = [...selectedImageIDs.value]
+  if (!ids.length || managementBusy.value) return
+  try {
+    await ElMessageBox.confirm(
+      t('gallery.management.deleteConfirm', { count: ids.length }),
+      t('gallery.management.deleteConfirmTitle'),
+      { confirmButtonText: t('gallery.management.delete'), cancelButtonText: t('common.cancel'), type: 'warning' },
+    )
+  } catch { return }
+  managementBusy.value = true
+  const failed: string[] = []
+  let deleted = 0
+  try {
+    for (const id of ids) {
+      try {
+        await api.deleteInspiration(id)
+        deleted += 1
+      } catch {
+        failed.push(id)
+      }
+    }
+    if (deleted) {
+      const removed = new Set(ids.filter(id => !failed.includes(id)))
+      items.value = items.value.filter(item => !removed.has(item.business_id))
+      total.value = Math.max(0, total.value - deleted)
+    }
+    selectedImageIDs.value = failed
+    if (!failed.length) {
+      ElMessage.success(t('gallery.management.deleted', { count: deleted }))
+      manageMode.value = false
+    } else if (deleted) {
+      ElMessage.warning(t('gallery.management.deletePartial', { deleted, failed: failed.length }))
+    } else {
+      ElMessage.error(t('gallery.management.deleteFailed'))
+    }
+  } finally {
+    managementBusy.value = false
+  }
+}
+
 function touchStart(event: TouchEvent) {
   galleryTouchStart(event)
+  if (manageMode.value) { gesture.cancel(); return }
   if (event.touches.length !== 1) { gesture.cancel(); return }
   touchedCard = (event.target as Element).closest<HTMLElement>('[data-inspiration-card]')
   const touch = event.touches[0]
@@ -243,6 +404,11 @@ let denseGridClickPending = false
 /** 超过五列时先收敛到可点击尺寸，并将用户点中的同一张图滚到前排供下一次点击。 */
 async function handleGalleryImageClick(event: MouseEvent, item: InspirationRecord) {
   if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return
+  if (manageMode.value) {
+    event.preventDefault()
+    toggleManagedImage(item.business_id)
+    return
+  }
   if (gridColumns.value <= 5) { void openDetail(event, item); return }
   event.preventDefault()
   if (denseGridClickPending) return
@@ -287,6 +453,12 @@ async function openDetail(event: MouseEvent, item: InspirationRecord) {
   }
 }
 const items = ref<InspirationRecord[]>([])
+const manageMode = ref(false)
+const selectedImageIDs = ref<string[]>([])
+const managementBusy = ref(false)
+const batchProjectPickerOpen = ref(false)
+const batchProjects = ref<ProjectSummary[]>([])
+const batchProjectsLoading = ref(false)
 const tags = ref<TagRecord[]>([])
 const gallerySearch = ref<GallerySearchState>(createGallerySearchState())
 const searchQuery = computed({ get: () => gallerySearch.value.query, set: value => { gallerySearch.value = { ...gallerySearch.value, query: value } } })
@@ -303,6 +475,8 @@ const auth = useAuthStore()
 const libraryFilters = ref<InspirationLibraryFilters>({})
 const libraryRevision = ref(0)
 const hasMore = computed(() => items.value.length < total.value)
+const selectedImages = computed(() => items.value.filter(item => selectedImageIDs.value.includes(item.business_id)))
+const selectedImageCount = computed(() => selectedImages.value.length)
 const filtersActive = computed(() => gallerySearchHasValue(gallerySearch.value) || Object.values(libraryFilters.value).some(Boolean))
 const hasAnyFilters = filtersActive
 const sortLabel = computed(() => gallerySearch.value.kind === 'color'
@@ -369,6 +543,7 @@ async function loadTags() {
 /** 筛选条件变化后短暂合并连续输入，并从第一页重新查询。 */
 watch([gallerySearch, sort, libraryFilters], () => {
   if (restoring || !active.value) return
+  if (manageMode.value) exitManagement()
   if (gallerySearch.value.kind === 'color') {
     // 色环拖动期间按固定间隔刷新，未完成请求时只保留最新颜色，避免请求堆积。
     if (searchTimer !== undefined) return
@@ -475,6 +650,7 @@ watch(() => [auth.orgid, auth.user?.business_id, auth.sessionVersion], () => {
 const processingTimer = window.setInterval(() => { if (active.value && document.visibilityState === 'visible' && page.value === 1 && !loading.value && items.value.some(item => ['pending_compression','compressing','pending_analysis','analyzing'].includes(item.analysis_status || ''))) void loadPage() }, 30_000)
 onMounted(async () => {
   if (galleryRoot.value) disposeMenu = registerMenu(galleryRoot.value, event => {
+    if (manageMode.value) return false
     const card = (event.target as Element).closest<HTMLElement>('[data-inspiration-card]')
     const item = items.value.find(item => item.business_id === card?.dataset.inspirationCard)
     if (!item || !card) return false
@@ -517,7 +693,7 @@ onMounted(async () => {
   const item = items.value.find(item => item.business_id === saved.imageID)
   if (item && card) showImageMenu(item, card, saved.x, saved.y, saved.menuScroll)
 })
-onBeforeUnmount(() => { alive = false; inspirationDetails.clear(); openVersion += 1; menuVersion += 1; disposeMenu?.(); gesture.cancel(); window.removeEventListener('resize', resizeGrid); window.removeEventListener('scroll', gesture.cancel, true); window.removeEventListener('scroll', updateGridNavigation); window.clearTimeout(gridNavFrame); window.clearTimeout(gridFocusFrame); tagsVersion += 1; window.clearInterval(processingTimer); if (searchTimer !== undefined) window.clearTimeout(searchTimer); requestVersion += 1 })
+onBeforeUnmount(() => { alive = false; inspirationDetails.clear(); openVersion += 1; menuVersion += 1; disposeMenu?.(); gesture.cancel(); manageMode.value = false; selectedImageIDs.value = []; window.removeEventListener('resize', resizeGrid); window.removeEventListener('scroll', gesture.cancel, true); window.removeEventListener('scroll', updateGridNavigation); window.clearTimeout(gridNavFrame); window.clearTimeout(gridFocusFrame); tagsVersion += 1; window.clearInterval(processingTimer); if (searchTimer !== undefined) window.clearTimeout(searchTimer); requestVersion += 1 })
 </script>
 
 <template>
@@ -555,8 +731,11 @@ onBeforeUnmount(() => { alive = false; inspirationDetails.clear(); openVersion +
       <div v-if="error" class="inline-error" role="alert"><span>{{ error }}</span><el-button text :disabled="loading" @click="loadPage(page)">{{ t('gallery.retry') }}</el-button></div>
 
       <ContentZoom v-if="items.length" ref="contentZoom" enabled class="gallery-grid-zoom"><TransitionGroup tag="section" name="gallery-grid" move-class="gallery-grid-move" class="inspiration-grid" :class="{ 'is-dense': gridColumns > 5 }" data-content-zoom-ignore :style="{ '--grid-columns': gridColumns }" :aria-label="t('gallery.title')">
-        <article v-for="(item, index) in items" :key="item.business_id" class="inspiration-card" :class="{ 'is-zoom-focus': focusedRowStart >= 0 && index >= focusedRowStart && index < focusedRowStart + 5 }" tabindex="0" :data-inspiration-card="item.business_id" :style="{ '--card-index': index % 8 }">
-          <RouterLink class="inspiration-link" @click.capture="handleGalleryImageClick($event, item)" :data-shared-transition="item.business_id" :to="`/inspirations/${item.business_id}`" :aria-label="t('gallery.openImage', { name: item.file_name || t('gallery.untitled') })">
+        <article v-for="(item, index) in items" :key="item.business_id" class="inspiration-card" :class="{ 'is-zoom-focus': focusedRowStart >= 0 && index >= focusedRowStart && index < focusedRowStart + 5, 'is-manage-selected': manageMode && selectedImageIDs.includes(item.business_id) }" tabindex="0" :aria-selected="manageMode ? selectedImageIDs.includes(item.business_id) : undefined" :data-inspiration-card="item.business_id" :style="{ '--card-index': index % 8 }">
+          <span v-if="manageMode" class="manage-selection-indicator" :class="{ selected: selectedImageIDs.includes(item.business_id) }" aria-hidden="true">
+            <el-icon v-if="selectedImageIDs.includes(item.business_id)"><Check /></el-icon>
+          </span>
+          <RouterLink class="inspiration-link" @click.capture="handleGalleryImageClick($event, item)" :data-shared-transition="item.business_id" :to="`/inspirations/${item.business_id}`" :aria-label="manageMode ? t('gallery.management.selectImage', { name: item.file_name || t('gallery.untitled') }) : t('gallery.openImage', { name: item.file_name || t('gallery.untitled') })">
             <div class="gallery-image-frame"><InspirationThumbnail :record="item" show-anchors detail-transition /></div>
             <p v-if="imageNote(item.data)" class="gallery-image-note" :title="imageNote(item.data)">{{ imageNote(item.data) }}</p>
           </RouterLink>
@@ -579,7 +758,30 @@ onBeforeUnmount(() => { alive = false; inspirationDetails.clear(); openVersion +
 
       <InspirationLibraryTools ref="libraryTools" v-model:filters="libraryFilters" :revision="libraryRevision" />
     </main>
-    <CreateFab class="gallery-create-fab" :label="t('gallery.newImage')" to="/inspirations/new" />
+    <Transition name="gallery-manage-bar">
+      <section v-if="manageMode" class="gallery-manage-bar" role="toolbar" :aria-label="t('contextMenu.manageImage')">
+        <div class="gallery-manage-summary">
+          <strong>{{ t('gallery.management.selected', { count: selectedImageCount }) }}</strong>
+          <button type="button" :disabled="managementBusy" @click="exitManagement"><el-icon><Close /></el-icon><span>{{ t('gallery.management.exit') }}</span></button>
+        </div>
+        <div class="gallery-manage-actions">
+          <button type="button" :disabled="managementBusy || !selectedImageCount" @click="downloadManagedImages"><el-icon><Download /></el-icon><span>{{ t('gallery.management.download') }}</span></button>
+          <button type="button" :disabled="managementBusy || !selectedImageCount" @click="openManagementProjectPicker"><el-icon><Plus /></el-icon><span>{{ t('gallery.management.add') }}</span></button>
+          <button type="button" class="is-danger" :disabled="managementBusy || !selectedImageCount" @click="deleteManagedImages"><el-icon><Delete /></el-icon><span>{{ t('gallery.management.delete') }}</span></button>
+        </div>
+      </section>
+    </Transition>
+    <el-dialog v-model="batchProjectPickerOpen" :title="t('gallery.management.projectPickerTitle')" width="min(460px, calc(100vw - 24px))" append-to-body>
+      <div v-if="batchProjectsLoading" class="gallery-project-picker-state" role="status"><span class="loading-dot"></span>{{ t('common.loading') }}</div>
+      <div v-else-if="batchProjects.length" class="gallery-project-picker-list">
+        <button v-for="project in batchProjects" :key="project.business_id" type="button" :disabled="managementBusy" @click="addManagedImagesToProject(project)">
+          <span>{{ project.title || t('projects.editorTitlePlaceholder') }}</span>
+          <el-icon aria-hidden="true"><Plus /></el-icon>
+        </button>
+      </div>
+      <div v-else class="gallery-project-picker-state">{{ t('gallery.management.projectPickerEmpty') }}</div>
+    </el-dialog>
+    <CreateFab v-if="!manageMode" class="gallery-create-fab" :label="t('gallery.newImage')" to="/inspirations/new" />
     <div v-if="items.length > 5" ref="gridNavTrack" class="gallery-side-nav" :class="{ visible: gridNavVisible, dragging: gridNavDragging }" role="slider" tabindex="0" :aria-label="t('gallery.listPosition')" aria-valuemin="0" aria-valuemax="100" :aria-valuenow="Math.round(gridNavTop * 100)" @pointerdown="startGridNavigation" @pointermove="moveGridNavigation" @pointerup="endGridNavigation" @pointercancel="endGridNavigation" @lostpointercapture="endGridNavigation" @keydown.home.prevent="seekGalleryEdge(0)" @keydown.end.prevent="seekGalleryEdge(1)">
       <span ref="gridNavThumb" class="gallery-side-nav-thumb" :style="{ top: `${gridNavThumbTop}px` }" />
     </div>
@@ -603,6 +805,24 @@ onBeforeUnmount(() => { alive = false; inspirationDetails.clear(); openVersion +
 .gallery-sort-button:hover:not(:disabled), .gallery-sort-button:focus-visible { background: var(--surface-soft); color: var(--ink); outline: none; }
 .gallery-sort-button:disabled { cursor: default; opacity: .72; }
 .sort-chevron { font-size: 11px; }
+.gallery-manage-bar { position: fixed; z-index: 55; bottom: calc(86px + env(safe-area-inset-bottom)); left: calc(50% + 113px); display: flex; width: min(620px, calc(100vw - 300px)); align-items: center; justify-content: space-between; gap: 12px; margin: 0; padding: 8px 10px 8px 14px; border: 1px solid var(--line); border-radius: 16px; background: color-mix(in srgb, var(--surface-overlay) 94%, transparent); box-shadow: var(--shadow); transform: translateX(-50%); backdrop-filter: blur(20px) saturate(120%); -webkit-backdrop-filter: blur(20px) saturate(120%); }
+.gallery-manage-summary { display: flex; min-width: 0; align-items: center; gap: 8px; }
+.gallery-manage-summary strong { color: var(--ink); font-size: 13px; font-weight: 500; white-space: nowrap; }
+.gallery-manage-summary button { display: inline-flex; min-height: 36px; align-items: center; gap: 4px; padding: 0 6px; border: 0; background: transparent; color: var(--muted); cursor: pointer; font: inherit; font-size: 12px; }
+.gallery-manage-actions { display: flex; gap: 4px; }
+.gallery-manage-actions button { display: inline-flex; min-height: 40px; align-items: center; gap: 5px; padding: 0 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface-soft); color: var(--ink-soft); cursor: pointer; font: inherit; font-size: 12px; }
+.gallery-manage-actions button:disabled { opacity: .45; cursor: default; }
+.gallery-manage-actions button.is-danger { color: var(--danger); }
+.manage-selection-indicator { position: absolute; z-index: 5; top: 7px; right: 7px; display: grid; width: 23px; height: 23px; place-items: center; border: 2px solid rgb(255 255 255 / 92%); border-radius: 50%; background: rgb(18 22 20 / 38%); color: #fff; box-shadow: 0 1px 6px rgb(0 0 0 / 28%); pointer-events: none; }
+.manage-selection-indicator.selected { background: var(--accent); }
+.manage-selection-indicator .el-icon { font-size: 14px; }
+.inspiration-card.is-manage-selected :deep(.thumbnail-frame), .inspiration-card.is-manage-selected .gallery-image-frame { outline: 2px solid var(--accent); outline-offset: 1px; }
+.gallery-project-picker-list { display: grid; max-height: min(56dvh, 430px); gap: 6px; overflow-y: auto; }
+.gallery-project-picker-list button { display: flex; min-height: 48px; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface-soft); color: var(--ink); cursor: pointer; font: inherit; font-size: 13px; text-align: left; }
+.gallery-project-picker-list button:hover { border-color: var(--accent); }
+.gallery-project-picker-state { display: flex; min-height: 90px; align-items: center; justify-content: center; gap: 8px; color: var(--muted); font-size: 13px; }
+.gallery-manage-bar-enter-active, .gallery-manage-bar-leave-active { transition: opacity 160ms ease, transform 200ms cubic-bezier(.22, 1, .36, 1); }
+.gallery-manage-bar-enter-from, .gallery-manage-bar-leave-to { opacity: 0; transform: translate(-50%, 12px); }
 .inspiration-grid { grid-template-columns: repeat(var(--grid-columns, 4), minmax(0, 1fr)); gap: var(--gallery-grid-gap, 6px); touch-action: pan-y; }
 .inspiration-grid.is-dense { gap: 0; }
 .inspiration-grid.is-dense .gallery-image-note, .inspiration-grid.is-dense .inspiration-card :deep(.thumbnail-anchor-title) { display: none !important; }
@@ -615,7 +835,7 @@ onBeforeUnmount(() => { alive = false; inspirationDetails.clear(); openVersion +
 .gallery-side-nav.dragging .gallery-side-nav-thumb { left: 5px; width: 28px; height: 40px; box-shadow: 0 3px 12px rgb(0 0 0 / 26%); }
 .inspiration-card { position: relative; border-radius: var(--gallery-thumbnail-radius, 3px); scroll-margin-top: 78px; -webkit-touch-callout: none; }
 .inspiration-card.is-zoom-focus :deep(.thumbnail-frame) { outline: 3px solid var(--accent); outline-offset: 3px; }
-@media (prefers-reduced-motion: reduce) { .gallery-grid-move { transition: none; } }
+@media (prefers-reduced-motion: reduce) { .gallery-grid-move, .gallery-manage-bar-enter-active, .gallery-manage-bar-leave-active { transition: none; } }
 .inspiration-card img { -webkit-user-drag: none; }
 .inspiration-card:focus-visible { outline: none; }
 .inspiration-card :deep(.thumbnail-frame) { aspect-ratio: 2 / 3; border: 0 !important; border-radius: var(--gallery-thumbnail-radius, 3px) !important; background: transparent !important; box-shadow: none !important; }
@@ -635,6 +855,11 @@ onBeforeUnmount(() => { alive = false; inspirationDetails.clear(); openVersion +
   .gallery-main :deep(.library-board) { margin-top: 8px; margin-bottom: 6px; }
   .gallery-workspace > .workspace-footer { padding-top: 8px; padding-bottom: 8px; }
   .gallery-sort-button { min-height: 44px; padding-inline: 5px; }
+  .gallery-manage-bar { right: 10px; bottom: calc(82px + env(safe-area-inset-bottom)); left: 10px; width: auto; flex-wrap: wrap; transform: none; padding: 8px 10px; }
+  .gallery-manage-summary { width: 100%; justify-content: space-between; }
+  .gallery-manage-actions { display: grid; width: 100%; grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .gallery-manage-actions button { justify-content: center; padding-inline: 6px; }
+  .gallery-manage-bar-enter-from, .gallery-manage-bar-leave-to { transform: translateY(12px); }
   .inspiration-grid { gap: var(--gallery-mobile-grid-gap, 4px); }
   .inspiration-grid.is-dense { gap: 0; }
   .gallery-side-nav { right: 2px; }

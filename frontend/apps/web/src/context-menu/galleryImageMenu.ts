@@ -6,6 +6,8 @@ export interface GalleryMenuProject {
 }
 
 export interface GalleryImageMenuOptions {
+  manageLabel: string
+  manage: () => void | Promise<void>
   copyLabel: string
   canCopy: boolean
   copy: () => void | Promise<void>
@@ -22,7 +24,7 @@ export interface GalleryImageMenuOptions {
 /**
  * 构造灵感库图片长按菜单。
  *
- * 行顺序固定为：复制图片、添加到策划、已关联策划。加载或出错时用同一位置的
+ * 行顺序固定为：管理、复制图片、添加到策划、已关联策划。加载或出错时用同一位置的
  * 禁用状态行反馈，避免关联项目迟到后改变前两行的位置。
  */
 export function createGalleryImageMenu(options: GalleryImageMenuOptions): MenuEntry[] {
@@ -35,6 +37,7 @@ export function createGalleryImageMenu(options: GalleryImageMenuOptions): MenuEn
       }))
       : [{ label: options.addLabel, disabled: true }]
   const entries: MenuEntry[] = [
+    { label: options.manageLabel, run: options.manage },
     { label: options.copyLabel, disabled: !options.canCopy, run: options.copy },
     { label: options.addLabel, children: addChildren, disabled: options.addDisabled },
   ]
