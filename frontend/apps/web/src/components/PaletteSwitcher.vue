@@ -79,9 +79,9 @@ function choose(value: LightPalette): void {
   box-shadow: 0 0 0 2px var(--surface-overlay), 0 0 0 4px var(--accent), inset 0 1px 0 rgb(255 255 255 / 82%);
 }
 
-.palette-green .palette-dot { background: #6f8f7e; }
-.palette-aqua .palette-dot { background: #659a91; }
-.palette-blue .palette-dot { background: #6e8fa8; }
-.palette-gold .palette-dot { background: #b89b63; }
+.palette-green .palette-dot { background: #78a890; }
+.palette-aqua .palette-dot { background: #4bc0ad; }
+.palette-blue .palette-dot { background: #67aedc; }
+.palette-gold .palette-dot { background: #f6c358; }
 
 </style>

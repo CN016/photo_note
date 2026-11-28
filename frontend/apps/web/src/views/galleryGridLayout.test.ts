@@ -9,8 +9,8 @@ import {
 } from './galleryGridLayout'
 
 describe('图库默认网格', () => {
-  it('进入列表默认显示四列并使用小圆角', () => {
-    expect(DEFAULT_GALLERY_COLUMNS).toBe(4)
+  it('进入列表默认显示五列并使用小圆角', () => {
+    expect(DEFAULT_GALLERY_COLUMNS).toBe(5)
     expect(GALLERY_THUMBNAIL_RADIUS).toBe(3)
     expect(GALLERY_GRID_GAP).toBe(6)
     expect(GALLERY_MOBILE_GRID_GAP).toBe(4)
@@ -19,8 +19,8 @@ describe('图库默认网格', () => {
   it('缩放结果吸附到允许列数档位', () => {
     expect(nearestGalleryColumnCount(4.4)).toBe(4)
     expect(nearestGalleryColumnCount(7.6)).toBe(10)
-    expect(nearestGalleryColumnCount(0)).toBe(4)
-    expect(nearestGalleryColumnCount(Number.NaN)).toBe(4)
-    expect(GALLERY_COLUMN_STEPS).toContain(4)
+    expect(nearestGalleryColumnCount(0)).toBe(5)
+    expect(nearestGalleryColumnCount(Number.NaN)).toBe(5)
+    expect(GALLERY_COLUMN_STEPS).toContain(5)
   })
 })
