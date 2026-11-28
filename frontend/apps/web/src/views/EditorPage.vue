@@ -2579,6 +2579,7 @@ onBeforeUnmount(() => {
 .detail-note-trigger:hover { color: var(--ink); }
 .detail-note-trigger:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 12px; }
 .detail-note-editor :deep(.el-textarea__inner) { min-height: 32px !important; padding: 4px 0; border: 0; border-radius: 0; background: transparent; box-shadow: none; color: var(--ink); font: inherit; font-size: 14px; line-height: 1.72; }
+.detail-note-editor :deep(.el-textarea__inner::placeholder) { font-size: 12px; font-weight: 400; letter-spacing: 0; line-height: 1.7; }
 .detail-note-editor :deep(.el-textarea__inner:focus) { box-shadow: none; }
 .detail-tag-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .detail-tag-pill, .detail-tag-more { position: relative; display: inline-flex; min-height: 34px; align-items: center; justify-content: center; gap: 4px; overflow: hidden; padding: 6px 12px; border: 1px solid color-mix(in srgb, var(--line) 78%, transparent); border-radius: 999px; background: color-mix(in srgb, var(--surface) 74%, transparent); color: var(--ink-soft); cursor: pointer; font: inherit; font-size: 12px; line-height: 1; white-space: nowrap; touch-action: manipulation; user-select: none; -webkit-touch-callout: none; }
