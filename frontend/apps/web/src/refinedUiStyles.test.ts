@@ -12,4 +12,11 @@ describe('现代视觉层加载顺序', () => {
     expect(detail).toBeGreaterThan(glass)
     expect(refined).toBeGreaterThan(detail)
   })
+
+  it('覆盖全部浅色色盘和暗色主题', () => {
+    const source = readFileSync(resolve(process.cwd(), 'src/refined-ui.css'), 'utf8')
+    for (const selector of ["data-palette='green'", "data-palette='aqua'", "data-palette='blue'", "data-palette='gold'", "data-theme='dark'"]) {
+      expect(source).toContain(selector)
+    }
+  })
 })

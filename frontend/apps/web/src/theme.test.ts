@@ -2,19 +2,19 @@ import { describe, expect, it } from 'vitest'
 import { LIGHT_PALETTES, normalizeLightPalette } from './theme'
 
 const lightTextTokens = {
-  ink: '#26332c',
-  inkSoft: '#3d4a43',
-  muted: '#48574f',
-  onAccent: '#fffaf3',
-  success: '#3f6855',
-  warning: '#74582f',
-  danger: '#8a4c44',
+  ink: '#242a27',
+  inkSoft: '#46514c',
+  muted: '#66706b',
+  onAccent: '#ffffff',
+  success: '#416a56',
+  warning: '#775f36',
+  danger: '#8d514a',
 }
 const lightPaletteTokens = {
-  green: { page: '#dcecdf', accent: '#3f6754', accentHover: '#355b47' },
-  aqua: { page: '#d3f3ed', accent: '#1f685c', accentHover: '#1b5d52' },
-  blue: { page: '#dcecf8', accent: '#2f6385', accentHover: '#295775' },
-  gold: { page: '#f8e8bd', accent: '#745412', accentHover: '#68490e' },
+  green: { page: '#eff2ef', accent: '#4b6759', accentHover: '#3e584c' },
+  aqua: { page: '#edf4f2', accent: '#426b64', accentHover: '#365a54' },
+  blue: { page: '#eef3f8', accent: '#4d6678', accentHover: '#405665' },
+  gold: { page: '#f5f1e9', accent: '#705f40', accentHover: '#5e4f34' },
 } as const
 
 /** 计算 WCAG 相对亮度与对比度，防止色盘只调整背景却遗漏小字号文字可读性。 */
